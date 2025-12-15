@@ -657,28 +657,241 @@ class ESPNProvider(SportsProvider):
     def _get_ufc_events(self, target_date: date) -> list[Event]:
         """Fetch and parse UFC events for a specific date.
 
-        UFC API returns all upcoming events, so we filter to target_date.
+        Strategy:
+        1. Try app API first (has full event data when available)
+        2. Fall back to scoreboard calendar (always has upcoming events)
+
+        The app API often returns empty, but the scoreboard calendar
+        always lists upcoming events with their event IDs.
         """
+        # Try app API first
         data = self._client.get_ufc_events()
-        if not data:
+        if data:
+            try:
+                ufc_events = data["sports"][0]["leagues"][0]["events"]
+                if ufc_events:
+                    events = []
+                    for event_data in ufc_events:
+                        event = self._parse_ufc_event(event_data)
+                        if event:
+                            local_date = to_user_tz(event.start_time).date()
+                            if local_date == target_date:
+                                events.append(event)
+                    if events:
+                        return events
+            except (KeyError, IndexError):
+                pass
+
+        # Fall back to scoreboard calendar
+        return self._get_ufc_events_from_calendar(target_date)
+
+    def _get_ufc_events_from_calendar(self, target_date: date) -> list[Event]:
+        """Fetch UFC events from scoreboard calendar.
+
+        The calendar lists all upcoming events with references.
+        We filter by date and fetch full event data via summary endpoint.
+        """
+        scoreboard = self._client.get_ufc_scoreboard()
+        if not scoreboard:
             return []
 
-        try:
-            ufc_events = data["sports"][0]["leagues"][0]["events"]
-        except (KeyError, IndexError):
-            logger.warning("Unexpected UFC events response structure")
+        # Extract calendar from leagues[0]
+        leagues = scoreboard.get("leagues", [])
+        if not leagues:
+            return []
+
+        calendar = leagues[0].get("calendar", [])
+        if not calendar:
             return []
 
         events = []
-        for event_data in ufc_events:
-            event = self._parse_ufc_event(event_data)
-            if event:
-                # Compare dates in user timezone (late night UTC = same day locally)
-                local_date = to_user_tz(event.start_time).date()
+        for entry in calendar:
+            # Check if this event is on target date
+            start_date_str = entry.get("startDate", "")
+            if not start_date_str:
+                continue
+
+            try:
+                event_start = datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
+                local_date = to_user_tz(event_start).date()
+
                 if local_date == target_date:
-                    events.append(event)
+                    # Extract event ID from $ref URL
+                    event_ref = entry.get("event", {}).get("$ref", "")
+                    event_id = self._extract_event_id_from_ref(event_ref)
+
+                    if event_id:
+                        event = self._fetch_ufc_event_by_id(event_id, entry)
+                        if event:
+                            events.append(event)
+            except (ValueError, TypeError):
+                continue
 
         return events
+
+    def _extract_event_id_from_ref(self, ref_url: str) -> str | None:
+        """Extract event ID from ESPN $ref URL.
+
+        Example: 'http://...events/600051441?...' -> '600051441'
+        """
+        import re
+        match = re.search(r"/events/(\d+)", ref_url)
+        return match.group(1) if match else None
+
+    def _fetch_ufc_event_by_id(self, event_id: str, calendar_entry: dict) -> Event | None:
+        """Fetch UFC event details by ID.
+
+        Uses the summary endpoint to get full event data including fighters.
+        Falls back to calendar entry data if summary fails.
+        """
+        # Try summary endpoint first
+        summary = self._client.get_ufc_event_summary(event_id)
+        if summary:
+            return self._parse_ufc_from_summary(summary, event_id, calendar_entry)
+
+        # Fallback: create minimal event from calendar entry
+        return self._parse_ufc_from_calendar_entry(event_id, calendar_entry)
+
+    def _parse_ufc_from_summary(
+        self, summary: dict, event_id: str, calendar_entry: dict
+    ) -> Event | None:
+        """Parse UFC event from summary endpoint response."""
+        try:
+            header = summary.get("header", {})
+            competitions = header.get("competitions", [])
+
+            if not competitions:
+                return self._parse_ufc_from_calendar_entry(event_id, calendar_entry)
+
+            # Get event name and start time from header/calendar
+            event_name = calendar_entry.get("label", "")
+            start_date_str = calendar_entry.get("startDate", "")
+
+            if not start_date_str:
+                return None
+
+            start_time = datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
+
+            # Find main event fighters from last competition (main event is last)
+            main_comp = competitions[-1] if competitions else None
+            if not main_comp:
+                return self._parse_ufc_from_calendar_entry(event_id, calendar_entry)
+
+            competitors = main_comp.get("competitors", [])
+            if len(competitors) < 2:
+                return self._parse_ufc_from_calendar_entry(event_id, calendar_entry)
+
+            fighter1 = self._parse_fighter_as_team(competitors[0])
+            fighter2 = self._parse_fighter_as_team(competitors[1])
+
+            # Try to find main card start from competitions
+            main_card_start = None
+            if len(competitions) > 1:
+                # Competitions are in chronological order, last is main event
+                main_start_str = main_comp.get("date")
+                if main_start_str:
+                    main_card_start = self._parse_datetime(main_start_str)
+
+            # Parse status
+            status = EventStatus(state="scheduled")
+            if main_comp.get("status"):
+                status = self._parse_ufc_status(main_comp["status"])
+
+            return Event(
+                id=event_id,
+                provider=self.name,
+                name=event_name,
+                short_name=f"{fighter1.short_name} vs {fighter2.short_name}",
+                start_time=start_time,
+                home_team=fighter1,
+                away_team=fighter2,
+                status=status,
+                league="ufc",
+                sport="mma",
+                main_card_start=main_card_start,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to parse UFC summary for {event_id}: {e}")
+            return self._parse_ufc_from_calendar_entry(event_id, calendar_entry)
+
+    def _parse_ufc_from_calendar_entry(
+        self, event_id: str, calendar_entry: dict
+    ) -> Event | None:
+        """Create minimal UFC event from calendar entry when summary fails."""
+        try:
+            event_name = calendar_entry.get("label", "")
+            start_date_str = calendar_entry.get("startDate", "")
+
+            if not start_date_str:
+                return None
+
+            start_time = datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
+
+            # Parse fighters from event name (e.g., "UFC 311: Makhachev vs. Moicano")
+            fighter1_name, fighter2_name = self._parse_fighters_from_name(event_name)
+
+            fighter1 = Team(
+                id=f"{event_id}_1",
+                provider=self.name,
+                name=fighter1_name,
+                short_name=fighter1_name.split()[-1] if fighter1_name else "TBD",
+                abbreviation=fighter1_name.split()[-1][:6].upper() if fighter1_name else "TBD",
+                league="ufc",
+                sport="mma",
+                logo_url=None,
+                color=None,
+            )
+
+            fighter2 = Team(
+                id=f"{event_id}_2",
+                provider=self.name,
+                name=fighter2_name,
+                short_name=fighter2_name.split()[-1] if fighter2_name else "TBD",
+                abbreviation=fighter2_name.split()[-1][:6].upper() if fighter2_name else "TBD",
+                league="ufc",
+                sport="mma",
+                logo_url=None,
+                color=None,
+            )
+
+            return Event(
+                id=event_id,
+                provider=self.name,
+                name=event_name,
+                short_name=f"{fighter1.short_name} vs {fighter2.short_name}",
+                start_time=start_time,
+                home_team=fighter1,
+                away_team=fighter2,
+                status=EventStatus(state="scheduled"),
+                league="ufc",
+                sport="mma",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to parse UFC calendar entry {event_id}: {e}")
+            return None
+
+    def _parse_fighters_from_name(self, event_name: str) -> tuple[str, str]:
+        """Parse fighter names from event title.
+
+        Examples:
+        - "UFC 311: Makhachev vs. Moicano" -> ("Makhachev", "Moicano")
+        - "UFC Fight Night: Dern vs Ribas 2" -> ("Dern", "Ribas")
+        """
+        import re
+
+        # Remove "UFC xxx: " prefix
+        name = re.sub(r"^UFC\s*\d*\s*:?\s*", "", event_name, flags=re.IGNORECASE)
+        name = re.sub(r"^UFC\s+Fight\s+Night\s*:?\s*", "", name, flags=re.IGNORECASE)
+
+        # Split on " vs " or " vs. "
+        parts = re.split(r"\s+vs\.?\s+", name, flags=re.IGNORECASE)
+        if len(parts) == 2:
+            fighter1 = parts[0].strip()
+            # Remove trailing numbers (e.g., "Ribas 2")
+            fighter2 = re.sub(r"\s*\d+$", "", parts[1].strip())
+            return fighter1, fighter2
+
+        return "TBD", "TBD"
 
     def _parse_ufc_event(self, data: dict) -> Event | None:
         """Parse UFC fight card into Event.

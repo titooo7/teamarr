@@ -221,6 +221,30 @@ class ESPNClient:
         """
         return self._request(ESPN_UFC_EVENTS_URL)
 
+    def get_ufc_scoreboard(self) -> dict | None:
+        """Fetch UFC scoreboard which includes calendar of upcoming events.
+
+        The app API (get_ufc_events) often returns empty, but the scoreboard
+        has a calendar with upcoming event references.
+
+        Returns:
+            Raw ESPN scoreboard response or None on error
+        """
+        url = f"{ESPN_BASE_URL}/mma/ufc/scoreboard"
+        return self._request(url)
+
+    def get_ufc_event_summary(self, event_id: str) -> dict | None:
+        """Fetch detailed UFC event data from the summary endpoint.
+
+        Args:
+            event_id: ESPN event ID
+
+        Returns:
+            Raw ESPN response with event details or None on error
+        """
+        url = f"{ESPN_BASE_URL}/mma/ufc/summary"
+        return self._request(url, {"event": event_id})
+
     def get_fighter(self, fighter_id: str) -> dict | None:
         """Fetch UFC fighter profile.
 

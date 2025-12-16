@@ -97,9 +97,10 @@ teamarr/
 │   ├── channel_lifecycle.py
 │   └── filler/             # Pregame/postgame content
 │
-├── templates/              # Template engine (161 variables)
+├── templates/              # Template engine (141 variables)
 │   ├── resolver.py         # Variable substitution
 │   ├── context.py          # TemplateContext
+│   ├── conditions.py       # Conditional description selection
 │   └── variables/          # Variable extractors
 │
 ├── dispatcharr/            # Dispatcharr integration
@@ -195,9 +196,10 @@ events = service.get_events('ohl', date.today())  # → TSDB
 
 - Provider abstraction (ESPN + TSDB)
 - Service layer with TTL caching
+- Two-phase data pipeline (discovery → enrichment)
 - Team-based EPG generation
 - Event-based EPG generation
-- Template engine (161 variables)
+- Template engine (141 variables, 15 conditionals)
 - Stream matching (single/multi-league)
 - Stream match fingerprint cache
 - Dispatcharr integration modules
@@ -259,7 +261,23 @@ Full docs: http://localhost:9198/docs
 
 ## Current Status
 
-### Backend Validated (Dec 15, 2025)
+### Session Summary (Dec 15, 2025)
+
+**Completed this session:**
+1. Simplified variable system (removed h2h, player_leaders, home/away streaks)
+2. Consolidated duplicate condition systems (deleted enum-based conditional.py)
+3. Fixed TSDB API key (was using old demo key `3`, now uses `123`)
+4. Implemented two-phase data pipeline:
+   - Discovery: scoreboard/schedule (batch, 8hr cache)
+   - Enrichment: summary endpoint (per-event, 30min cache, ESPN only)
+5. ESPN enrichment provides odds ~1 week out via pickcenter
+6. TSDB enrichment skipped (lookupevent returns same data as eventsday)
+7. Fixed broadcast parsing for summary endpoint format
+8. Removed dead variables: `head_coach`, `odds_opponent_spread`
+
+**Variable count: 143 → 141**
+
+### Backend Validated
 
 All core endpoints working:
 - `/health` - ✅
@@ -283,17 +301,38 @@ Pages needed:
 - Channels (managed channels)
 - Settings (global config)
 
-### Decisions Made
+---
+
+## Two-Phase Data Pipeline
+
+```
+DISCOVERY (batch, cheap)              ENRICHMENT (per-event, ESPN only)
+├── Scoreboard: 1 call = N events     └── Summary: odds ~1 week out
+├── Schedule: 1 call = full season        - 30min cache
+└── 8hr cache                             - TSDB skipped (no value)
+```
+
+**ESPN endpoints:**
+| Endpoint | Has Odds | Use Case |
+|----------|----------|----------|
+| Scoreboard | Same-day only | Event EPG discovery |
+| Schedule | Never | Team EPG discovery |
+| Summary | ~1 week out | Enrichment |
+
+**TSDB quirks:**
+- Free API key is `123` (not `3`)
+- `eventsday.php` needs league NAME
+- `eventsnextleague.php` needs league ID
+- `lookupevent.php` works but returns same data as eventsday (skip)
+- `lookupteam.php` broken on free tier
+
+---
+
+## Decisions Made
 
 - UI: React + TypeScript + Tailwind CSS
 - Dev port: 9198 (9195 is prod V1)
 - Deployment: Single container (bundled static files)
 - No backward compatibility with V1
-
----
-
-## Future Enhancements
-
-- **Swagger field descriptions**: Add `Field(description="...")` to Pydantic models for better API docs
-- **Tests**: Expand test coverage
-- **Stream matching disambiguation**: V1 has fallback logic for ambiguous matches
+- Two-phase: Discovery → Enrichment (ESPN only)
+- Simplicity: Removed h2h, player_leaders, home/away streaks

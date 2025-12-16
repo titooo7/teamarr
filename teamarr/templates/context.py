@@ -10,49 +10,8 @@ from teamarr.core import Event, Team, TeamStats
 
 
 @dataclass
-class HeadToHead:
-    """Head-to-head record against current opponent."""
-
-    team_wins: int = 0
-    opponent_wins: int = 0
-    previous_result: str | None = None  # "Win", "Loss", "Tie"
-    previous_score: str | None = None  # "24-17"
-    previous_venue: str | None = None
-    previous_city: str | None = None
-    days_since: int = 0
-
-
-@dataclass
-class Streaks:
-    """Calculated streak data from team schedule."""
-
-    overall: int = 0  # positive = wins, negative = losses
-    home_streak: str = ""  # "W3" or "L2"
-    away_streak: str = ""
-    last_5_record: str = ""  # "4-1" or "3-1-1" for soccer
-    last_10_record: str = ""
-
-
-@dataclass
-class PlayerLeaders:
-    """Sport-specific player stat leaders (postgame only)."""
-
-    # Basketball
-    scoring_leader_name: str = ""
-    scoring_leader_points: str = ""
-
-    # Football
-    passing_leader_name: str = ""
-    passing_leader_stats: str = ""  # "285 YDS, 2 TD"
-    rushing_leader_name: str = ""
-    rushing_leader_stats: str = ""
-    receiving_leader_name: str = ""
-    receiving_leader_stats: str = ""
-
-
-@dataclass
 class Odds:
-    """Betting odds for a game (available same-day only from scoreboard API)."""
+    """Betting odds for a game (available ~1 week out from summary endpoint)."""
 
     provider: str = ""  # "ESPN BET", "DraftKings", etc.
     spread: float = 0.0  # Point spread (absolute value)
@@ -60,7 +19,6 @@ class Odds:
     details: str = ""  # Full odds description
     team_moneyline: int = 0  # Our team's moneyline
     opponent_moneyline: int = 0  # Opponent's moneyline
-    opponent_spread_odds: int = 0  # Opponent's spread odds
 
 
 @dataclass
@@ -82,11 +40,7 @@ class GameContext:
 
     # Additional context
     opponent_stats: TeamStats | None = None
-    h2h: HeadToHead | None = None
-    streaks: Streaks | None = None
     odds: Odds | None = None
-    head_coach: str = ""
-    player_leaders: PlayerLeaders | None = None
 
 
 @dataclass

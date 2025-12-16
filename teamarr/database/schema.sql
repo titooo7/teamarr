@@ -298,6 +298,9 @@ BEGIN
     UPDATE event_epg_groups SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 END;
 
+CREATE INDEX IF NOT EXISTS idx_event_epg_groups_active ON event_epg_groups(active);
+CREATE INDEX IF NOT EXISTS idx_event_epg_groups_name ON event_epg_groups(name);
+
 
 -- =============================================================================
 -- MANAGED_CHANNELS TABLE
@@ -746,6 +749,9 @@ INSERT OR IGNORE INTO consolidation_exception_keywords (keywords, display_name, 
     ('Korean, (KOR), 한국어', 'Korean', 'consolidate'),
     ('Chinese, (CHN), (CHI), 中文', 'Chinese', 'consolidate');
 
+CREATE INDEX IF NOT EXISTS idx_exception_keywords_enabled ON consolidation_exception_keywords(enabled);
+CREATE INDEX IF NOT EXISTS idx_exception_keywords_behavior ON consolidation_exception_keywords(behavior);
+
 
 -- =============================================================================
 -- CONDITION_PRESETS TABLE
@@ -763,4 +769,121 @@ CREATE TABLE IF NOT EXISTS condition_presets (
     -- Condition configuration (JSON array)
     -- e.g., [{"condition": "win_streak", "value": "5", "priority": 10, "template": "..."}]
     conditions JSON NOT NULL DEFAULT '[]'
-)
+);
+
+
+-- =============================================================================
+-- EVENT_EPG_XMLTV TABLE
+-- Stores generated XMLTV content per event group
+-- Allows XMLTV to be served at a predictable URL for Dispatcharr to fetch
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS event_epg_xmltv (
+    group_id INTEGER PRIMARY KEY,
+    xmltv_content TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (group_id) REFERENCES event_epg_groups(id) ON DELETE CASCADE
+);
+
+
+-- =============================================================================
+-- PROCESSING_RUNS TABLE
+-- Stores historical stats from each processing run
+-- Scalable design: core fields + JSON for extensibility
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS processing_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Run identification
+    run_type TEXT NOT NULL,  -- 'event_group', 'team_epg', 'batch', 'reconciliation', 'scheduler'
+    run_id TEXT,             -- Optional unique run identifier (UUID)
+    group_id INTEGER,        -- For event_group runs
+    team_id INTEGER,         -- For team_epg runs
+
+    -- Timing
+    started_at TIMESTAMP NOT NULL,
+    completed_at TIMESTAMP,
+    duration_ms INTEGER,     -- Computed duration in milliseconds
+
+    -- Status
+    status TEXT NOT NULL DEFAULT 'running',  -- 'running', 'completed', 'failed', 'partial'
+    error_message TEXT,
+
+    -- Core metrics (commonly queried, indexed)
+    streams_fetched INTEGER DEFAULT 0,
+    streams_matched INTEGER DEFAULT 0,
+    streams_unmatched INTEGER DEFAULT 0,
+    streams_cached INTEGER DEFAULT 0,       -- Used fingerprint cache
+
+    channels_created INTEGER DEFAULT 0,
+    channels_updated INTEGER DEFAULT 0,
+    channels_deleted INTEGER DEFAULT 0,
+    channels_skipped INTEGER DEFAULT 0,
+    channels_errors INTEGER DEFAULT 0,
+
+    programmes_total INTEGER DEFAULT 0,
+    programmes_events INTEGER DEFAULT 0,
+    programmes_pregame INTEGER DEFAULT 0,
+    programmes_postgame INTEGER DEFAULT 0,
+    programmes_idle INTEGER DEFAULT 0,
+
+    xmltv_size_bytes INTEGER DEFAULT 0,
+
+    -- Extensible metrics (JSON blob for future additions)
+    -- Example: {"api_calls": 5, "cache_hits": 10, "enrichment_time_ms": 500}
+    extra_metrics JSON DEFAULT '{}',
+
+    -- Foreign keys
+    FOREIGN KEY (group_id) REFERENCES event_epg_groups(id) ON DELETE SET NULL,
+    FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL
+);
+
+-- Indexes for common queries
+CREATE INDEX IF NOT EXISTS idx_processing_runs_type ON processing_runs(run_type);
+CREATE INDEX IF NOT EXISTS idx_processing_runs_created ON processing_runs(created_at);
+CREATE INDEX IF NOT EXISTS idx_processing_runs_group ON processing_runs(group_id);
+CREATE INDEX IF NOT EXISTS idx_processing_runs_status ON processing_runs(status);
+-- Composite index for filtering by type and ordering by date
+CREATE INDEX IF NOT EXISTS idx_processing_runs_type_created ON processing_runs(run_type, created_at DESC);
+
+
+-- =============================================================================
+-- STATS_SNAPSHOTS TABLE
+-- Periodic snapshots of aggregate stats (for dashboards)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS stats_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Snapshot type
+    snapshot_type TEXT NOT NULL,  -- 'hourly', 'daily', 'weekly'
+    period_start TIMESTAMP NOT NULL,
+    period_end TIMESTAMP NOT NULL,
+
+    -- Aggregate counts
+    total_runs INTEGER DEFAULT 0,
+    successful_runs INTEGER DEFAULT 0,
+    failed_runs INTEGER DEFAULT 0,
+
+    total_streams_matched INTEGER DEFAULT 0,
+    total_streams_unmatched INTEGER DEFAULT 0,
+    total_channels_created INTEGER DEFAULT 0,
+    total_programmes_generated INTEGER DEFAULT 0,
+
+    -- Breakdown by type
+    programmes_by_type JSON DEFAULT '{}',  -- {"events": N, "pregame": N, "postgame": N, "idle": N}
+
+    -- Performance
+    avg_duration_ms INTEGER DEFAULT 0,
+    max_duration_ms INTEGER DEFAULT 0,
+
+    -- Extensible
+    extra_stats JSON DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_stats_snapshots_type ON stats_snapshots(snapshot_type);
+CREATE INDEX IF NOT EXISTS idx_stats_snapshots_period ON stats_snapshots(period_start)

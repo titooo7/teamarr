@@ -103,18 +103,6 @@ def extract_odds_opponent_moneyline(ctx: TemplateContext, game_ctx: GameContext 
 
 
 @register_variable(
-    name="odds_opponent_spread",
-    category=Category.ODDS,
-    suffix_rules=SuffixRules.BASE_NEXT_ONLY,
-    description="Opponent's spread odds",
-)
-def extract_odds_opponent_spread(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
-    if _has_odds(game_ctx) and game_ctx.odds.opponent_spread_odds:
-        return str(game_ctx.odds.opponent_spread_odds)
-    return ""
-
-
-@register_variable(
     name="has_odds",
     category=Category.ODDS,
     suffix_rules=SuffixRules.BASE_NEXT_ONLY,

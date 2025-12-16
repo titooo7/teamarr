@@ -523,13 +523,17 @@ class FillerGenerator:
 
     def _build_game_context(self, event: Event, team_id: str) -> GameContext:
         """Build GameContext for a single event."""
-        # Note: We don't fetch opponent stats here to avoid API calls
-        # during filler generation. If needed, they can be pre-fetched.
+        # Determine home/away from event
+        is_home = event.home_team.id == team_id
+        team = event.home_team if is_home else event.away_team
+        opponent = event.away_team if is_home else event.home_team
+
         return GameContext(
             event=event,
+            is_home=is_home,
+            team=team,
+            opponent=opponent,
             opponent_stats=None,  # Could be populated if needed
-            h2h=None,
-            streaks=None,
         )
 
     def _estimate_event_end(self, event: Event) -> datetime:

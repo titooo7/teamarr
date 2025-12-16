@@ -325,7 +325,7 @@ def test_dispatcharr_connection(request: ConnectionTestRequest | None = None):
 
 
 @router.get("/dispatcharr/status")
-def get_dispatcharr_status():
+def get_dispatcharr_status() -> dict:
     """Get current Dispatcharr connection status."""
     from teamarr.dispatcharr import get_factory
 
@@ -486,7 +486,7 @@ def get_scheduler_status():
 
 
 @router.post("/scheduler/run")
-def trigger_scheduler_run():
+def trigger_scheduler_run() -> dict:
     """Manually trigger a scheduler run."""
     from teamarr.consumers import LifecycleScheduler
     from teamarr.dispatcharr import get_dispatcharr_client

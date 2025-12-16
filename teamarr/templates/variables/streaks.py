@@ -36,55 +36,6 @@ def extract_streak_raw(ctx: TemplateContext, game_ctx: GameContext | None) -> st
 
 
 @register_variable(
-    name="home_streak",
-    category=Category.STREAKS,
-    suffix_rules=SuffixRules.BASE_ONLY,
-    description="Team's home winning/losing streak",
-)
-def extract_home_streak(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
-    # Home streak requires Streaks context which is populated from game history
-    if game_ctx and game_ctx.streaks and game_ctx.streaks.home_streak:
-        return game_ctx.streaks.home_streak
-    return ""
-
-
-@register_variable(
-    name="away_streak",
-    category=Category.STREAKS,
-    suffix_rules=SuffixRules.BASE_ONLY,
-    description="Team's away winning/losing streak",
-)
-def extract_away_streak(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
-    if game_ctx and game_ctx.streaks and game_ctx.streaks.away_streak:
-        return game_ctx.streaks.away_streak
-    return ""
-
-
-@register_variable(
-    name="last_5_record",
-    category=Category.STREAKS,
-    suffix_rules=SuffixRules.BASE_ONLY,
-    description="Team's record in last 5 games (e.g., '4-1')",
-)
-def extract_last_5_record(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
-    if game_ctx and game_ctx.streaks and game_ctx.streaks.last_5_record:
-        return game_ctx.streaks.last_5_record
-    return ""
-
-
-@register_variable(
-    name="last_10_record",
-    category=Category.STREAKS,
-    suffix_rules=SuffixRules.BASE_ONLY,
-    description="Team's record in last 10 games",
-)
-def extract_last_10_record(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
-    if game_ctx and game_ctx.streaks and game_ctx.streaks.last_10_record:
-        return game_ctx.streaks.last_10_record
-    return ""
-
-
-@register_variable(
     name="home_team_streak",
     category=Category.STREAKS,
     suffix_rules=SuffixRules.ALL,

@@ -7,9 +7,9 @@ Note: This queries DATA providers (ESPN, TheSportsDB) by league.
 Event groups (M3U provider stream collections) are a separate concept
 handled elsewhere.
 
-Data flow:
-- Scoreboard endpoint (8hr cache): Event discovery (IDs, teams, start times)
-- Single event endpoint (30min cache): Fresh status/scores for today's events
+Two-phase data flow:
+- Discovery (scoreboard, 8hr cache): Event IDs, teams, start times (batch)
+- Enrichment (summary, 30min cache): Odds, rich data (per event, ESPN only)
 """
 
 from dataclasses import dataclass, field
@@ -20,7 +20,6 @@ from teamarr.services import SportsDataService
 from teamarr.templates.context_builder import ContextBuilder
 from teamarr.templates.resolver import TemplateResolver
 from teamarr.utilities.sports import get_sport_duration
-from teamarr.utilities.tz import now_user
 
 
 @dataclass
@@ -90,8 +89,9 @@ class EventEPGGenerator:
             events = self._service.get_events(league, target_date)
             all_events.extend(events)
 
-        # Enrich events if target is today/yesterday (need fresh status/scores)
-        all_events = self._enrich_if_recent(all_events, target_date)
+        # Enrich all events for rich data (odds, etc.)
+        # Only ESPN events benefit - TSDB enrichment adds no value
+        all_events = self._enrich_events(all_events)
 
         programmes = []
         channels = []
@@ -227,26 +227,89 @@ class EventEPGGenerator:
             # Full event: prelims start → full duration
             return event.start_time, event.start_time + timedelta(hours=mma_duration)
 
-    def _enrich_if_recent(self, events: list[Event], target_date: date) -> list[Event]:
-        """Fetch fresh data for events if target is today/yesterday.
+    def generate_for_matched_streams(
+        self,
+        matched_streams: list[dict],
+        options: EventEPGOptions | None = None,
+    ) -> tuple[list[Programme], list[EventChannelInfo]]:
+        """Generate EPG for already-matched streams.
 
-        Scoreboard endpoint is cached for 8hr (discovery only).
-        For recent events that need current status/scores, we fetch
-        from single event endpoint (30min cache).
+        This is the main entry point for EventGroupProcessor.
+        Unlike generate_for_leagues which fetches events, this takes
+        pre-matched stream/event pairs from the matcher.
+
+        Args:
+            matched_streams: List of dicts with 'stream' and 'event' keys.
+                stream: dict with 'id', 'name', 'tvg_id' etc
+                event: Event dataclass
+            options: Generation options
+
+        Returns:
+            Tuple of (programmes, channels)
         """
-        today = now_user().date()
-        yesterday = today - timedelta(days=1)
+        options = options or EventEPGOptions()
 
-        # Only enrich if target is today or yesterday
-        if target_date not in (today, yesterday):
-            return events
+        programmes = []
+        channels = []
 
+        for match in matched_streams:
+            stream = match.get("stream", {})
+            event = match.get("event")
+
+            if not event:
+                continue
+
+            # Use tvg_id from stream if available, otherwise generate from event
+            tvg_id = stream.get("tvg_id") or f"event-{event.id}"
+            stream_name = stream.get("name", "")
+
+            # Build context using home team perspective
+            context = self._context_builder.build_for_event(
+                event=event,
+                team_id=event.home_team.id,
+                league=event.league,
+            )
+
+            # Generate channel name from template
+            channel_name = self._resolver.resolve(
+                options.template.channel_name_format, context
+            )
+
+            channel_info = EventChannelInfo(
+                channel_id=tvg_id,
+                name=channel_name,
+                icon=event.home_team.logo_url,
+            )
+            channels.append(channel_info)
+
+            # Generate programme - pass stream_name for UFC detection
+            programme = self._event_to_programme(
+                event, context, tvg_id, options, stream_name=stream_name
+            )
+            programmes.append(programme)
+
+        return programmes, channels
+
+    def _enrich_events(self, events: list[Event]) -> list[Event]:
+        """Enrich events with data from summary endpoint.
+
+        Two-phase architecture:
+        - Discovery (scoreboard endpoint, 8hr cache): IDs, teams, start times
+        - Enrichment (summary endpoint, 30min cache): Odds, rich data
+
+        Only enriches ESPN events - TSDB's lookupevent returns identical
+        data to eventsday, so enrichment wastes API quota.
+        """
         enriched = []
         for event in events:
-            fresh = self._service.get_event(event.id, event.league)
-            if fresh:
-                enriched.append(fresh)
+            # Only enrich ESPN events (TSDB enrichment adds no value)
+            if event.provider == "espn":
+                fresh = self._service.get_event(event.id, event.league)
+                if fresh:
+                    enriched.append(fresh)
+                else:
+                    enriched.append(event)  # Fallback to discovery data
             else:
-                enriched.append(event)  # Fallback to cached
+                enriched.append(event)
 
         return enriched

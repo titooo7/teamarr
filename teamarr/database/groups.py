@@ -481,3 +481,92 @@ def get_all_group_stats(conn: Connection) -> dict[int, dict]:
         }
 
     return stats
+
+
+# =============================================================================
+# XMLTV CONTENT OPERATIONS
+# =============================================================================
+
+
+def get_group_xmltv(conn: Connection, group_id: int) -> str | None:
+    """Get stored XMLTV content for a group.
+
+    Args:
+        conn: Database connection
+        group_id: Group ID
+
+    Returns:
+        XMLTV content string or None if not found
+    """
+    cursor = conn.execute(
+        "SELECT xmltv_content FROM event_epg_xmltv WHERE group_id = ?",
+        (group_id,),
+    )
+    row = cursor.fetchone()
+    return row["xmltv_content"] if row else None
+
+
+def get_all_group_xmltv(conn: Connection, group_ids: list[int] | None = None) -> list[str]:
+    """Get stored XMLTV content for multiple groups.
+
+    Args:
+        conn: Database connection
+        group_ids: Optional list of group IDs (None = all active groups)
+
+    Returns:
+        List of XMLTV content strings (non-empty only)
+    """
+    if group_ids:
+        placeholders = ",".join("?" * len(group_ids))
+        cursor = conn.execute(
+            f"""SELECT xmltv_content FROM event_epg_xmltv
+                WHERE group_id IN ({placeholders})
+                AND xmltv_content IS NOT NULL AND xmltv_content != ''""",
+            group_ids,
+        )
+    else:
+        # Get XMLTV for all active groups
+        cursor = conn.execute(
+            """SELECT x.xmltv_content FROM event_epg_xmltv x
+               JOIN event_epg_groups g ON x.group_id = g.id
+               WHERE g.active = 1
+               AND x.xmltv_content IS NOT NULL AND x.xmltv_content != ''"""
+        )
+
+    return [row["xmltv_content"] for row in cursor.fetchall()]
+
+
+def store_group_xmltv(conn: Connection, group_id: int, xmltv_content: str) -> None:
+    """Store XMLTV content for a group.
+
+    Args:
+        conn: Database connection
+        group_id: Group ID
+        xmltv_content: XMLTV content string
+    """
+    conn.execute(
+        """INSERT INTO event_epg_xmltv (group_id, xmltv_content, updated_at)
+           VALUES (?, ?, datetime('now'))
+           ON CONFLICT(group_id) DO UPDATE SET
+               xmltv_content = excluded.xmltv_content,
+               updated_at = datetime('now')""",
+        (group_id, xmltv_content),
+    )
+    conn.commit()
+
+
+def delete_group_xmltv(conn: Connection, group_id: int) -> bool:
+    """Delete stored XMLTV content for a group.
+
+    Args:
+        conn: Database connection
+        group_id: Group ID
+
+    Returns:
+        True if deleted
+    """
+    cursor = conn.execute(
+        "DELETE FROM event_epg_xmltv WHERE group_id = ?", (group_id,)
+    )
+    conn.commit()
+    return cursor.rowcount > 0

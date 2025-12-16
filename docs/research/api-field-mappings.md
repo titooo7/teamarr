@@ -297,7 +297,7 @@ Different structure - needs transformation to match scoreboard:
 
 ### Team Lookup Response
 
-**Endpoint:** `https://www.thesportsdb.com/api/v1/json/3/lookupteam.php?id={id}`
+**Endpoint:** `https://www.thesportsdb.com/api/v1/json/123/lookupteam.php?id={id}`
 
 ```json
 {
@@ -347,7 +347,7 @@ Different structure - needs transformation to match scoreboard:
 
 ### Team Search Response
 
-**Endpoint:** `https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t={query}`
+**Endpoint:** `https://www.thesportsdb.com/api/v1/json/123/searchteams.php?t={query}`
 
 ```json
 {
@@ -375,7 +375,7 @@ Different structure - needs transformation to match scoreboard:
 
 ### Events Next Response (Team Schedule)
 
-**Endpoint:** `https://www.thesportsdb.com/api/v1/json/3/eventsnext.php?id={team_id}`
+**Endpoint:** `https://www.thesportsdb.com/api/v1/json/123/eventsnext.php?id={team_id}`
 
 Returns next 5 events. Note: Free tier only.
 
@@ -420,7 +420,7 @@ Returns next 5 events. Note: Free tier only.
 
 ### Events Day Response (League Scoreboard)
 
-**Endpoint:** `https://www.thesportsdb.com/api/v1/json/3/eventsday.php?d={date}&l={league_id}`
+**Endpoint:** `https://www.thesportsdb.com/api/v1/json/123/eventsday.php?d={date}&l={league_id}`
 
 Same structure as Events Next, but for a specific date.
 
@@ -428,7 +428,7 @@ Same structure as Events Next, but for a specific date.
 
 ### Event Lookup Response
 
-**Endpoint:** `https://www.thesportsdb.com/api/v1/json/3/lookupevent.php?id={event_id}`
+**Endpoint:** `https://www.thesportsdb.com/api/v1/json/123/lookupevent.php?id={event_id}`
 
 Same structure as events in other responses, wrapped in `{"events": [...]}`
 

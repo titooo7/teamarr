@@ -199,18 +199,6 @@ def extract_league_slug(ctx: TemplateContext, game_ctx: GameContext | None) -> s
 
 
 @register_variable(
-    name="head_coach",
-    category=Category.IDENTITY,
-    suffix_rules=SuffixRules.BASE_ONLY,
-    description="Team's head coach name",
-)
-def extract_head_coach(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
-    if game_ctx:
-        return game_ctx.head_coach
-    return ""
-
-
-@register_variable(
     name="gracenote_category",
     category=Category.IDENTITY,
     suffix_rules=SuffixRules.BASE_ONLY,

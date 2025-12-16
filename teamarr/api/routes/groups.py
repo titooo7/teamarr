@@ -7,6 +7,7 @@ Provides REST API for:
 """
 
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from teamarr.database import get_db
@@ -411,7 +412,7 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
 
 
 @router.delete("/{group_id}")
-def delete_group_by_id(group_id: int):
+def delete_group_by_id(group_id: int) -> dict:
     """Delete an event EPG group.
 
     Warning: This will cascade delete all managed channels for this group.
@@ -458,7 +459,7 @@ def get_group_stats(group_id: int):
 
 
 @router.post("/{group_id}/activate")
-def activate_group(group_id: int):
+def activate_group(group_id: int) -> dict:
     """Activate an event EPG group."""
     from teamarr.database.groups import get_group, set_group_active
 
@@ -476,7 +477,7 @@ def activate_group(group_id: int):
 
 
 @router.post("/{group_id}/deactivate")
-def deactivate_group(group_id: int):
+def deactivate_group(group_id: int) -> dict:
     """Deactivate an event EPG group."""
     from teamarr.database.groups import get_group, set_group_active
 
@@ -535,7 +536,7 @@ def list_m3u_groups():
 
 
 @router.get("/dispatcharr/channel-groups")
-def list_dispatcharr_channel_groups():
+def list_dispatcharr_channel_groups() -> dict:
     """List available channel groups from Dispatcharr.
 
     Returns channel groups that can be assigned to event EPG groups.
@@ -698,4 +699,97 @@ def process_all_groups():
             )
             for r in batch_result.results
         ],
+    )
+
+
+# =============================================================================
+# GROUP XMLTV ENDPOINTS
+# =============================================================================
+
+
+@router.get("/{group_id}/xmltv")
+def get_group_xmltv(group_id: int) -> Response:
+    """Get the stored XMLTV for an event group.
+
+    This endpoint serves the XMLTV content that was generated when
+    the group was last processed. Dispatcharr can be configured to
+    fetch from this URL.
+
+    Returns 404 if the group hasn't been processed yet.
+    """
+    from teamarr.database.groups import get_group
+
+    with get_db() as conn:
+        # Verify group exists
+        group = get_group(conn, group_id)
+        if not group:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Group {group_id} not found",
+            )
+
+        # Get stored XMLTV
+        row = conn.execute(
+            "SELECT xmltv_content, updated_at FROM event_epg_xmltv WHERE group_id = ?",
+            (group_id,),
+        ).fetchone()
+
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No XMLTV generated for group '{group.name}'. Process the group first.",
+            )
+
+    return Response(
+        content=row["xmltv_content"],
+        media_type="application/xml",
+        headers={
+            "Content-Disposition": f"inline; filename=teamarr-group-{group_id}.xml",
+            "X-Generated-At": row["updated_at"] if row["updated_at"] else "",
+        },
+    )
+
+
+@router.get("/xmltv/combined")
+def get_combined_xmltv() -> Response:
+    """Get combined XMLTV from all active event groups.
+
+    Merges XMLTV content from all groups that have been processed.
+    This is useful for having a single EPG source in Dispatcharr.
+    """
+    from teamarr.database.groups import get_all_groups
+
+    with get_db() as conn:
+        # Get all active groups
+        groups = get_all_groups(conn, include_inactive=False)
+        group_ids = [g.id for g in groups]
+
+        if not group_ids:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No active event groups found",
+            )
+
+        # Get all XMLTV content
+        placeholders = ",".join("?" * len(group_ids))
+        rows = conn.execute(
+            f"SELECT xmltv_content FROM event_epg_xmltv WHERE group_id IN ({placeholders})",
+            group_ids,
+        ).fetchall()
+
+        if not rows:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No XMLTV generated for any groups. Process groups first.",
+            )
+
+    # Merge XMLTV files
+    from teamarr.utilities.xmltv import merge_xmltv_content
+
+    combined = merge_xmltv_content([row["xmltv_content"] for row in rows])
+
+    return Response(
+        content=combined,
+        media_type="application/xml",
+        headers={"Content-Disposition": "inline; filename=teamarr-events.xml"},
     )

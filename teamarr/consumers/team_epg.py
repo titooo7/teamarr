@@ -2,9 +2,9 @@
 
 Takes team configuration, fetches schedule, generates programmes with template support.
 
-Data flow:
-- Schedule endpoint (8hr cache): Event discovery (IDs, teams, start times)
-- Single event endpoint (30min cache): Fresh status/scores for today's games
+Two-phase data flow:
+- Discovery (schedule, 8hr cache): Event IDs, teams, start times (batch)
+- Enrichment (summary, 30min cache): Odds, rich data (per event, ESPN only)
 """
 
 from dataclasses import dataclass, field
@@ -15,7 +15,7 @@ from teamarr.services import SportsDataService
 from teamarr.templates.context_builder import ContextBuilder
 from teamarr.templates.resolver import TemplateResolver
 from teamarr.utilities.sports import get_sport_duration
-from teamarr.utilities.tz import now_user, to_user_tz
+from teamarr.utilities.tz import now_user
 
 
 @dataclass
@@ -46,6 +46,10 @@ class TeamEPGOptions:
     # Sport durations (from database settings)
     # Keys: basketball, football, hockey, baseball, soccer
     sport_durations: dict[str, float] = field(default_factory=dict)
+
+    # Database template ID for loading filler config
+    # If set, filler config is loaded from database template
+    template_id: int | None = None
 
     # Backwards compatibility
     @property
@@ -163,9 +167,9 @@ class TeamEPGGenerator:
                     seen_event_ids.add(event.id)
                     all_events.append(event)
 
-        # Enrich events that need fresh data (today/yesterday)
-        # Use each event's own league for proper enrichment
-        all_events = self._enrich_recent_events(all_events)
+        # Enrich all events for rich data (odds, etc.)
+        # Only ESPN events benefit - TSDB enrichment adds no value
+        all_events = self._enrich_events(all_events)
 
         # Fetch team stats once for all events
         team_stats = self._service.get_team_stats(team_id, league)
@@ -259,31 +263,25 @@ class TeamEPGGenerator:
             icon=logo_url or event.home_team.logo_url,
         )
 
-    def _enrich_recent_events(self, events: list[Event]) -> list[Event]:
-        """Fetch fresh data for recent events (today/yesterday).
+    def _enrich_events(self, events: list[Event]) -> list[Event]:
+        """Enrich events with data from summary endpoint.
 
-        Schedule endpoint is cached for 8hr (discovery only).
-        For events that need current status/scores, we fetch from
-        single event endpoint (30min cache).
+        Two-phase architecture:
+        - Discovery (schedule endpoint, 8hr cache): IDs, teams, start times
+        - Enrichment (summary endpoint, 30min cache): Odds, rich data
 
-        Uses each event's own league for proper multi-league support.
+        Only enriches ESPN events - TSDB's lookupevent returns identical
+        data to eventsday, so enrichment wastes API quota.
         """
-        today = now_user().date()
-        yesterday = today - timedelta(days=1)
-
         enriched = []
         for event in events:
-            # Convert to user timezone before comparing dates
-            event_date = to_user_tz(event.start_time).date()
-
-            # Only enrich today's and yesterday's events
-            if event_date in (today, yesterday):
-                # Use the event's own league for proper enrichment
+            # Only enrich ESPN events (TSDB enrichment adds no value)
+            if event.provider == "espn":
                 fresh = self._service.get_event(event.id, event.league)
                 if fresh:
                     enriched.append(fresh)
                 else:
-                    enriched.append(event)  # Fallback to cached
+                    enriched.append(event)  # Fallback to discovery data
             else:
                 enriched.append(event)
 
@@ -306,7 +304,7 @@ class TeamEPGGenerator:
         Uses FillerGenerator to create pregame, postgame, and idle content.
         """
         # Lazy import to avoid circular dependency
-        from teamarr.consumers.filler import FillerConfig, FillerGenerator, FillerOptions
+        from teamarr.consumers.filler import FillerGenerator, FillerOptions
 
         # Initialize filler generator if not already done
         if self._filler_generator is None:
@@ -321,11 +319,8 @@ class TeamEPGGenerator:
             default_duration=options.default_duration_hours,
         )
 
-        # Use default filler config for now
-        # TODO: Load from database template when configured
-        filler_config = FillerConfig(
-            category=options.template.category,
-        )
+        # Load filler config from database if template_id is set
+        filler_config = self._load_filler_config(options)
 
         return self._filler_generator.generate(
             events=events,
@@ -338,4 +333,31 @@ class TeamEPGGenerator:
             team_stats=team_stats,
             options=filler_options,
             config=filler_config,
+        )
+
+    def _load_filler_config(self, options: TeamEPGOptions):
+        """Load filler config from database template or use defaults.
+
+        If options.template_id is set, loads the template from the database
+        and converts it to FillerConfig. Otherwise, returns default config.
+        """
+        from teamarr.consumers.filler import FillerConfig
+
+        if options.template_id:
+            # Try to load from database
+            try:
+                from teamarr.database import get_db
+                from teamarr.database.templates import get_template, template_to_filler_config
+
+                with get_db() as conn:
+                    template = get_template(conn, options.template_id)
+                    if template:
+                        return template_to_filler_config(template)
+            except Exception:
+                # Fall through to default
+                pass
+
+        # Default filler config
+        return FillerConfig(
+            category=options.template.category,
         )

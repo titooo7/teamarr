@@ -89,3 +89,55 @@ def _prettify(xml_str: str) -> str:
     """Return pretty-printed XML string."""
     dom = minidom.parseString(xml_str)
     return dom.toprettyxml(indent="  ")
+
+
+def merge_xmltv_content(xmltv_contents: list[str]) -> str:
+    """Merge multiple XMLTV content strings into one.
+
+    Combines channels and programmes from multiple sources,
+    removing duplicates by channel ID.
+
+    Args:
+        xmltv_contents: List of XMLTV XML strings
+
+    Returns:
+        Merged XMLTV XML string
+    """
+    import xml.etree.ElementTree as ET
+
+    root = Element("tv")
+    root.set("generator-info-name", "Teamarr v2")
+
+    seen_channels: set[str] = set()
+    seen_programmes: set[tuple[str, str, str]] = set()  # (channel, start, stop)
+
+    for content in xmltv_contents:
+        if not content or not content.strip():
+            continue
+
+        try:
+            source = ET.fromstring(content)
+
+            # Collect channels (skip duplicates)
+            for channel in source.findall("channel"):
+                channel_id = channel.get("id")
+                if channel_id and channel_id not in seen_channels:
+                    seen_channels.add(channel_id)
+                    root.append(channel)
+
+            # Collect programmes (skip duplicates)
+            for programme in source.findall("programme"):
+                channel_id = programme.get("channel")
+                start = programme.get("start")
+                stop = programme.get("stop")
+
+                key = (channel_id, start, stop)
+                if key not in seen_programmes:
+                    seen_programmes.add(key)
+                    root.append(programme)
+
+        except ET.ParseError:
+            continue
+
+    xml_str = tostring(root, encoding="unicode")
+    return _prettify(xml_str)

@@ -22,6 +22,7 @@ from teamarr.consumers import (
     TeamEPGOptions,
 )
 from teamarr.database import get_db
+from teamarr.database.stats import create_run, save_run
 from teamarr.services import SportsDataService
 
 router = APIRouter()
@@ -82,6 +83,7 @@ def _load_team_configs(team_ids: list[int] | None = None) -> list[TeamChannelCon
                     title_format=row["title_format"],
                     subtitle_format=row["subtitle_format"],
                     category=category,
+                    template_id=row["template_id"],
                 )
             )
         return configs
@@ -161,6 +163,10 @@ def generate_epg(
             detail="No active teams found",
         )
 
+    # Create stats run for tracking
+    with get_db() as conn:
+        stats_run = create_run(conn, run_type="team_epg")
+
     # Use settings defaults
     settings = _get_settings()
     schedule_days = settings["team_schedule_days_ahead"]
@@ -174,7 +180,22 @@ def generate_epg(
         sport_durations=settings["sport_durations"],
         default_duration_hours=settings["default_duration"],
     )
-    result = orchestrator.generate_for_teams(configs, options)
+
+    try:
+        result = orchestrator.generate_for_teams(configs, options)
+
+        # Update stats run
+        stats_run.programmes_total = len(result.programmes)
+        stats_run.extra_metrics["teams_processed"] = result.teams_processed
+        stats_run.complete(status="completed")
+    except Exception as e:
+        stats_run.complete(status="failed", error=str(e))
+        with get_db() as conn:
+            save_run(conn, stats_run)
+        raise
+
+    with get_db() as conn:
+        save_run(conn, stats_run)
 
     return EPGGenerateResponse(
         programmes_count=len(result.programmes),

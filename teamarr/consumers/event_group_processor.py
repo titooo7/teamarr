@@ -18,15 +18,22 @@ from datetime import date, datetime
 from sqlite3 import Connection
 from typing import Any
 
+from teamarr.consumers.cached_matcher import CachedBatchResult, CachedMatcher
 from teamarr.consumers.channel_lifecycle import (
     StreamProcessResult,
     create_lifecycle_service,
 )
-from teamarr.consumers.event_epg import EventEPGGenerator
-from teamarr.consumers.multi_league_matcher import BatchMatchResult, MultiLeagueMatcher
+from teamarr.consumers.event_epg import EventEPGGenerator, EventEPGOptions
 from teamarr.core import Event
-from teamarr.database.groups import EventEPGGroup, get_all_groups, get_group
+from teamarr.database.groups import (
+    EventEPGGroup,
+    get_all_group_xmltv,
+    get_all_groups,
+    get_group,
+)
+from teamarr.database.stats import create_run, save_run
 from teamarr.services import SportsDataService, create_default_service
+from teamarr.utilities.xmltv import merge_xmltv_content, programmes_to_xmltv
 
 logger = logging.getLogger(__name__)
 
@@ -197,19 +204,29 @@ class EventGroupProcessor:
             target_date: Target date (defaults to today)
 
         Returns:
-            BatchProcessingResult with all group results
+            BatchProcessingResult with all group results and combined XMLTV
         """
         target_date = target_date or date.today()
         batch_result = BatchProcessingResult()
 
         with self._db_factory() as conn:
             groups = get_all_groups(conn, include_inactive=False)
+            processed_group_ids = []
 
             for group in groups:
                 result = self._process_group_internal(conn, group, target_date)
                 batch_result.results.append(result)
+                processed_group_ids.append(group.id)
 
-                # TODO: Collect programmes for combined XMLTV
+            # Aggregate XMLTV from all processed groups
+            if processed_group_ids:
+                xmltv_contents = get_all_group_xmltv(conn, processed_group_ids)
+                if xmltv_contents:
+                    batch_result.total_xmltv = merge_xmltv_content(xmltv_contents)
+                    logger.info(
+                        f"Aggregated XMLTV from {len(xmltv_contents)} groups, "
+                        f"{len(batch_result.total_xmltv)} bytes"
+                    )
 
         batch_result.completed_at = datetime.now()
         return batch_result
@@ -223,14 +240,20 @@ class EventGroupProcessor:
         """Internal processing for a single group."""
         result = ProcessingResult(group_id=group.id, group_name=group.name)
 
+        # Create stats run for tracking
+        stats_run = create_run(conn, run_type="event_group", group_id=group.id)
+
         try:
             # Step 1: Fetch M3U streams from Dispatcharr
             streams = self._fetch_streams(group)
             result.streams_fetched = len(streams)
+            stats_run.streams_fetched = len(streams)
 
             if not streams:
                 result.errors.append("No streams found for group")
                 result.completed_at = datetime.now()
+                stats_run.complete(status="completed", error="No streams found")
+                save_run(conn, stats_run)
                 return result
 
             # Step 2: Fetch events from data providers
@@ -239,12 +262,17 @@ class EventGroupProcessor:
             if not events:
                 result.errors.append(f"No events found for leagues: {group.leagues}")
                 result.completed_at = datetime.now()
+                stats_run.complete(status="completed", error="No events found")
+                save_run(conn, stats_run)
                 return result
 
-            # Step 3: Match streams to events
-            match_result = self._match_streams(streams, group.leagues, target_date)
+            # Step 3: Match streams to events (uses fingerprint cache)
+            match_result = self._match_streams(streams, group.leagues, target_date, group.id)
             result.streams_matched = match_result.matched_count
             result.streams_unmatched = match_result.unmatched_count
+            stats_run.streams_matched = match_result.matched_count
+            stats_run.streams_unmatched = match_result.unmatched_count
+            stats_run.streams_cached = match_result.cache_hits
 
             # Step 4: Create/update channels
             matched_streams = self._build_matched_stream_list(streams, match_result)
@@ -255,15 +283,42 @@ class EventGroupProcessor:
                 result.channels_skipped = len(lifecycle_result.skipped)
                 result.channel_errors = len(lifecycle_result.errors)
 
+                stats_run.channels_created = len(lifecycle_result.created)
+                stats_run.channels_updated = len(lifecycle_result.existing)
+                stats_run.channels_skipped = len(lifecycle_result.skipped)
+                stats_run.channels_errors = len(lifecycle_result.errors)
+
                 for error in lifecycle_result.errors:
                     result.errors.append(f"Channel error: {error}")
 
-            # Step 5: Generate XMLTV (from matched events)
-            # TODO: Generate XMLTV from managed channels
+                # Step 5: Generate XMLTV from matched streams
+                xmltv_content, programmes_count = self._generate_xmltv(
+                    matched_streams, group, conn
+                )
+                result.programmes_generated = programmes_count
+                result.xmltv_size = len(xmltv_content.encode("utf-8")) if xmltv_content else 0
+
+                stats_run.programmes_total = programmes_count
+                stats_run.xmltv_size_bytes = result.xmltv_size
+
+                # Step 6: Store XMLTV for this group (in database)
+                if xmltv_content:
+                    self._store_group_xmltv(conn, group.id, xmltv_content)
+
+                # Step 7: Trigger Dispatcharr refresh if configured
+                if xmltv_content and self._dispatcharr_client:
+                    self._trigger_epg_refresh(group)
+
+            # Mark run as completed successfully
+            stats_run.complete(status="completed")
 
         except Exception as e:
             logger.exception(f"Error processing group {group.name}")
             result.errors.append(str(e))
+            stats_run.complete(status="failed", error=str(e))
+
+        # Save stats run
+        save_run(conn, stats_run)
 
         result.completed_at = datetime.now()
         return result
@@ -325,21 +380,32 @@ class EventGroupProcessor:
         streams: list[dict],
         leagues: list[str],
         target_date: date,
-    ) -> BatchMatchResult:
-        """Match streams to events using MultiLeagueMatcher."""
-        matcher = MultiLeagueMatcher(
+        group_id: int,
+    ) -> CachedBatchResult:
+        """Match streams to events using CachedMatcher.
+
+        Uses fingerprint cache - streams only need to be matched once
+        unless stream name changes.
+        """
+        matcher = CachedMatcher(
             service=self._service,
+            get_connection=self._db_factory,
             search_leagues=leagues,
+            group_id=group_id,
             include_leagues=leagues,
         )
 
-        stream_names = [s["name"] for s in streams]
-        return matcher.match_all(stream_names, target_date)
+        result = matcher.match_all(streams, target_date)
+
+        # Purge stale cache entries at end of match
+        matcher.purge_stale()
+
+        return result
 
     def _build_matched_stream_list(
         self,
         streams: list[dict],
-        match_result: BatchMatchResult,
+        match_result: CachedBatchResult,
     ) -> list[dict]:
         """Build list of matched streams with their events.
 
@@ -371,6 +437,7 @@ class EventGroupProcessor:
         """Create/update channels via ChannelLifecycleService."""
         lifecycle_service = create_lifecycle_service(
             self._db_factory,
+            self._service,  # Required for template resolution
             self._dispatcharr_client,
         )
 
@@ -384,10 +451,164 @@ class EventGroupProcessor:
             "channel_start_number": group.channel_start_number,
         }
 
-        # TODO: Load template if group has one
-        template = None
+        # Load template from database if configured
+        template_config = None
+        if group.template_id:
+            template_config = self._load_event_template(conn, group.template_id)
 
-        return lifecycle_service.process_matched_streams(matched_streams, group_config, template)
+        return lifecycle_service.process_matched_streams(
+            matched_streams, group_config, template_config
+        )
+
+    def _load_event_template(self, conn: Connection, template_id: int):
+        """Load and convert template for event-based EPG.
+
+        Args:
+            conn: Database connection
+            template_id: Template ID to load
+
+        Returns:
+            EventTemplateConfig or None if template not found
+        """
+        from teamarr.database.templates import get_template, template_to_event_config
+
+        template = get_template(conn, template_id)
+        if not template:
+            logger.warning(f"Template {template_id} not found")
+            return None
+
+        return template_to_event_config(template)
+
+    def _generate_xmltv(
+        self,
+        matched_streams: list[dict],
+        group: EventEPGGroup,
+        conn: Connection,
+    ) -> tuple[str, int]:
+        """Generate XMLTV content from matched streams.
+
+        Args:
+            matched_streams: List of matched stream/event dicts
+            group: Event group config
+            conn: Database connection
+
+        Returns:
+            Tuple of (xmltv_content, programme_count)
+        """
+        if not matched_streams:
+            return "", 0
+
+        # Load template options if configured
+        options = EventEPGOptions()
+        if group.template_id:
+            template_config = self._load_event_template(conn, group.template_id)
+            if template_config:
+                options.template = template_config
+
+        # Load sport durations from settings
+        options.sport_durations = self._load_sport_durations(conn)
+
+        # Generate programmes and channels from matched streams
+        programmes, channels = self._epg_generator.generate_for_matched_streams(
+            matched_streams, options
+        )
+
+        if not programmes:
+            return "", 0
+
+        # Convert to XMLTV
+        channel_dicts = [
+            {"id": ch.channel_id, "name": ch.name, "icon": ch.icon}
+            for ch in channels
+        ]
+        xmltv_content = programmes_to_xmltv(programmes, channel_dicts)
+
+        logger.info(
+            f"Generated XMLTV for group '{group.name}': "
+            f"{len(programmes)} programmes, {len(xmltv_content)} bytes"
+        )
+
+        return xmltv_content, len(programmes)
+
+    def _load_sport_durations(self, conn: Connection) -> dict[str, float]:
+        """Load sport duration settings from database."""
+        row = conn.execute("SELECT * FROM settings WHERE id = 1").fetchone()
+        if not row:
+            return {}
+
+        settings = dict(row)
+        return {
+            "basketball": settings.get("duration_basketball", 3.0),
+            "football": settings.get("duration_football", 3.5),
+            "hockey": settings.get("duration_hockey", 3.0),
+            "baseball": settings.get("duration_baseball", 3.5),
+            "soccer": settings.get("duration_soccer", 2.5),
+            "mma": settings.get("duration_mma", 4.0),
+            "boxing": settings.get("duration_boxing", 4.0),
+        }
+
+    def _store_group_xmltv(
+        self,
+        conn: Connection,
+        group_id: int,
+        xmltv_content: str,
+    ) -> None:
+        """Store XMLTV content for a group in the database.
+
+        This allows the XMLTV to be served at a predictable URL
+        that Dispatcharr can fetch.
+        """
+        # Upsert into event_epg_xmltv table
+        conn.execute(
+            """
+            INSERT INTO event_epg_xmltv (group_id, xmltv_content, updated_at)
+            VALUES (?, ?, datetime('now'))
+            ON CONFLICT(group_id) DO UPDATE SET
+                xmltv_content = excluded.xmltv_content,
+                updated_at = datetime('now')
+            """,
+            (group_id, xmltv_content),
+        )
+        conn.commit()
+        logger.debug(f"Stored XMLTV for group {group_id}")
+
+    def _trigger_epg_refresh(self, group: EventEPGGroup) -> None:
+        """Trigger Dispatcharr EPG refresh after XMLTV generation.
+
+        Dispatcharr needs to re-fetch the XMLTV from Teamarr's endpoint
+        and import it into its EPG data store.
+        """
+        if not self._dispatcharr_client:
+            return
+
+        try:
+            from teamarr.database import get_db
+            from teamarr.dispatcharr import EPGManager
+
+            # Get EPG source ID from settings
+            with get_db() as conn:
+                row = conn.execute(
+                    "SELECT dispatcharr_epg_id FROM settings WHERE id = 1"
+                ).fetchone()
+
+            epg_source_id = row["dispatcharr_epg_id"] if row else None
+
+            if not epg_source_id:
+                logger.debug("No Dispatcharr EPG source configured - skipping refresh")
+                return
+
+            epg_manager = EPGManager(self._dispatcharr_client)
+
+            # Trigger refresh (async on Dispatcharr side)
+            result = epg_manager.refresh(epg_source_id)
+
+            if result.success:
+                logger.info(f"Triggered Dispatcharr EPG refresh for source {epg_source_id}")
+            else:
+                logger.warning(f"Failed to trigger EPG refresh: {result.message}")
+
+        except Exception as e:
+            logger.warning(f"Error triggering EPG refresh: {e}")
 
 
 # =============================================================================

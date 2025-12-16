@@ -65,6 +65,9 @@ class Event:
     season_year: int | None = None
     season_type: str | None = None
 
+    # Betting odds (from scoreboard API, usually same-day only)
+    odds_data: dict | None = None
+
     # MMA-specific: when main card begins (prelims start at start_time)
     main_card_start: datetime | None = None
 

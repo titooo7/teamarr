@@ -244,7 +244,11 @@ def delete_managed_channel(channel_id: int):
     except Exception:
         client = None
 
-    service = create_lifecycle_service(get_db, client)
+    # Get sports service for template resolution
+    from teamarr.services import create_default_service
+
+    sports_service = create_default_service()
+    service = create_lifecycle_service(get_db, sports_service, client)
 
     with get_db() as conn:
         success = service.delete_managed_channel(conn, channel_id, reason="manual")
@@ -297,7 +301,11 @@ def sync_lifecycle():
             detail="Dispatcharr connection not available",
         )
 
-    service = create_lifecycle_service(get_db, client)
+    # Get sports service for template resolution
+    from teamarr.services import create_default_service
+
+    sports_service = create_default_service()
+    service = create_lifecycle_service(get_db, sports_service, client)
 
     # Process scheduled deletions
     result = service.process_scheduled_deletions()
@@ -439,7 +447,7 @@ def fix_reconciliation(request: ReconciliationRequest):
 
 
 @router.get("/pending-deletions")
-def get_pending_deletions():
+def get_pending_deletions() -> dict:
     """Get channels pending deletion.
 
     Returns channels that are past their scheduled delete time.
@@ -470,7 +478,7 @@ def get_pending_deletions():
 def get_channel_history(
     channel_id: int,
     limit: int = Query(50, ge=1, le=500, description="Maximum records to return"),
-):
+) -> dict:
     """Get history for a managed channel."""
     from teamarr.database.channels import get_channel_history, get_managed_channel
 

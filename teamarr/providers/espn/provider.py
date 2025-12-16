@@ -267,6 +267,12 @@ class ESPNProvider(SportsProvider):
                 "address": venue_data.get("address", {}),
             }
 
+        # Summary endpoint has odds in pickcenter, not competition.odds
+        pickcenter = data.get("pickcenter", [])
+        if pickcenter and not competition.get("odds"):
+            # Convert pickcenter format to scoreboard odds format
+            competition["odds"] = pickcenter
+
         event_data = {
             "id": event_id,
             "name": header.get("gameNote", ""),
@@ -335,6 +341,7 @@ class ESPNProvider(SportsProvider):
             status = self._parse_status(competition.get("status", {}))
             venue = self._parse_venue(competition.get("venue"))
             broadcasts = self._parse_broadcasts(competition.get("broadcasts", []))
+            odds_data = self._parse_odds(competition.get("odds", []))
 
             home_score = self._parse_score(home_data.get("score"))
             away_score = self._parse_score(away_data.get("score"))
@@ -354,6 +361,7 @@ class ESPNProvider(SportsProvider):
                 away_score=away_score,
                 venue=venue,
                 broadcasts=broadcasts,
+                odds_data=odds_data,
             )
         except Exception as e:
             logger.warning(f"Failed to parse event {data.get('id', 'unknown')}: {e}")
@@ -401,11 +409,23 @@ class ESPNProvider(SportsProvider):
         )
 
     def _parse_broadcasts(self, broadcasts_data: list) -> list[str]:
-        """Extract broadcast network names."""
+        """Extract broadcast network names.
+
+        Handles two formats:
+        - Scoreboard: [{"names": ["FOX"]}]
+        - Summary: [{"media": {"shortName": "NBC"}}]
+        """
         networks = []
         for broadcast in broadcasts_data:
+            # Scoreboard format: names array
             names = broadcast.get("names", [])
-            networks.extend(names)
+            if names:
+                networks.extend(names)
+            # Summary format: media.shortName
+            elif "media" in broadcast:
+                short_name = broadcast["media"].get("shortName")
+                if short_name:
+                    networks.append(short_name)
         return networks
 
     def _parse_datetime(self, date_str: str) -> datetime | None:
@@ -430,6 +450,80 @@ class ESPNProvider(SportsProvider):
                 return None
             return int(float(score))
         except (ValueError, TypeError):
+            return None
+
+    def _parse_odds(self, odds_list: list) -> dict | None:
+        """Parse ESPN odds data into structured dict.
+
+        ESPN provides odds from multiple providers. We take the first one
+        (usually highest priority provider like DraftKings).
+
+        Handles two formats:
+        - Scoreboard: moneyline.home.close.odds (string)
+        - Pickcenter: homeTeamOdds.moneyLine (int)
+
+        Returns dict with:
+            provider: str - Provider name
+            spread: float - Point spread (negative = favorite)
+            over_under: float - Total points line
+            details: str - Human-readable odds string
+            home_moneyline: int - Home team moneyline
+            away_moneyline: int - Away team moneyline
+        """
+        if not odds_list:
+            return None
+
+        try:
+            # Take first provider (highest priority)
+            odds = odds_list[0]
+
+            provider_data = odds.get("provider", {})
+            provider_name = provider_data.get("name", "")
+
+            # Get spread and over/under
+            spread = odds.get("spread", 0.0)
+            over_under = odds.get("overUnder", 0.0)
+            details = odds.get("details", "")
+
+            # Get moneylines - try pickcenter format first (simpler)
+            home_ml = None
+            away_ml = None
+
+            # Pickcenter format: homeTeamOdds.moneyLine (int)
+            home_team_odds = odds.get("homeTeamOdds", {})
+            away_team_odds = odds.get("awayTeamOdds", {})
+            if home_team_odds.get("moneyLine") is not None:
+                home_ml = int(home_team_odds["moneyLine"])
+            if away_team_odds.get("moneyLine") is not None:
+                away_ml = int(away_team_odds["moneyLine"])
+
+            # Scoreboard format: moneyline.home.close.odds (string)
+            if home_ml is None or away_ml is None:
+                moneyline = odds.get("moneyline", {})
+                if moneyline:
+                    if home_ml is None:
+                        home_close = moneyline.get("home", {}).get("close", {})
+                        try:
+                            home_ml = int(home_close.get("odds", "").replace("+", ""))
+                        except (ValueError, AttributeError):
+                            pass
+                    if away_ml is None:
+                        away_close = moneyline.get("away", {}).get("close", {})
+                        try:
+                            away_ml = int(away_close.get("odds", "").replace("+", ""))
+                        except (ValueError, AttributeError):
+                            pass
+
+            return {
+                "provider": provider_name,
+                "spread": float(spread) if spread else 0.0,
+                "over_under": float(over_under) if over_under else 0.0,
+                "details": details,
+                "home_moneyline": home_ml,
+                "away_moneyline": away_ml,
+            }
+        except Exception as e:
+            logger.debug(f"Failed to parse odds: {e}")
             return None
 
     def get_league_teams(self, league: str) -> list[Team]:

@@ -24,6 +24,7 @@ Usage:
 import hashlib
 import json
 import logging
+import sqlite3
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -182,8 +183,8 @@ class StreamMatchCache:
                 self._stats["sets"] += 1
                 logger.debug(f"[CACHE SET] stream_id={stream_id} -> event_id={event_id}")
                 return True
-        except Exception as e:
-            logger.error(f"Failed to cache stream match: {e}")
+        except sqlite3.Error as e:
+            logger.error(f"Database error caching stream match: {e}")
             return False
 
     def touch(
@@ -220,7 +221,7 @@ class StreamMatchCache:
                 )
                 conn.commit()
                 return cursor.rowcount > 0
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.warning(f"[CACHE] touch failed: {e}")
             return False
 
@@ -255,7 +256,7 @@ class StreamMatchCache:
                         f"[CACHE PURGE] Removed {purged} stale entries (generation < {threshold})"
                     )
                 return purged
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.warning(f"[CACHE] purge_stale failed: {e}")
             return 0
 
@@ -280,7 +281,7 @@ class StreamMatchCache:
                 conn.commit()
                 logger.info(f"[CACHE CLEAR] Cleared {cleared} entries for group {group_id}")
                 return cleared
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.warning(f"[CACHE] clear_group failed: {e}")
             return 0
 
@@ -297,7 +298,7 @@ class StreamMatchCache:
                 conn.commit()
                 logger.info(f"[CACHE CLEAR] Cleared entire cache ({cleared} entries)")
                 return cleared
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.warning(f"[CACHE] clear_all failed: {e}")
             return 0
 
@@ -319,7 +320,7 @@ def get_generation_counter(get_connection: Callable) -> int:
             cursor = conn.execute("SELECT epg_generation_counter FROM settings WHERE id = 1")
             row = cursor.fetchone()
             return row["epg_generation_counter"] if row else 0
-    except Exception:
+    except sqlite3.Error:
         return 0
 
 

@@ -6,8 +6,6 @@ The best matching description is selected based on priority and conditions.
 Condition Types:
 - is_home, is_away: Home/away game
 - win_streak, loss_streak: Team streak (value = minimum streak length)
-- home_win_streak, home_loss_streak: Home-specific streaks
-- away_win_streak, away_loss_streak: Away-specific streaks
 - is_ranked_opponent: Opponent in top 25
 - is_top_ten_matchup: Both teams in top 10
 - is_conference_game: Same conference (college)
@@ -130,66 +128,6 @@ class ConditionEvaluator:
         except (ValueError, IndexError):
             return False
 
-    def _eval_home_win_streak(
-        self, value: str | None, ctx: TemplateContext, game_ctx: GameContext
-    ) -> bool:
-        """Check if team is on a home win streak >= value."""
-        if not value or not ctx.team_stats:
-            return False
-        try:
-            streak = ctx.team_stats.home_streak
-            if not streak or not streak.startswith("W"):
-                return False
-            streak_count = int(streak[1:])
-            return streak_count >= int(value)
-        except (ValueError, IndexError):
-            return False
-
-    def _eval_home_loss_streak(
-        self, value: str | None, ctx: TemplateContext, game_ctx: GameContext
-    ) -> bool:
-        """Check if team is on a home loss streak >= value."""
-        if not value or not ctx.team_stats:
-            return False
-        try:
-            streak = ctx.team_stats.home_streak
-            if not streak or not streak.startswith("L"):
-                return False
-            streak_count = int(streak[1:])
-            return streak_count >= int(value)
-        except (ValueError, IndexError):
-            return False
-
-    def _eval_away_win_streak(
-        self, value: str | None, ctx: TemplateContext, game_ctx: GameContext
-    ) -> bool:
-        """Check if team is on an away win streak >= value."""
-        if not value or not ctx.team_stats:
-            return False
-        try:
-            streak = ctx.team_stats.away_streak
-            if not streak or not streak.startswith("W"):
-                return False
-            streak_count = int(streak[1:])
-            return streak_count >= int(value)
-        except (ValueError, IndexError):
-            return False
-
-    def _eval_away_loss_streak(
-        self, value: str | None, ctx: TemplateContext, game_ctx: GameContext
-    ) -> bool:
-        """Check if team is on an away loss streak >= value."""
-        if not value or not ctx.team_stats:
-            return False
-        try:
-            streak = ctx.team_stats.away_streak
-            if not streak or not streak.startswith("L"):
-                return False
-            streak_count = int(streak[1:])
-            return streak_count >= int(value)
-        except (ValueError, IndexError):
-            return False
-
     # =========================================================================
     # Ranking conditions
     # =========================================================================
@@ -281,8 +219,7 @@ class ConditionEvaluator:
         self, value: str | None, ctx: TemplateContext, game_ctx: GameContext
     ) -> bool:
         """Check if betting odds are available."""
-        event = game_ctx.event
-        return bool(event and event.odds)
+        return game_ctx.odds is not None
 
     # =========================================================================
     # Opponent conditions

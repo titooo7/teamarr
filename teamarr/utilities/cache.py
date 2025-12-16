@@ -24,39 +24,90 @@ class CacheEntry:
 
     value: Any
     expires_at: datetime
+    last_accessed: datetime
 
 
 class TTLCache:
-    """Thread-safe in-memory cache with TTL.
+    """Thread-safe in-memory cache with TTL and size limit.
+
+    Features:
+    - Time-based expiration (TTL)
+    - Maximum size limit with LRU eviction
+    - Thread-safe operations
+    - Automatic cleanup of expired entries
 
     Usage:
-        cache = TTLCache(default_ttl_seconds=3600)
+        cache = TTLCache(default_ttl_seconds=3600, max_size=10000)
         cache.set("key", value)
         result = cache.get("key")  # Returns None if expired
     """
 
-    def __init__(self, default_ttl_seconds: int = 3600):
+    # Default max size (0 = unlimited)
+    DEFAULT_MAX_SIZE = 10000
+
+    def __init__(
+        self,
+        default_ttl_seconds: int = 3600,
+        max_size: int = DEFAULT_MAX_SIZE,
+    ):
         self._cache: dict[str, CacheEntry] = {}
         self._default_ttl = timedelta(seconds=default_ttl_seconds)
+        self._max_size = max_size
         self._lock = threading.Lock()
+        self._hits = 0
+        self._misses = 0
 
     def get(self, key: str) -> Any | None:
         """Get value if exists and not expired."""
         with self._lock:
             entry = self._cache.get(key)
             if entry is None:
+                self._misses += 1
                 return None
             if datetime.now() > entry.expires_at:
                 del self._cache[key]
+                self._misses += 1
                 return None
+            # Update last accessed time for LRU
+            entry.last_accessed = datetime.now()
+            self._hits += 1
             return entry.value
 
     def set(self, key: str, value: Any, ttl_seconds: int | None = None) -> None:
         """Set value with optional custom TTL."""
         ttl = timedelta(seconds=ttl_seconds) if ttl_seconds else self._default_ttl
-        expires_at = datetime.now() + ttl
+        now = datetime.now()
+        expires_at = now + ttl
+
         with self._lock:
-            self._cache[key] = CacheEntry(value=value, expires_at=expires_at)
+            # Evict if at max size and key is new
+            if self._max_size > 0 and key not in self._cache:
+                self._evict_if_needed()
+
+            self._cache[key] = CacheEntry(
+                value=value,
+                expires_at=expires_at,
+                last_accessed=now,
+            )
+
+    def _evict_if_needed(self) -> None:
+        """Evict entries if cache is at max size. Called with lock held."""
+        if self._max_size <= 0:
+            return
+
+        # First, remove expired entries
+        now = datetime.now()
+        expired_keys = [k for k, v in self._cache.items() if now > v.expires_at]
+        for key in expired_keys:
+            del self._cache[key]
+
+        # If still at/over max, evict least recently used
+        while len(self._cache) >= self._max_size:
+            if not self._cache:
+                break
+            # Find LRU entry
+            lru_key = min(self._cache.keys(), key=lambda k: self._cache[k].last_accessed)
+            del self._cache[lru_key]
 
     def delete(self, key: str) -> None:
         """Delete a key from cache."""
@@ -67,6 +118,8 @@ class TTLCache:
         """Clear all cached values."""
         with self._lock:
             self._cache.clear()
+            self._hits = 0
+            self._misses = 0
 
     def cleanup_expired(self) -> int:
         """Remove all expired entries. Returns count removed."""
@@ -84,16 +137,27 @@ class TTLCache:
         """Current number of entries (including possibly expired)."""
         return len(self._cache)
 
+    @property
+    def max_size(self) -> int:
+        """Maximum cache size (0 = unlimited)."""
+        return self._max_size
+
     def stats(self) -> dict:
         """Get cache statistics."""
         now = datetime.now()
         with self._lock:
             total = len(self._cache)
             expired = sum(1 for v in self._cache.values() if now > v.expires_at)
+            total_requests = self._hits + self._misses
+            hit_rate = self._hits / total_requests if total_requests > 0 else 0
             return {
                 "total_entries": total,
                 "active_entries": total - expired,
                 "expired_entries": expired,
+                "max_size": self._max_size,
+                "hits": self._hits,
+                "misses": self._misses,
+                "hit_rate": round(hit_rate, 3),
             }
 
 

@@ -25,8 +25,7 @@ class Category(Enum):
     VENUE = auto()  # venue, venue_city
     HOME_AWAY = auto()  # is_home, vs_at
     RECORDS = auto()  # team_record, opponent_record
-    STREAKS = auto()  # streak, home_streak
-    H2H = auto()  # season_series, rematch_*
+    STREAKS = auto()  # streak, streak_raw
     SCORES = auto()  # team_score, final_score
     OUTCOME = auto()  # result, result_text
     STANDINGS = auto()  # playoff_seed, games_back
@@ -37,7 +36,6 @@ class Category(Enum):
     RANKINGS = auto()  # team_rank, is_ranked
     CONFERENCE = auto()  # college_conference, pro_division
     SOCCER = auto()  # soccer_match_league
-    PLAYER_LEADERS = auto()  # scoring_leader_*
 
 
 class SuffixRules(Enum):

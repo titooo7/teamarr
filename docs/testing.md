@@ -430,7 +430,7 @@ curl "https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/8/schedul
     > tests/fixtures/espn/nfl_schedule_lions.json
 
 # Capture TheSportsDB events
-curl "https://www.thesportsdb.com/api/v1/json/3/eventsday.php?d=2024-12-08&l=4391" \
+curl "https://www.thesportsdb.com/api/v1/json/123/eventsday.php?d=2024-12-08&l=4391" \
     > tests/fixtures/thesportsdb/events_day.json
 ```
 

@@ -10,18 +10,15 @@ Supports three suffix types:
     {var.last} - last completed game
 """
 
-from teamarr.templates.conditional import (
-    Condition,
-    ConditionalDescription,
+from teamarr.templates.conditions import (
+    ConditionalDescriptionSelector,
     ConditionEvaluator,
-    ConditionType,
-    select_description,
+    ConditionOption,
+    get_condition_selector,
 )
 from teamarr.templates.context import (
     GameContext,
-    HeadToHead,
-    PlayerLeaders,
-    Streaks,
+    Odds,
     TeamConfig,
     TemplateContext,
 )
@@ -39,19 +36,16 @@ from teamarr.templates.variables import (
 
 __all__ = [
     # Conditional system
-    "Condition",
-    "ConditionalDescription",
     "ConditionEvaluator",
-    "ConditionType",
-    "select_description",
+    "ConditionOption",
+    "ConditionalDescriptionSelector",
+    "get_condition_selector",
     # Context builder
     "ContextBuilder",
     "build_context_for_event",
     # Context types
     "GameContext",
-    "HeadToHead",
-    "PlayerLeaders",
-    "Streaks",
+    "Odds",
     "TeamConfig",
     "TemplateContext",
     # Resolver

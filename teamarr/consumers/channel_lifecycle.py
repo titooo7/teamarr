@@ -32,6 +32,7 @@ from sqlite3 import Connection
 from typing import Any, Literal
 
 from teamarr.core import Event
+from teamarr.templates import ContextBuilder, TemplateResolver
 from teamarr.utilities.time_blocks import crosses_midnight
 from teamarr.utilities.tz import now_user, to_user_tz
 
@@ -374,6 +375,7 @@ class ChannelLifecycleService:
     def __init__(
         self,
         db_factory: Any,
+        sports_service: Any,
         channel_manager: Any = None,
         logo_manager: Any = None,
         epg_manager: Any = None,
@@ -386,6 +388,7 @@ class ChannelLifecycleService:
 
         Args:
             db_factory: Factory function that returns a database connection
+            sports_service: SportsDataService for template variable resolution (required)
             channel_manager: ChannelManager instance for Dispatcharr operations
             logo_manager: LogoManager instance for logo operations
             epg_manager: EPGManager instance for EPG operations
@@ -393,8 +396,15 @@ class ChannelLifecycleService:
             delete_timing: When to delete channels
             default_duration_hours: Default event duration
             timezone: User timezone for timing calculations
+
+        Raises:
+            ValueError: If sports_service is not provided
         """
+        if sports_service is None:
+            raise ValueError("sports_service is required for template variable resolution")
+
         self._db_factory = db_factory
+        self._sports_service = sports_service
         self._channel_manager = channel_manager
         self._logo_manager = logo_manager
         self._epg_manager = epg_manager
@@ -412,6 +422,10 @@ class ChannelLifecycleService:
 
         # Cache exception keywords
         self._exception_keywords: list | None = None
+
+        # Template engine
+        self._context_builder = ContextBuilder(sports_service)
+        self._resolver = TemplateResolver()
 
     @property
     def dispatcharr_enabled(self) -> bool:
@@ -749,8 +763,9 @@ class ChannelLifecycleService:
         # Generate channel name
         channel_name = self._generate_channel_name(event, template, matched_keyword)
 
-        # Get channel number
-        channel_number = self._get_next_channel_number(conn, group_id)
+        # Get channel number - use group's start number if configured
+        group_start_number = group_config.get("channel_start_number")
+        channel_number = self._get_next_channel_number(conn, group_id, group_start_number)
         if not channel_number:
             return ChannelCreationResult(
                 success=False,
@@ -760,11 +775,8 @@ class ChannelLifecycleService:
         # Calculate delete time
         delete_time = self._timing_manager.calculate_delete_time(event)
 
-        # Get logo URL from template
-        logo_url = None
-        if template:
-            logo_url = template.get("channel_logo_url")
-            # TODO: resolve template variables in logo_url
+        # Resolve logo URL from template (supports template variables)
+        logo_url = self._resolve_logo_url(event, template)
 
         # Create in Dispatcharr
         dispatcharr_channel_id = None
@@ -863,14 +875,24 @@ class ChannelLifecycleService:
         template: dict | None,
         exception_keyword: str | None,
     ) -> str:
-        """Generate channel name for an event."""
-        # TODO: Use template engine for channel name resolution
+        """Generate channel name for an event.
 
-        # Default format: "Away @ Home"
-        home_name = event.home_team.short_name if event.home_team else "Home"
-        away_name = event.away_team.short_name if event.away_team else "Away"
+        Uses full template engine (141 variables) when service is available.
+        Otherwise falls back to default "Away @ Home" format.
+        """
+        # Get channel name format from template or use default
+        name_format = None
+        if template:
+            name_format = template.get("event_channel_name")
 
-        base_name = f"{away_name} @ {home_name}"
+        if name_format:
+            # Resolve using full template engine
+            base_name = self._resolve_template(name_format, event)
+        else:
+            # Default format: "Away @ Home"
+            home_name = event.home_team.short_name if event.home_team else "Home"
+            away_name = event.away_team.short_name if event.away_team else "Away"
+            base_name = f"{away_name} @ {home_name}"
 
         # Append keyword if present
         if exception_keyword:
@@ -878,18 +900,96 @@ class ChannelLifecycleService:
 
         return base_name
 
-    def _get_next_channel_number(self, conn: Connection, group_id: int) -> str | None:
-        """Get next available channel number for a group."""
-        # TODO: Implement proper channel number allocation
-        # For now, return a placeholder
+    def _resolve_logo_url(
+        self,
+        event: Event,
+        template: dict | None,
+    ) -> str | None:
+        """Resolve logo URL from template.
+
+        Uses full template engine for variable resolution.
+        Falls back to home team logo if no template.
+        """
+        logo_url = None
+        if template:
+            logo_url = template.get("event_channel_logo_url")
+
+        if logo_url and "{" in logo_url:
+            # Has template variables - resolve them
+            resolved = self._resolve_template(logo_url, event)
+
+            # Check if resolution succeeded (no unresolved placeholders)
+            if "{" not in resolved:
+                return resolved
+
+        if logo_url:
+            # Static URL - use as-is
+            return logo_url
+
+        # Fallback to home team logo
+        if event.home_team and event.home_team.logo_url:
+            return event.home_team.logo_url
+
+        return None
+
+    def _resolve_template(self, template_str: str, event: Event) -> str:
+        """Resolve template string using full template engine.
+
+        Supports all 141 template variables.
+
+        Args:
+            template_str: Template string with {variable} placeholders
+            event: Event to extract context from
+
+        Returns:
+            Resolved string with variables replaced
+        """
+        context = self._context_builder.build_for_event(
+            event=event,
+            team_id=event.home_team.id if event.home_team else "",
+            league=event.league,
+        )
+        return self._resolver.resolve(template_str, context)
+
+    def _get_next_channel_number(
+        self,
+        conn: Connection,
+        group_id: int,
+        group_start_number: int | None = None,
+    ) -> str | None:
+        """Get next available channel number for a group.
+
+        Uses the group's channel_start_number if configured, otherwise
+        falls back to finding the next sequential number.
+
+        Args:
+            conn: Database connection
+            group_id: Event EPG group ID
+            group_start_number: Starting channel number from group config
+
+        Returns:
+            Next available channel number as string
+        """
+        # Default start number if not configured
+        start_number = group_start_number or 5000
+
+        # Find max channel number currently assigned to this group
         cursor = conn.execute(
-            """SELECT COALESCE(MAX(CAST(channel_number AS INTEGER)), 5000) + 1
+            """SELECT MAX(CAST(channel_number AS INTEGER))
                FROM managed_channels
-               WHERE event_epg_group_id = ? AND deleted_at IS NULL""",
+               WHERE event_epg_group_id = ? AND deleted_at IS NULL
+               AND channel_number IS NOT NULL""",
             (group_id,),
         )
         row = cursor.fetchone()
-        return str(row[0]) if row else None
+        max_assigned = row[0] if row and row[0] else None
+
+        if max_assigned is not None:
+            # Use next number after max assigned
+            return str(max_assigned + 1)
+        else:
+            # No channels yet - use start number
+            return str(start_number)
 
     def _sync_channel_settings(
         self,
@@ -1151,16 +1251,21 @@ def get_lifecycle_settings(conn: Connection) -> dict:
 
 def create_lifecycle_service(
     db_factory: Any,
+    sports_service: Any,
     dispatcharr_client: Any = None,
 ) -> ChannelLifecycleService:
     """Create a ChannelLifecycleService with optional Dispatcharr integration.
 
     Args:
         db_factory: Factory function returning database connection
+        sports_service: SportsDataService for template resolution (required)
         dispatcharr_client: Optional DispatcharrClient instance
 
     Returns:
         Configured ChannelLifecycleService
+
+    Raises:
+        ValueError: If sports_service is not provided
     """
     from teamarr.database.channels import get_dispatcharr_settings
 
@@ -1181,6 +1286,7 @@ def create_lifecycle_service(
 
     return ChannelLifecycleService(
         db_factory=db_factory,
+        sports_service=sports_service,
         channel_manager=channel_manager,
         logo_manager=logo_manager,
         epg_manager=epg_manager,

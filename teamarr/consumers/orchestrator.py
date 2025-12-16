@@ -30,6 +30,8 @@ class TeamChannelConfig:
     description_format: str | None = None
     subtitle_format: str | None = None
     category: str | None = None
+    # Database template ID for filler config
+    template_id: int | None = None
 
 
 @dataclass
@@ -153,6 +155,11 @@ class Orchestrator:
             pregame_minutes=base.pregame_minutes,
             default_duration_hours=base.default_duration_hours,
             template=template,
+            sport_durations=base.sport_durations,
+            filler_enabled=base.filler_enabled,
+            epg_timezone=base.epg_timezone,
+            midnight_crossover_mode=base.midnight_crossover_mode,
+            template_id=config.template_id,
         )
 
     # Backward compat alias

@@ -4,11 +4,13 @@
 
 ## Overview
 
-TheSportsDB provides a freemium sports data API. Free tier uses API key `3` (demo key). Premium tier ($9/month) provides dedicated key and enhanced features.
+TheSportsDB provides a freemium sports data API. Free tier uses API key `123`. Premium tier ($9/month) provides dedicated key and enhanced features.
+
+> **Note:** API key `3` is an old demo key that returns static sample data. Always use `123` for free tier.
 
 **Base URL:** `https://www.thesportsdb.com/api/v1/json/{api_key}`
 
-**Free API Key:** `3` (demo/public key)
+**Free API Key:** `123` (public free tier key)
 
 ---
 
@@ -65,7 +67,7 @@ def rate_limit(func):
 
 **Example:**
 ```
-GET https://www.thesportsdb.com/api/v1/json/3/eventsday.php?d=2024-12-08&l=4328
+GET https://www.thesportsdb.com/api/v1/json/123/eventsday.php?d=2024-12-08&l=4328
 ```
 
 **Response:**
@@ -114,7 +116,7 @@ GET https://www.thesportsdb.com/api/v1/json/3/eventsday.php?d=2024-12-08&l=4328
 
 **Example:**
 ```
-GET https://www.thesportsdb.com/api/v1/json/3/eventsnextleague.php?id=4328
+GET https://www.thesportsdb.com/api/v1/json/123/eventsnextleague.php?id=4328
 ```
 
 Returns next 15 upcoming events for the league.
@@ -130,7 +132,7 @@ Returns next 15 upcoming events for the league.
 
 **Example:**
 ```
-GET https://www.thesportsdb.com/api/v1/json/3/eventsnext.php?id=133604
+GET https://www.thesportsdb.com/api/v1/json/123/eventsnext.php?id=133604
 ```
 
 Returns next 5 upcoming events for the team.
@@ -146,7 +148,7 @@ Returns next 5 upcoming events for the team.
 
 **Example:**
 ```
-GET https://www.thesportsdb.com/api/v1/json/3/lookupevent.php?id=2274850
+GET https://www.thesportsdb.com/api/v1/json/123/lookupevent.php?id=2274850
 ```
 
 ### Team Lookup
@@ -160,7 +162,7 @@ GET https://www.thesportsdb.com/api/v1/json/3/lookupevent.php?id=2274850
 
 **Example:**
 ```
-GET https://www.thesportsdb.com/api/v1/json/3/lookupteam.php?id=133604
+GET https://www.thesportsdb.com/api/v1/json/123/lookupteam.php?id=133604
 ```
 
 **Response (47 fields):**
@@ -203,7 +205,7 @@ GET https://www.thesportsdb.com/api/v1/json/3/lookupteam.php?id=133604
 
 **Example:**
 ```
-GET https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=Arsenal
+GET https://www.thesportsdb.com/api/v1/json/123/searchteams.php?t=Arsenal
 ```
 
 ### All Leagues
@@ -236,7 +238,7 @@ Returns all available leagues.
 
 **Example:**
 ```
-GET https://www.thesportsdb.com/api/v1/json/3/lookup_all_teams.php?id=4328
+GET https://www.thesportsdb.com/api/v1/json/123/lookup_all_teams.php?id=4328
 ```
 
 ---

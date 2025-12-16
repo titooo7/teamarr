@@ -11,8 +11,11 @@ from teamarr.api.routes import (
     epg,
     groups,
     health,
+    keywords,
     matching,
+    presets,
     settings,
+    stats,
     teams,
     templates,
 )
@@ -105,12 +108,15 @@ def create_app() -> FastAPI:
     app.include_router(health.router, tags=["Health"])
     app.include_router(teams.router, prefix="/api/v1", tags=["Teams"])
     app.include_router(templates.router, prefix="/api/v1", tags=["Templates"])
+    app.include_router(presets.router, prefix="/api/v1/presets", tags=["Condition Presets"])
     app.include_router(groups.router, prefix="/api/v1/groups", tags=["Event Groups"])
     app.include_router(epg.router, prefix="/api/v1", tags=["EPG"])
     app.include_router(matching.router, prefix="/api/v1", tags=["Matching"])
+    app.include_router(keywords.router, prefix="/api/v1/keywords", tags=["Exception Keywords"])
     app.include_router(cache.router, prefix="/api/v1", tags=["Cache"])
     app.include_router(channels.router, prefix="/api/v1/channels", tags=["Channels"])
     app.include_router(settings.router, prefix="/api/v1", tags=["Settings"])
+    app.include_router(stats.router, prefix="/api/v1/stats", tags=["Stats"])
 
     return app
 

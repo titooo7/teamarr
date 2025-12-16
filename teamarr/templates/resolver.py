@@ -150,11 +150,9 @@ class TemplateResolver:
             "is_away",
             "win_streak",
             "loss_streak",
-            "home_win_streak",
-            "home_loss_streak",
-            "away_win_streak",
-            "away_loss_streak",
+            "is_ranked",
             "is_ranked_opponent",
+            "is_ranked_matchup",
             "is_top_ten_matchup",
             "is_conference_game",
             "is_playoff",
@@ -162,6 +160,7 @@ class TemplateResolver:
             "is_national_broadcast",
             "has_odds",
             "opponent_name_contains",
+            "always",
         ]
 
 

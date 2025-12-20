@@ -221,7 +221,7 @@ class EventGroupProcessor:
         batch_result = BatchProcessingResult()
 
         with self._db_factory() as conn:
-            groups = get_all_groups(conn, include_inactive=False)
+            groups = get_all_groups(conn, include_disabled=False)
 
             # Sort groups: parents first, then children, then multi-league
             parent_groups, child_groups, multi_league_groups = self._sort_groups(groups)

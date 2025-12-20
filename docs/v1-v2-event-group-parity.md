@@ -384,13 +384,12 @@ For existing V2 users:
   - [x] Database layer (update_group_stats updated)
   - [x] API layer (returns filtering stats)
   - [x] Frontend types updated
-- [ ] 2.3 User-Defined Team Aliases
-  - [ ] Schema migration (team_aliases table)
-  - [ ] Database layer (CRUD operations)
-  - [ ] TeamAliasService (`teamarr/services/team_alias.py`)
-  - [ ] Matching engine integration
-  - [ ] API layer (REST endpoints)
-  - [ ] Frontend UI (TeamAliases.tsx)
+- [x] 2.3 User-Defined Team Aliases - COMPLETE (Dec 20, 2025)
+  - [x] Schema migration (`team_aliases` table)
+  - [x] Database layer (`teamarr/database/aliases.py`)
+  - [x] Matching engine integration (MultiLeagueMatcher, SingleLeagueMatcher)
+  - [x] API layer (`/api/v1/aliases` endpoints)
+  - [x] Frontend UI (`TeamAliases.tsx` at `/teams/aliases`)
 
 ### Phase 3: Multi-Sport
 - [ ] 3.1 Channel Sort Order

@@ -785,6 +785,33 @@ CREATE INDEX IF NOT EXISTS idx_exception_keywords_behavior ON consolidation_exce
 
 
 -- =============================================================================
+-- TEAM_ALIASES TABLE
+-- User-defined team name aliases for stream matching
+-- Maps stream names → provider teams for edge cases where automatic matching fails
+-- Examples: "Spurs" → "Tottenham Hotspur", "Man U" → "Manchester United"
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS team_aliases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Alias Definition
+    alias TEXT NOT NULL,                    -- Alias string (normalized) e.g., "spurs", "man u"
+    league TEXT NOT NULL,                   -- League code (e.g., "epl", "nfl")
+
+    -- Provider Team Mapping
+    provider TEXT NOT NULL DEFAULT 'espn',  -- Provider name
+    team_id TEXT NOT NULL,                  -- Provider's team ID
+    team_name TEXT NOT NULL,                -- Provider's team name (e.g., "Tottenham Hotspur")
+
+    UNIQUE(alias, league)
+);
+
+CREATE INDEX IF NOT EXISTS idx_team_aliases_league ON team_aliases(league);
+CREATE INDEX IF NOT EXISTS idx_team_aliases_alias ON team_aliases(alias);
+
+
+-- =============================================================================
 -- CONDITION_PRESETS TABLE
 -- Saved condition configurations for template descriptions
 -- =============================================================================

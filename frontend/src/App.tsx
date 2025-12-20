@@ -7,6 +7,7 @@ import {
   TemplateForm,
   Teams,
   TeamImport,
+  TeamAliases,
   EventGroups,
   EventGroupForm,
   EventGroupImport,
@@ -36,6 +37,7 @@ function App() {
             <Route path="templates/:templateId" element={<TemplateForm />} />
             <Route path="teams" element={<Teams />} />
             <Route path="teams/import" element={<TeamImport />} />
+            <Route path="teams/aliases" element={<TeamAliases />} />
             <Route path="event-groups" element={<EventGroups />} />
             <Route path="event-groups/new" element={<EventGroupForm />} />
             <Route path="event-groups/:groupId" element={<EventGroupForm />} />

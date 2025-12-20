@@ -9,14 +9,19 @@ This is more robust than parsing stream names because:
 - We know exact team names/abbreviations from the provider
 - Don't rely on parser correctly extracting from messy stream names
 - Uses fuzzy matching for better tolerance of name variations
+- Supports user-defined aliases for edge cases
 """
 
+import logging
 from dataclasses import dataclass
 from datetime import date
+from typing import Any, Callable
 
 from teamarr.core import Event
 from teamarr.services import SportsDataService
 from teamarr.utilities.fuzzy_match import FuzzyMatcher, get_matcher
+
+logger = logging.getLogger(__name__)
 
 # Leagues that only have ONE event per day
 # For these, if stream contains the league keyword, match to the day's event
@@ -104,7 +109,11 @@ class EventPatterns:
 
 
 class MultiLeagueMatcher:
-    """Matches streams to events using Events → Streams approach."""
+    """Matches streams to events using Events → Streams approach.
+
+    Supports user-defined team aliases for edge cases where automatic
+    matching fails.
+    """
 
     def __init__(
         self,
@@ -113,16 +122,21 @@ class MultiLeagueMatcher:
         include_leagues: list[str] | None = None,
         exception_keywords: list[str] | None = None,
         fuzzy_matcher: FuzzyMatcher | None = None,
+        get_connection: Callable[[], Any] | None = None,
     ):
         self._service = service
         self._search_leagues = search_leagues
         self._include_leagues = set(include_leagues) if include_leagues else None
         self._exception_keywords = [kw.lower() for kw in (exception_keywords or [])]
         self._fuzzy = fuzzy_matcher or get_matcher()
+        self._get_connection = get_connection
 
         # Built during match_all
         self._event_patterns: list[EventPatterns] = []
         self._patterns_date: date | None = None
+
+        # Alias cache per league (loaded once)
+        self._aliases: dict[str, dict[str, tuple[str, str]]] | None = None
 
     def match_all(self, stream_names: list[str], target_date: date) -> BatchMatchResult:
         """Match all streams against events from configured leagues."""
@@ -227,12 +241,85 @@ class MultiLeagueMatcher:
             exclusion_reason=None if included else "league_not_in_whitelist",
         )
 
+    def _load_aliases(self) -> None:
+        """Load user-defined aliases for all search leagues."""
+        if self._aliases is not None:
+            return
+
+        self._aliases = {}
+
+        if not self._get_connection:
+            return
+
+        try:
+            from teamarr.database.aliases import list_aliases
+
+            with self._get_connection() as conn:
+                for league in self._search_leagues:
+                    aliases = list_aliases(conn, league=league)
+                    league_aliases = {}
+                    for alias in aliases:
+                        league_aliases[alias.alias.lower()] = (alias.team_id, alias.team_name)
+                    if league_aliases:
+                        self._aliases[league] = league_aliases
+
+            total = sum(len(a) for a in self._aliases.values())
+            if total:
+                logger.debug(f"Loaded {total} aliases for {len(self._aliases)} leagues")
+        except Exception as e:
+            logger.warning(f"Failed to load aliases: {e}")
+            self._aliases = {}
+
+    def _find_alias_team_ids(self, stream_lower: str, league: str) -> set[str]:
+        """Find team IDs from aliases that appear in stream for a specific league."""
+        self._load_aliases()
+
+        if league not in self._aliases:
+            return set()
+
+        found_team_ids = set()
+        for alias_text, (team_id, team_name) in self._aliases[league].items():
+            if f" {alias_text} " in f" {stream_lower} ":
+                found_team_ids.add(team_id)
+                logger.debug(f"Alias match: '{alias_text}' -> {team_name} ({team_id})")
+
+        return found_team_ids
+
     def _find_matching_event(self, stream_lower: str) -> tuple[Event | None, str | None]:
         """Find event that matches the stream name using fuzzy matching."""
         # Expand abbreviations for matching (e.g., "UFC FN" → "UFC Fight Night")
         stream_expanded = self._fuzzy._expand_abbreviations(stream_lower)
 
-        # First pass: try to find both teams using fuzzy matching
+        # First pass: try alias-based matching (highest priority)
+        self._load_aliases()
+        if self._aliases:
+            for ep in self._event_patterns:
+                alias_team_ids = self._find_alias_team_ids(stream_expanded, ep.league)
+                if not alias_team_ids:
+                    continue
+
+                home_id = ep.event.home_team.id
+                away_id = ep.event.away_team.id
+
+                home_alias = home_id in alias_team_ids
+                away_alias = away_id in alias_team_ids
+
+                # Both teams via aliases
+                if home_alias and away_alias:
+                    return ep.event, ep.league
+
+                # One team via alias, other via patterns
+                if home_alias:
+                    away_match = self._fuzzy.matches_any(ep.away_patterns, stream_expanded)
+                    if away_match.matched:
+                        return ep.event, ep.league
+
+                if away_alias:
+                    home_match = self._fuzzy.matches_any(ep.home_patterns, stream_expanded)
+                    if home_match.matched:
+                        return ep.event, ep.league
+
+        # Second pass: try to find both teams using fuzzy matching
         for ep in self._event_patterns:
             home_match = self._fuzzy.matches_any(ep.home_patterns, stream_expanded)
             away_match = self._fuzzy.matches_any(ep.away_patterns, stream_expanded)
@@ -240,13 +327,13 @@ class MultiLeagueMatcher:
             if home_match.matched and away_match.matched:
                 return ep.event, ep.league
 
-        # Second pass: try event name matching
+        # Third pass: try event name matching
         for ep in self._event_patterns:
             event_match = self._fuzzy.matches_any(ep.event_patterns, stream_expanded)
             if event_match.matched:
                 return ep.event, ep.league
 
-        # Third pass: single-event leagues (e.g., UFC)
+        # Fourth pass: single-event leagues (e.g., UFC)
         # These leagues only have ONE event per day, so keyword matching is sufficient
         match = self._match_single_event_league(stream_expanded)
         if match:

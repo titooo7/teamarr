@@ -109,6 +109,7 @@ class CachedMatcher:
             include_leagues=include_leagues,
             exception_keywords=exception_keywords,
             fuzzy_matcher=fuzzy_matcher,
+            get_connection=get_connection,  # For alias lookups
         )
         self._cache = StreamMatchCache(get_connection)
 

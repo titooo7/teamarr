@@ -1,5 +1,16 @@
 """Database layer."""
 
+from teamarr.database.aliases import (
+    TeamAlias,
+    bulk_create_aliases,
+    create_alias,
+    delete_alias,
+    export_aliases,
+    get_alias,
+    get_alias_by_text,
+    list_aliases,
+    update_alias,
+)
 from teamarr.database.connection import get_connection, get_db, init_db, reset_db
 from teamarr.database.leagues import (
     LeagueMapping,
@@ -38,6 +49,16 @@ from teamarr.database.templates import (
 )
 
 __all__ = [
+    # Aliases
+    "TeamAlias",
+    "bulk_create_aliases",
+    "create_alias",
+    "delete_alias",
+    "export_aliases",
+    "get_alias",
+    "get_alias_by_text",
+    "list_aliases",
+    "update_alias",
     # Connection
     "get_connection",
     "get_db",

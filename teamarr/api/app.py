@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from teamarr.api.routes import (
+    aliases,
     cache,
     channels,
     dispatcharr,
@@ -149,6 +150,7 @@ def create_app() -> FastAPI:
     app.include_router(templates.router, prefix="/api/v1", tags=["Templates"])
     app.include_router(presets.router, prefix="/api/v1/presets", tags=["Condition Presets"])
     app.include_router(groups.router, prefix="/api/v1/groups", tags=["Event Groups"])
+    app.include_router(aliases.router, prefix="/api/v1", tags=["Team Aliases"])
     app.include_router(epg.router, prefix="/api/v1", tags=["EPG"])
     app.include_router(matching.router, prefix="/api/v1", tags=["Matching"])
     app.include_router(keywords.router, prefix="/api/v1/keywords", tags=["Exception Keywords"])

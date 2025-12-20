@@ -189,3 +189,27 @@ export interface ProcessGroupResponse {
   errors: string[]
   duration_seconds: number
 }
+
+// Team Aliases
+export interface TeamAlias {
+  id: number
+  alias: string
+  league: string
+  provider: string
+  team_id: string
+  team_name: string
+  created_at: string | null
+}
+
+export interface TeamAliasCreate {
+  alias: string
+  league: string
+  team_id: string
+  team_name: string
+  provider?: string
+}
+
+export interface TeamAliasListResponse {
+  aliases: TeamAlias[]
+  total: number
+}

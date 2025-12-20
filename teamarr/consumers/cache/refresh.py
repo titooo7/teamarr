@@ -379,9 +379,13 @@ class CacheRefresher:
                 )
 
             # Deduplicate teams by (provider, provider_team_id, league)
+            # Skip teams without names (required field)
             seen: set = set()
             unique_teams = []
             for team in teams:
+                # Skip teams without required name field
+                if not team.get("team_name"):
+                    continue
                 key = (team["provider"], team["provider_team_id"], team["league"])
                 if key not in seen:
                     seen.add(key)

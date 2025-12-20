@@ -126,6 +126,10 @@ class BatchProcessingResult:
     def total_errors(self) -> int:
         return sum(len(r.errors) for r in self.results)
 
+    @property
+    def total_programmes(self) -> int:
+        return sum(r.programmes_generated for r in self.results)
+
     def to_dict(self) -> dict:
         """Convert to dict for JSON serialization."""
         return {

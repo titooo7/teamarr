@@ -196,6 +196,37 @@ export interface ProcessGroupResponse {
   duration_seconds: number
 }
 
+// Preview (stream matching without channel creation)
+export interface PreviewStream {
+  stream_id: number
+  stream_name: string
+  matched: boolean
+  event_id: string | null
+  event_name: string | null
+  home_team: string | null
+  away_team: string | null
+  league: string | null
+  start_time: string | null
+  from_cache: boolean
+  exclusion_reason: string | null
+}
+
+export interface PreviewGroupResponse {
+  group_id: number
+  group_name: string
+  total_streams: number
+  filtered_count: number
+  matched_count: number
+  unmatched_count: number
+  filtered_not_event: number
+  filtered_include_regex: number
+  filtered_exclude_regex: number
+  cache_hits: number
+  cache_misses: number
+  streams: PreviewStream[]
+  errors: string[]
+}
+
 // Team Aliases
 export interface TeamAlias {
   id: number

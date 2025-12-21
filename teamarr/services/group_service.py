@@ -108,6 +108,29 @@ class GroupService:
 
         return self._convert_result(result)
 
+    def preview_group(
+        self,
+        group_id: int,
+        target_date: date | None = None,
+    ):
+        """Preview stream matching for a group without creating channels.
+
+        Args:
+            group_id: Group ID to preview
+            target_date: Target date (defaults to today)
+
+        Returns:
+            PreviewResult from the processor
+        """
+        from teamarr.consumers.event_group_processor import preview_event_group
+
+        return preview_event_group(
+            db_factory=self._db_factory,
+            group_id=group_id,
+            dispatcharr_client=self._client,
+            target_date=target_date,
+        )
+
     def process_all_groups(
         self,
         target_date: date | None = None,

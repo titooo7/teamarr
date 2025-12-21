@@ -94,17 +94,23 @@ class ESPNClient:
         logger.warning(f"No database config for league '{league}' - add to leagues table")
         return ("unknown", league)
 
-    def get_scoreboard(self, league: str, date_str: str) -> dict | None:
+    def get_scoreboard(
+        self,
+        league: str,
+        date_str: str,
+        sport_league: tuple[str, str] | None = None,
+    ) -> dict | None:
         """Fetch scoreboard for a league on a given date.
 
         Args:
             league: Canonical league code (e.g., 'nfl', 'nba')
             date_str: Date in YYYYMMDD format
+            sport_league: Optional (sport, league) tuple from database config
 
         Returns:
             Raw ESPN response or None on error
         """
-        sport, espn_league = self.get_sport_league(league)
+        sport, espn_league = self.get_sport_league(league, sport_league)
         url = f"{ESPN_BASE_URL}/{sport}/{espn_league}/scoreboard"
         params = {"dates": date_str}
 
@@ -113,45 +119,63 @@ class ESPNClient:
 
         return self._request(url, params)
 
-    def get_team_schedule(self, league: str, team_id: str) -> dict | None:
+    def get_team_schedule(
+        self,
+        league: str,
+        team_id: str,
+        sport_league: tuple[str, str] | None = None,
+    ) -> dict | None:
         """Fetch schedule for a specific team.
 
         Args:
             league: Canonical league code
             team_id: ESPN team ID
+            sport_league: Optional (sport, league) tuple from database config
 
         Returns:
             Raw ESPN response or None on error
         """
-        sport, espn_league = self.get_sport_league(league)
+        sport, espn_league = self.get_sport_league(league, sport_league)
         url = f"{ESPN_BASE_URL}/{sport}/{espn_league}/teams/{team_id}/schedule"
         return self._request(url)
 
-    def get_team(self, league: str, team_id: str) -> dict | None:
+    def get_team(
+        self,
+        league: str,
+        team_id: str,
+        sport_league: tuple[str, str] | None = None,
+    ) -> dict | None:
         """Fetch team information.
 
         Args:
             league: Canonical league code
             team_id: ESPN team ID
+            sport_league: Optional (sport, league) tuple from database config
 
         Returns:
             Raw ESPN response or None on error
         """
-        sport, espn_league = self.get_sport_league(league)
+        sport, espn_league = self.get_sport_league(league, sport_league)
         url = f"{ESPN_BASE_URL}/{sport}/{espn_league}/teams/{team_id}"
         return self._request(url)
 
-    def get_event(self, league: str, event_id: str) -> dict | None:
+    def get_event(
+        self,
+        league: str,
+        event_id: str,
+        sport_league: tuple[str, str] | None = None,
+    ) -> dict | None:
         """Fetch a single event by ID.
 
         Args:
             league: Canonical league code
             event_id: ESPN event ID
+            sport_league: Optional (sport, league) tuple from database config
 
         Returns:
             Raw ESPN response or None on error
         """
-        sport, espn_league = self.get_sport_league(league)
+        sport, espn_league = self.get_sport_league(league, sport_league)
         url = f"{ESPN_BASE_URL}/{sport}/{espn_league}/summary"
         return self._request(url, {"event": event_id})
 

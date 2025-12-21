@@ -557,18 +557,29 @@ class ChannelLifecycleService:
     def _generate_channel_name(
         self,
         event: Event,
-        template: dict | None,
+        template,
         exception_keyword: str | None,
     ) -> str:
         """Generate channel name for an event.
 
         Uses full template engine (141 variables) when service is available.
         Otherwise falls back to default "Away @ Home" format.
+
+        Args:
+            event: Event data
+            template: Can be dict, EventTemplateConfig dataclass, or None
+            exception_keyword: Optional keyword for naming
         """
         # Get channel name format from template or use default
         name_format = None
         if template:
-            name_format = template.get("event_channel_name")
+            # Handle both dict and dataclass template types
+            if hasattr(template, "channel_name_format"):
+                # EventTemplateConfig dataclass
+                name_format = template.channel_name_format
+            elif hasattr(template, "get"):
+                # Dict with event_channel_name
+                name_format = template.get("event_channel_name")
 
         if name_format:
             # Resolve using full template engine
@@ -588,16 +599,26 @@ class ChannelLifecycleService:
     def _resolve_logo_url(
         self,
         event: Event,
-        template: dict | None,
+        template,
     ) -> str | None:
         """Resolve logo URL from template.
 
         Uses full template engine for variable resolution.
         Falls back to home team logo if no template.
+
+        Args:
+            event: Event data
+            template: Can be dict, EventTemplateConfig dataclass, or None
         """
         logo_url = None
         if template:
-            logo_url = template.get("event_channel_logo_url")
+            # Handle both dict and dataclass template types
+            if hasattr(template, "logo_url"):
+                # EventTemplateConfig dataclass (if it has logo_url)
+                logo_url = template.logo_url
+            elif hasattr(template, "get"):
+                # Dict with event_channel_logo_url
+                logo_url = template.get("event_channel_logo_url")
 
         if logo_url and "{" in logo_url:
             # Has template variables - resolve them

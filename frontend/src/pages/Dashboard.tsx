@@ -70,7 +70,14 @@ interface EPGHistoryEntry {
   completed_at: string | null
   duration_ms: number | null
   status: string
-  programmes: {
+  channels?: {
+    created: number
+    updated: number
+    deleted: number
+    skipped: number
+    errors: number
+  }
+  programmes?: {
     total: number
     events: number
     pregame: number
@@ -358,10 +365,9 @@ export function Dashboard() {
               <thead className="bg-muted">
                 <tr>
                   <th className="text-left p-3 font-medium">Generated At</th>
-                  <th className="text-center p-3 font-medium">Type</th>
+                  <th className="text-center p-3 font-medium">Matched</th>
                   <th className="text-center p-3 font-medium">Events</th>
-                  <th className="text-center p-3 font-medium">Filler</th>
-                  <th className="text-center p-3 font-medium">Total</th>
+                  <th className="text-center p-3 font-medium">Programmes</th>
                   <th className="text-center p-3 font-medium">Duration</th>
                   <th className="text-center p-3 font-medium">Status</th>
                 </tr>
@@ -372,13 +378,8 @@ export function Dashboard() {
                     <td className="p-3">
                       {new Date(entry.started_at).toLocaleString()}
                     </td>
-                    <td className="text-center p-3 text-xs text-muted-foreground">
-                      {entry.run_type === "team_epg" ? "Team" : "Event"}
-                    </td>
+                    <td className="text-center p-3">{entry.streams?.matched ?? 0}</td>
                     <td className="text-center p-3">{entry.programmes?.events ?? 0}</td>
-                    <td className="text-center p-3 text-muted-foreground">
-                      {(entry.programmes?.pregame ?? 0) + (entry.programmes?.postgame ?? 0) + (entry.programmes?.idle ?? 0)}
-                    </td>
                     <td className="text-center p-3 font-medium">{entry.programmes?.total ?? 0}</td>
                     <td className="text-center p-3">
                       {entry.duration_ms

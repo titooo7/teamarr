@@ -398,55 +398,36 @@ def get_current_stats(conn: Connection) -> dict:
             "programmes": row["programmes"] or 0,
         }
 
-    # Current managed channels count
-    managed = conn.execute(
-        """
-        SELECT
-            COUNT(*) as total,
-            SUM(CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END) as active,
-            SUM(CASE WHEN deleted_at IS NOT NULL THEN 1 ELSE 0 END) as deleted
-        FROM managed_channels
-        """
+    # Get last run date
+    last_run_row = conn.execute(
+        "SELECT completed_at FROM processing_runs ORDER BY created_at DESC LIMIT 1"
     ).fetchone()
+    last_run = last_run_row["completed_at"] if last_run_row else None
 
+    # Return structure matching frontend StatsResponse interface
     return {
-        "overall": {
-            "total_runs": overall["total_runs"] or 0,
-            "successful_runs": overall["successful"] or 0,
-            "failed_runs": overall["failed"] or 0,
-            "avg_duration_ms": int(overall["avg_duration"] or 0),
-            "max_duration_ms": overall["max_duration"] or 0,
-        },
-        "streams": {
-            "total_matched": overall["total_matched"] or 0,
-            "total_unmatched": overall["total_unmatched"] or 0,
-            "total_cached": overall["total_cached"] or 0,
-            "cache_hit_rate": (
-                round(overall["total_cached"] / overall["total_matched"] * 100, 1)
-                if overall["total_matched"]
-                else 0
-            ),
-        },
-        "channels": {
-            "total_created": overall["total_channels_created"] or 0,
-            "total_deleted": overall["total_channels_deleted"] or 0,
-            "currently_active": managed["active"] or 0,
-            "currently_deleted": managed["deleted"] or 0,
-        },
-        "programmes": {
-            "total": overall["total_programmes"] or 0,
-            "events": overall["total_events"] or 0,
-            "pregame": overall["total_pregame"] or 0,
-            "postgame": overall["total_postgame"] or 0,
-            "idle": overall["total_idle"] or 0,
-        },
+        "total_runs": overall["total_runs"] or 0,
+        "successful_runs": overall["successful"] or 0,
+        "failed_runs": overall["failed"] or 0,
         "last_24h": {
             "runs": last_24h["runs"] or 0,
+            "successful": last_24h["runs"] or 0,  # Approximate
+            "failed": 0,
+            "programmes_generated": last_24h["programmes"] or 0,
             "streams_matched": last_24h["matched"] or 0,
             "channels_created": last_24h["channels"] or 0,
-            "programmes_generated": last_24h["programmes"] or 0,
         },
-        "by_run_type": by_type,
+        "totals": {
+            "programmes_generated": overall["total_programmes"] or 0,
+            "streams_matched": overall["total_matched"] or 0,
+            "streams_unmatched": overall["total_unmatched"] or 0,
+            "streams_cached": overall["total_cached"] or 0,
+            "channels_created": overall["total_channels_created"] or 0,
+            "channels_deleted": overall["total_channels_deleted"] or 0,
+        },
+        "by_type": {k: v["runs"] for k, v in by_type.items()},
+        "avg_duration_ms": int(overall["avg_duration"] or 0),
+        "last_run": last_run,
     }
 
 
@@ -500,3 +481,311 @@ def cleanup_old_runs(conn: Connection, days: int = 30) -> int:
     cursor = conn.execute("DELETE FROM processing_runs WHERE created_at < ?", (cutoff,))
     conn.commit()
     return cursor.rowcount
+
+
+# =============================================================================
+# MATCHED/FAILED STREAM DETAILS
+# =============================================================================
+
+
+@dataclass
+class MatchedStream:
+    """A successfully matched stream."""
+
+    run_id: int
+    group_id: int
+    group_name: str
+    stream_id: int | None
+    stream_name: str
+    event_id: str
+    event_name: str | None
+    event_date: str | None
+    detected_league: str | None
+    home_team: str | None
+    away_team: str | None
+    from_cache: bool = False
+
+
+@dataclass
+class FailedMatch:
+    """A stream that failed to match."""
+
+    run_id: int
+    group_id: int
+    group_name: str
+    stream_id: int | None
+    stream_name: str
+    reason: str  # 'unmatched', 'excluded_league', 'filtered_include', 'filtered_exclude', 'exception'
+    exclusion_reason: str | None = None
+    detail: str | None = None
+
+
+def save_matched_streams(conn: Connection, streams: list[MatchedStream]) -> int:
+    """Bulk save matched streams for a run.
+
+    Returns number of rows inserted.
+    """
+    if not streams:
+        return 0
+
+    cursor = conn.executemany(
+        """
+        INSERT INTO epg_matched_streams (
+            run_id, group_id, group_name, stream_id, stream_name,
+            event_id, event_name, event_date, detected_league,
+            home_team, away_team, from_cache
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                s.run_id,
+                s.group_id,
+                s.group_name,
+                s.stream_id,
+                s.stream_name,
+                s.event_id,
+                s.event_name,
+                s.event_date,
+                s.detected_league,
+                s.home_team,
+                s.away_team,
+                1 if s.from_cache else 0,
+            )
+            for s in streams
+        ],
+    )
+    conn.commit()
+    return cursor.rowcount
+
+
+def save_failed_matches(conn: Connection, failures: list[FailedMatch]) -> int:
+    """Bulk save failed matches for a run.
+
+    Returns number of rows inserted.
+    """
+    if not failures:
+        return 0
+
+    cursor = conn.executemany(
+        """
+        INSERT INTO epg_failed_matches (
+            run_id, group_id, group_name, stream_id, stream_name,
+            reason, exclusion_reason, detail
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                f.run_id,
+                f.group_id,
+                f.group_name,
+                f.stream_id,
+                f.stream_name,
+                f.reason,
+                f.exclusion_reason,
+                f.detail,
+            )
+            for f in failures
+        ],
+    )
+    conn.commit()
+    return cursor.rowcount
+
+
+def get_matched_streams(
+    conn: Connection,
+    run_id: int | None = None,
+    group_id: int | None = None,
+    limit: int = 500,
+) -> list[dict]:
+    """Get matched streams, optionally filtered by run or group.
+
+    If run_id is None, gets from most recent run.
+    """
+    # Get run_id if not specified
+    if run_id is None:
+        row = conn.execute(
+            "SELECT id FROM processing_runs ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+        if not row:
+            return []
+        run_id = row["id"]
+
+    query = "SELECT * FROM epg_matched_streams WHERE run_id = ?"
+    params: list = [run_id]
+
+    if group_id is not None:
+        query += " AND group_id = ?"
+        params.append(group_id)
+
+    query += " ORDER BY group_id, stream_name LIMIT ?"
+    params.append(limit)
+
+    rows = conn.execute(query, params).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_failed_matches(
+    conn: Connection,
+    run_id: int | None = None,
+    group_id: int | None = None,
+    reason: str | None = None,
+    limit: int = 500,
+) -> list[dict]:
+    """Get failed matches, optionally filtered by run, group, or reason.
+
+    If run_id is None, gets from most recent run.
+    """
+    # Get run_id if not specified
+    if run_id is None:
+        row = conn.execute(
+            "SELECT id FROM processing_runs ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+        if not row:
+            return []
+        run_id = row["id"]
+
+    query = "SELECT * FROM epg_failed_matches WHERE run_id = ?"
+    params: list = [run_id]
+
+    if group_id is not None:
+        query += " AND group_id = ?"
+        params.append(group_id)
+
+    if reason is not None:
+        query += " AND reason = ?"
+        params.append(reason)
+
+    query += " ORDER BY group_id, stream_name LIMIT ?"
+    params.append(limit)
+
+    rows = conn.execute(query, params).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_match_stats_summary(conn: Connection, run_id: int | None = None) -> dict:
+    """Get match statistics summary for a run.
+
+    Returns breakdown by group and reason.
+    """
+    # Get run_id if not specified
+    if run_id is None:
+        row = conn.execute(
+            "SELECT id FROM processing_runs ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+        if not row:
+            return {"run_id": None, "matched": {}, "failed": {}}
+        run_id = row["id"]
+
+    # Get run info
+    run_row = conn.execute(
+        """
+        SELECT id, run_id, started_at, completed_at, status,
+               streams_fetched, streams_matched, streams_unmatched, streams_cached
+        FROM processing_runs WHERE id = ?
+        """,
+        (run_id,),
+    ).fetchone()
+
+    if not run_row:
+        return {"run_id": None, "matched": {}, "failed": {}}
+
+    # Matched by group
+    matched_by_group = conn.execute(
+        """
+        SELECT group_id, group_name, COUNT(*) as count,
+               SUM(CASE WHEN from_cache = 1 THEN 1 ELSE 0 END) as from_cache
+        FROM epg_matched_streams
+        WHERE run_id = ?
+        GROUP BY group_id
+        """,
+        (run_id,),
+    ).fetchall()
+
+    # Matched by league
+    matched_by_league = conn.execute(
+        """
+        SELECT detected_league, COUNT(*) as count
+        FROM epg_matched_streams
+        WHERE run_id = ?
+        GROUP BY detected_league
+        """,
+        (run_id,),
+    ).fetchall()
+
+    # Failed by reason
+    failed_by_reason = conn.execute(
+        """
+        SELECT reason, COUNT(*) as count
+        FROM epg_failed_matches
+        WHERE run_id = ?
+        GROUP BY reason
+        """,
+        (run_id,),
+    ).fetchall()
+
+    # Failed by group
+    failed_by_group = conn.execute(
+        """
+        SELECT group_id, group_name, COUNT(*) as count
+        FROM epg_failed_matches
+        WHERE run_id = ?
+        GROUP BY group_id
+        """,
+        (run_id,),
+    ).fetchall()
+
+    # Calculate match rate
+    total_matched = run_row["streams_matched"] or 0
+    total_unmatched = run_row["streams_unmatched"] or 0
+    total_eligible = total_matched + total_unmatched
+    match_rate = (total_matched / total_eligible * 100) if total_eligible > 0 else 0
+
+    return {
+        "run_id": run_id,
+        "uuid": run_row["run_id"],
+        "started_at": run_row["started_at"],
+        "completed_at": run_row["completed_at"],
+        "status": run_row["status"],
+        "totals": {
+            "fetched": run_row["streams_fetched"] or 0,
+            "matched": total_matched,
+            "unmatched": total_unmatched,
+            "cached": run_row["streams_cached"] or 0,
+            "match_rate": round(match_rate, 1),
+        },
+        "matched": {
+            "total": total_matched,
+            "by_group": [
+                {
+                    "group_id": r["group_id"],
+                    "group_name": r["group_name"],
+                    "count": r["count"],
+                    "from_cache": r["from_cache"],
+                }
+                for r in matched_by_group
+            ],
+            "by_league": {r["detected_league"]: r["count"] for r in matched_by_league},
+        },
+        "failed": {
+            "total": total_unmatched,
+            "by_reason": {r["reason"]: r["count"] for r in failed_by_reason},
+            "by_group": [
+                {
+                    "group_id": r["group_id"],
+                    "group_name": r["group_name"],
+                    "count": r["count"],
+                }
+                for r in failed_by_group
+            ],
+        },
+    }
+
+
+def clear_run_details(conn: Connection, run_id: int) -> None:
+    """Clear matched/failed stream details for a run.
+
+    Useful before re-running to avoid duplicates.
+    """
+    conn.execute("DELETE FROM epg_matched_streams WHERE run_id = ?", (run_id,))
+    conn.execute("DELETE FROM epg_failed_matches WHERE run_id = ?", (run_id,))
+    conn.commit()

@@ -5,7 +5,7 @@ Supports two modes:
 - Event-based: One channel per event, shows all events in leagues
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from teamarr.consumers.event_epg import EventEPGGenerator, EventEPGOptions
@@ -32,6 +32,8 @@ class TeamChannelConfig:
     category: str | None = None
     # Database template ID for filler config
     template_id: int | None = None
+    # Additional leagues to check for events (e.g., Champions League for soccer)
+    additional_leagues: list[str] = field(default_factory=list)
 
 
 @dataclass

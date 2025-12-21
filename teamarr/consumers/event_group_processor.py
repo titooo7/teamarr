@@ -34,9 +34,16 @@ from teamarr.database.groups import (
     get_group,
     update_group_stats,
 )
-from teamarr.database.stats import create_run, save_run
+from teamarr.database.stats import (
+    FailedMatch,
+    MatchedStream,
+    create_run,
+    save_failed_matches,
+    save_matched_streams,
+    save_run,
+)
 from teamarr.services import SportsDataService, create_default_service
-from teamarr.services.stream_filter import FilterResult, create_filter_from_group
+from teamarr.services.stream_filter import FilterResult
 from teamarr.utilities.xmltv import merge_xmltv_content, programmes_to_xmltv
 
 logger = logging.getLogger(__name__)
@@ -53,7 +60,8 @@ class ProcessingResult:
 
     # Stream fetching and filtering
     streams_fetched: int = 0
-    streams_after_filter: int = 0  # After include/exclude regex filtering
+    streams_after_filter: int = 0  # After all filtering
+    filtered_not_event: int = 0  # Didn't look like an event (no vs/@/at/date)
     filtered_include_regex: int = 0  # Didn't match include pattern
     filtered_exclude_regex: int = 0  # Matched exclude pattern
 
@@ -85,6 +93,7 @@ class ProcessingResult:
             "streams": {
                 "fetched": self.streams_fetched,
                 "after_filter": self.streams_after_filter,
+                "filtered_not_event": self.filtered_not_event,
                 "filtered_include": self.filtered_include_regex,
                 "filtered_exclude": self.filtered_exclude_regex,
                 "matched": self.streams_matched,
@@ -139,6 +148,84 @@ class BatchProcessingResult:
             "total_channels_created": self.total_channels_created,
             "total_errors": self.total_errors,
             "results": [r.to_dict() for r in self.results],
+        }
+
+
+@dataclass
+class PreviewStream:
+    """Individual stream preview result."""
+
+    stream_id: int
+    stream_name: str
+    matched: bool
+    event_id: str | None = None
+    event_name: str | None = None
+    home_team: str | None = None
+    away_team: str | None = None
+    league: str | None = None
+    start_time: str | None = None
+    from_cache: bool = False
+    exclusion_reason: str | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "stream_id": self.stream_id,
+            "stream_name": self.stream_name,
+            "matched": self.matched,
+            "event_id": self.event_id,
+            "event_name": self.event_name,
+            "home_team": self.home_team,
+            "away_team": self.away_team,
+            "league": self.league,
+            "start_time": self.start_time,
+            "from_cache": self.from_cache,
+            "exclusion_reason": self.exclusion_reason,
+        }
+
+
+@dataclass
+class PreviewResult:
+    """Result of previewing stream matches for a group."""
+
+    group_id: int
+    group_name: str
+
+    # Totals
+    total_streams: int = 0
+    filtered_count: int = 0
+    matched_count: int = 0
+    unmatched_count: int = 0
+
+    # Filter breakdown
+    filtered_not_event: int = 0
+    filtered_include_regex: int = 0
+    filtered_exclude_regex: int = 0
+
+    # Cache stats
+    cache_hits: int = 0
+    cache_misses: int = 0
+
+    # Stream details
+    streams: list[PreviewStream] = field(default_factory=list)
+
+    # Errors
+    errors: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "group_id": self.group_id,
+            "group_name": self.group_name,
+            "total_streams": self.total_streams,
+            "filtered_count": self.filtered_count,
+            "matched_count": self.matched_count,
+            "unmatched_count": self.unmatched_count,
+            "filtered_not_event": self.filtered_not_event,
+            "filtered_include_regex": self.filtered_include_regex,
+            "filtered_exclude_regex": self.filtered_exclude_regex,
+            "cache_hits": self.cache_hits,
+            "cache_misses": self.cache_misses,
+            "streams": [s.to_dict() for s in self.streams],
+            "errors": self.errors,
         }
 
 
@@ -209,6 +296,99 @@ class EventGroupProcessor:
                 return result
 
             return self._process_group_internal(conn, group, target_date)
+
+    def preview_group(
+        self,
+        group_id: int,
+        target_date: date | None = None,
+    ) -> PreviewResult:
+        """Preview stream matching for a group without creating channels.
+
+        Performs all matching logic but skips channel creation and EPG generation.
+        Used for testing and previewing before actual processing.
+
+        Args:
+            group_id: Group ID to preview
+            target_date: Target date (defaults to today)
+
+        Returns:
+            PreviewResult with stream matching details
+        """
+        target_date = target_date or date.today()
+
+        with self._db_factory() as conn:
+            group = get_group(conn, group_id)
+            if not group:
+                result = PreviewResult(group_id=group_id, group_name="Unknown")
+                result.errors.append(f"Group {group_id} not found")
+                return result
+
+            result = PreviewResult(group_id=group_id, group_name=group.name)
+
+            # Step 1: Fetch streams from M3U group
+            if not self._dispatcharr_client:
+                result.errors.append("Dispatcharr not configured")
+                return result
+
+            try:
+                raw_streams = self._dispatcharr_client.m3u.list_streams(
+                    group_id=group.m3u_group_id,
+                    account_id=group.m3u_account_id,
+                )
+            except Exception as e:
+                result.errors.append(f"Failed to fetch streams: {e}")
+                return result
+
+            if not raw_streams:
+                result.errors.append("No streams found in M3U group")
+                return result
+
+            # Convert DispatcharrStream objects to dict format
+            streams = [
+                {"id": s.id, "name": s.name}
+                for s in raw_streams
+            ]
+            result.total_streams = len(streams)
+
+            # Step 2: Apply stream filtering
+            streams, filter_result = self._filter_streams(streams, group)
+            result.filtered_count = result.total_streams - filter_result.passed_count
+            result.filtered_not_event = filter_result.filtered_not_event
+            result.filtered_include_regex = filter_result.filtered_include
+            result.filtered_exclude_regex = filter_result.filtered_exclude
+
+            if not streams:
+                result.errors.append("All streams filtered out")
+                return result
+
+            # Step 3: Match streams to events
+            match_result = self._match_streams(streams, group.leagues, target_date, group.id)
+            result.matched_count = match_result.matched_count
+            result.unmatched_count = match_result.unmatched_count
+            result.cache_hits = match_result.cache_hits
+            result.cache_misses = match_result.cache_misses
+
+            # Build preview stream list
+            for r in match_result.results:
+                stream_id = r.stream_id if hasattr(r, "stream_id") else 0
+                stream_name = r.stream_name
+
+                preview_stream = PreviewStream(
+                    stream_id=stream_id,
+                    stream_name=stream_name,
+                    matched=r.matched,
+                    event_id=r.event.id if r.event else None,
+                    event_name=r.event.name if r.event else None,
+                    home_team=r.event.home_team.name if r.event else None,
+                    away_team=r.event.away_team.name if r.event else None,
+                    league=r.league,
+                    start_time=r.event.start_time.isoformat() if r.event else None,
+                    from_cache=getattr(r, "from_cache", False),
+                    exclusion_reason=r.exclusion_reason,
+                )
+                result.streams.append(preview_stream)
+
+            return result
 
     def process_all_groups(
         self,
@@ -361,6 +541,7 @@ class EventGroupProcessor:
             # Step 1.5: Apply stream filtering (include/exclude regex)
             streams, filter_result = self._filter_streams(streams, group)
             result.streams_after_filter = filter_result.passed_count
+            result.filtered_not_event = filter_result.filtered_not_event
             result.filtered_include_regex = filter_result.filtered_include
             result.filtered_exclude_regex = filter_result.filtered_exclude
 
@@ -404,6 +585,16 @@ class EventGroupProcessor:
             stats_run.streams_matched = match_result.matched_count
             stats_run.streams_unmatched = match_result.unmatched_count
             stats_run.streams_cached = match_result.cache_hits
+
+            # Save detailed match results for analysis
+            self._save_match_details(
+                conn=conn,
+                run_id=stats_run.id,
+                group_id=group.id,
+                group_name=group.name,
+                streams=streams,
+                match_result=match_result,
+            )
 
             # Step 4: Add matched streams to parent's channels
             matched_streams = self._build_matched_stream_list(streams, match_result)
@@ -530,6 +721,7 @@ class EventGroupProcessor:
             # Step 1.5: Apply stream filtering (include/exclude regex)
             streams, filter_result = self._filter_streams(streams, group)
             result.streams_after_filter = filter_result.passed_count
+            result.filtered_not_event = filter_result.filtered_not_event
             result.filtered_include_regex = filter_result.filtered_include
             result.filtered_exclude_regex = filter_result.filtered_exclude
 
@@ -567,6 +759,16 @@ class EventGroupProcessor:
             stats_run.streams_unmatched = match_result.unmatched_count
             stats_run.streams_cached = match_result.cache_hits
 
+            # Save detailed match results for analysis
+            self._save_match_details(
+                conn=conn,
+                run_id=stats_run.id,
+                group_id=group.id,
+                group_name=group.name,
+                streams=streams,
+                match_result=match_result,
+            )
+
             # Step 4: Create/update channels
             matched_streams = self._build_matched_stream_list(streams, match_result)
             if matched_streams:
@@ -590,6 +792,7 @@ class EventGroupProcessor:
                 result.xmltv_size = len(xmltv_content.encode("utf-8")) if xmltv_content else 0
 
                 stats_run.programmes_total = programmes_count
+                stats_run.programmes_events = programmes_count  # All event EPG programmes are events
                 stats_run.xmltv_size_bytes = result.xmltv_size
 
                 # Step 6: Store XMLTV for this group (in database)
@@ -669,7 +872,9 @@ class EventGroupProcessor:
         streams: list[dict],
         group: EventEPGGroup,
     ) -> tuple[list[dict], FilterResult]:
-        """Filter streams using group's regex configuration.
+        """Filter streams using global settings and group's regex configuration.
+
+        Global settings apply first (event pattern filter), then group-specific.
 
         Args:
             streams: List of stream dicts from Dispatcharr
@@ -678,17 +883,53 @@ class EventGroupProcessor:
         Returns:
             Tuple of (filtered_streams, filter_result)
         """
-        stream_filter = create_filter_from_group(group)
+        from teamarr.database.settings import get_stream_filter_settings
+        from teamarr.services.stream_filter import StreamFilter, StreamFilterConfig
+
+        # Load global stream filter settings
+        with self._db_factory() as conn:
+            global_settings = get_stream_filter_settings(conn)
+
+        # Build config combining global and group settings
+        config = StreamFilterConfig(
+            # Global event pattern filter (enabled by default)
+            require_event_pattern=global_settings.require_event_pattern,
+            # Group-specific include regex (if enabled)
+            include_regex=group.stream_include_regex,
+            include_enabled=group.stream_include_regex_enabled,
+            # Group-specific exclude regex (if enabled)
+            exclude_regex=group.stream_exclude_regex,
+            exclude_enabled=group.stream_exclude_regex_enabled,
+            # Group-specific team extraction
+            custom_teams_regex=group.custom_regex_teams,
+            custom_teams_enabled=group.custom_regex_teams_enabled,
+            skip_builtin=group.skip_builtin_filter,
+        )
+
+        stream_filter = StreamFilter(config)
         result = stream_filter.filter(streams)
 
-        if result.filtered_include > 0 or result.filtered_exclude > 0:
+        # Log filtering results
+        filtered_total = result.filtered_include + result.filtered_exclude + result.filtered_not_event
+        if filtered_total > 0:
             logger.info(
                 f"Filtered streams for group '{group.name}': "
                 f"{result.total_input} input → {result.passed_count} passed "
-                f"(include: -{result.filtered_include}, exclude: -{result.filtered_exclude})"
+                f"(not_event: -{result.filtered_not_event}, "
+                f"include: -{result.filtered_include}, exclude: -{result.filtered_exclude})"
             )
 
         return result.passed, result
+
+    def _get_all_enabled_leagues(self) -> list[str]:
+        """Get all enabled leagues from the database.
+
+        Used to search all possible leagues when matching streams,
+        rather than just the group's configured leagues.
+        """
+        with self._db_factory() as conn:
+            cursor = conn.execute("SELECT league_code FROM leagues WHERE enabled = 1")
+            return [row[0] for row in cursor.fetchall()]
 
     def _fetch_events(self, leagues: list[str], target_date: date) -> list[Event]:
         """Fetch events from data providers for leagues."""
@@ -714,13 +955,20 @@ class EventGroupProcessor:
 
         Uses fingerprint cache - streams only need to be matched once
         unless stream name changes.
+
+        Important: We search ALL enabled leagues to find matches, but only
+        include events from the group's configured leagues. This allows
+        multi-sport groups to match any event while filtering output.
         """
+        # Get all enabled leagues to search (not just the group's configured leagues)
+        all_leagues = self._get_all_enabled_leagues()
+
         matcher = CachedMatcher(
             service=self._service,
             get_connection=self._db_factory,
-            search_leagues=leagues,
+            search_leagues=all_leagues,  # Search ALL leagues
             group_id=group_id,
-            include_leagues=leagues,
+            include_leagues=leagues,  # Filter to group's configured leagues
         )
 
         result = matcher.match_all(streams, target_date)
@@ -755,6 +1003,103 @@ class EventGroupProcessor:
                     )
 
         return matched
+
+    def _save_match_details(
+        self,
+        conn: Connection,
+        run_id: int,
+        group_id: int,
+        group_name: str,
+        streams: list[dict],
+        match_result: CachedBatchResult,
+        filter_result: FilterResult | None = None,
+    ) -> None:
+        """Save detailed match results to database.
+
+        Stores both matched streams and failed/unmatched streams for analysis.
+        """
+        # Build name -> stream lookup for stream IDs
+        stream_lookup = {s["name"]: s for s in streams}
+
+        matched_list: list[MatchedStream] = []
+        failed_list: list[FailedMatch] = []
+
+        for result in match_result.results:
+            stream = stream_lookup.get(result.stream_name, {})
+            stream_id = stream.get("id")
+
+            if result.matched and result.included and result.event:
+                # Successfully matched and included
+                matched_list.append(
+                    MatchedStream(
+                        run_id=run_id,
+                        group_id=group_id,
+                        group_name=group_name,
+                        stream_id=stream_id,
+                        stream_name=result.stream_name,
+                        event_id=result.event.id,
+                        event_name=result.event.name,
+                        event_date=result.event.start_time.isoformat() if result.event.start_time else None,
+                        detected_league=result.league,
+                        home_team=result.event.home_team.name if result.event.home_team else None,
+                        away_team=result.event.away_team.name if result.event.away_team else None,
+                        from_cache=getattr(result, "from_cache", False),
+                    )
+                )
+            elif result.matched and not result.included:
+                # Matched but excluded (wrong league)
+                failed_list.append(
+                    FailedMatch(
+                        run_id=run_id,
+                        group_id=group_id,
+                        group_name=group_name,
+                        stream_id=stream_id,
+                        stream_name=result.stream_name,
+                        reason="excluded_league",
+                        exclusion_reason=result.exclusion_reason,
+                        detail=f"League: {result.league}",
+                    )
+                )
+            elif result.is_exception:
+                # Exception keyword stream
+                failed_list.append(
+                    FailedMatch(
+                        run_id=run_id,
+                        group_id=group_id,
+                        group_name=group_name,
+                        stream_id=stream_id,
+                        stream_name=result.stream_name,
+                        reason="exception",
+                        detail=f"Keyword: {result.exception_keyword}",
+                    )
+                )
+            else:
+                # Unmatched
+                failed_list.append(
+                    FailedMatch(
+                        run_id=run_id,
+                        group_id=group_id,
+                        group_name=group_name,
+                        stream_id=stream_id,
+                        stream_name=result.stream_name,
+                        reason="unmatched",
+                    )
+                )
+
+        # Add filtered streams if provided
+        if filter_result:
+            for stream in filter_result.passed:
+                # These passed the filter but weren't in match results (shouldn't happen)
+                pass
+
+        # Save to database
+        if matched_list:
+            save_matched_streams(conn, matched_list)
+            logger.debug(f"Saved {len(matched_list)} matched streams for group {group_name}")
+
+        if failed_list:
+            save_failed_matches(conn, failed_list)
+            logger.debug(f"Saved {len(failed_list)} failed matches for group {group_name}")
 
     def _process_channels(
         self,
@@ -989,3 +1334,30 @@ def process_all_event_groups(
         dispatcharr_client=dispatcharr_client,
     )
     return processor.process_all_groups(target_date)
+
+
+def preview_event_group(
+    db_factory: Any,
+    group_id: int,
+    dispatcharr_client: Any = None,
+    target_date: date | None = None,
+) -> PreviewResult:
+    """Preview stream matching for an event group.
+
+    Convenience function that creates a processor and previews.
+    Does NOT create channels or generate EPG - only matches streams.
+
+    Args:
+        db_factory: Factory function returning database connection
+        group_id: Group ID to preview
+        dispatcharr_client: Optional DispatcharrClient
+        target_date: Target date (defaults to today)
+
+    Returns:
+        PreviewResult with stream matching details
+    """
+    processor = EventGroupProcessor(
+        db_factory=db_factory,
+        dispatcharr_client=dispatcharr_client,
+    )
+    return processor.preview_group(group_id, target_date)

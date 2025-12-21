@@ -263,6 +263,18 @@ class EPGGenerateRequest(BaseModel):
     days_ahead: int | None = None  # None = use settings default
 
 
+class MatchStats(BaseModel):
+    """Match statistics from stream matching."""
+
+    streams_fetched: int = 0
+    streams_filtered: int = 0  # Excluded before matching (not event-like)
+    streams_eligible: int = 0  # Available for matching (fetched - filtered)
+    streams_matched: int = 0
+    streams_unmatched: int = 0
+    streams_cached: int = 0
+    match_rate: float = 0.0  # matched / eligible * 100
+
+
 class EPGGenerateResponse(BaseModel):
     """Response body for EPG generation."""
 
@@ -270,6 +282,8 @@ class EPGGenerateResponse(BaseModel):
     teams_processed: int
     events_processed: int = 0
     duration_seconds: float
+    run_id: int | None = None
+    match_stats: MatchStats | None = None
 
 
 class EventEPGRequest(BaseModel):

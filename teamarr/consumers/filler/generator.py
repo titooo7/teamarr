@@ -195,6 +195,7 @@ class FillerGenerator:
                     logo_url=logo_url,
                     options=options,
                     config=config,
+                    tz=tz,
                 )
             )
         else:
@@ -212,6 +213,7 @@ class FillerGenerator:
                     logo_url=logo_url,
                     options=options,
                     config=config,
+                    tz=tz,
                 )
             )
 
@@ -230,6 +232,7 @@ class FillerGenerator:
         logo_url: str | None,
         options: FillerOptions,
         config: FillerConfig,
+        tz,  # ZoneInfo - timezone for midnight crossing detection
     ) -> list[Programme]:
         """Generate fillers for a day with games."""
         fillers: list[Programme] = []
@@ -237,7 +240,7 @@ class FillerGenerator:
         # Check if previous day's game crosses into today
         skip_pregame_until = day_start
         if prev_day_last_event:
-            prev_game_end = self._estimate_event_end(prev_day_last_event)
+            prev_game_end = self._estimate_event_end(prev_day_last_event).astimezone(tz)
             if prev_game_end > day_start:
                 skip_pregame_until = prev_game_end
 
@@ -248,7 +251,8 @@ class FillerGenerator:
             first_game = day_events[0]
             pregame_start = skip_pregame_until
             # End filler when game programme starts (event - buffer)
-            pregame_end = first_game.start_time - timedelta(minutes=options.pregame_buffer_minutes)
+            pregame_end_utc = first_game.start_time - timedelta(minutes=options.pregame_buffer_minutes)
+            pregame_end = pregame_end_utc.astimezone(tz)
 
             if pregame_start < pregame_end:
                 # Build context for pregame
@@ -273,11 +277,13 @@ class FillerGenerator:
         # POSTGAME: From last game end to midnight (or next game)
         if config.postgame_enabled:
             last_game = day_events[-1]
-            postgame_start = self._estimate_event_end(last_game)
+            postgame_start_utc = self._estimate_event_end(last_game)
+            # Convert to local timezone for consistent time block alignment
+            postgame_start = postgame_start_utc.astimezone(tz)
             postgame_end = day_end
 
-            # Check if game crosses midnight
-            if crosses_midnight(last_game.start_time, postgame_start):
+            # Check if game crosses midnight (in local timezone, not UTC)
+            if crosses_midnight(last_game.start_time, postgame_start_utc, tz):
                 # Game crosses midnight - handled by next day
                 pass
             elif postgame_start < postgame_end:
@@ -323,6 +329,7 @@ class FillerGenerator:
         logo_url: str | None,
         options: FillerOptions,
         config: FillerConfig,
+        tz=None,  # ZoneInfo - timezone for time alignment
     ) -> list[Programme]:
         """Generate fillers for a day with no games."""
         fillers: list[Programme] = []
@@ -330,7 +337,8 @@ class FillerGenerator:
         # Check if previous day's game crosses into today
         filler_start = day_start
         if prev_day_last_event:
-            prev_game_end = self._estimate_event_end(prev_day_last_event)
+            prev_game_end_utc = self._estimate_event_end(prev_day_last_event)
+            prev_game_end = prev_game_end_utc.astimezone(tz) if tz else prev_game_end_utc
             if prev_game_end > day_start:
                 # Previous game crossed midnight
                 if options.midnight_crossover_mode == "postgame":

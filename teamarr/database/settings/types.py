@@ -104,6 +104,18 @@ class APISettings:
 
 
 @dataclass
+class StreamFilterSettings:
+    """Stream filtering settings (global defaults for event groups)."""
+
+    # Require event pattern: only match streams that look like events (have vs/@/at/date patterns)
+    require_event_pattern: bool = True
+    # Custom inclusion patterns (regex) - stream must match at least one if provided
+    include_patterns: list[str] = field(default_factory=list)
+    # Custom exclusion patterns (regex) - stream must NOT match any
+    exclude_patterns: list[str] = field(default_factory=list)
+
+
+@dataclass
 class AllSettings:
     """Complete application settings."""
 
@@ -115,5 +127,6 @@ class AllSettings:
     durations: DurationSettings = field(default_factory=DurationSettings)
     display: DisplaySettings = field(default_factory=DisplaySettings)
     api: APISettings = field(default_factory=APISettings)
+    stream_filter: StreamFilterSettings = field(default_factory=StreamFilterSettings)
     epg_generation_counter: int = 0
     schema_version: int = 2

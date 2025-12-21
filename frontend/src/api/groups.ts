@@ -4,6 +4,7 @@ import type {
   EventGroupCreate,
   EventGroupListResponse,
   EventGroupUpdate,
+  PreviewGroupResponse,
   ProcessGroupResponse,
 } from "./types"
 
@@ -64,4 +65,10 @@ export async function processAllGroups(): Promise<{
   results: ProcessGroupResponse[]
 }> {
   return api.post("/groups/process-all")
+}
+
+export async function previewGroup(
+  groupId: number
+): Promise<PreviewGroupResponse> {
+  return api.get(`/groups/${groupId}/preview`)
 }

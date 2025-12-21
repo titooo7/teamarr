@@ -5,6 +5,7 @@ This provides consistent EPG structure (4 blocks per day).
 """
 
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 # Time block boundaries (hours)
 TIME_BLOCK_HOURS = [0, 6, 12, 18]
@@ -122,14 +123,24 @@ def get_block_for_time(dt: datetime) -> int:
         return 3
 
 
-def crosses_midnight(start_dt: datetime, end_dt: datetime) -> bool:
-    """Check if a time range crosses midnight.
+def crosses_midnight(
+    start_dt: datetime, end_dt: datetime, tz: ZoneInfo | None = None
+) -> bool:
+    """Check if a time range crosses midnight in the specified timezone.
 
     Args:
         start_dt: Start datetime
         end_dt: End datetime
+        tz: Optional timezone to use for date comparison.
+            If provided, datetimes are converted to this timezone before comparing.
+            If None, uses the raw datetime dates (may be UTC).
 
     Returns:
-        True if the range spans across midnight
+        True if the range spans across midnight in the specified timezone
     """
+    if tz is not None:
+        # Convert to target timezone for accurate date comparison
+        start_local = start_dt.astimezone(tz).date()
+        end_local = end_dt.astimezone(tz).date()
+        return start_local != end_local
     return start_dt.date() != end_dt.date()

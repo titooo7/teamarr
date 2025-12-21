@@ -5,6 +5,8 @@ Query functions to fetch settings from the database.
 
 from sqlite3 import Connection
 
+import json
+
 from .types import (
     AllSettings,
     APISettings,
@@ -15,6 +17,7 @@ from .types import (
     LifecycleSettings,
     ReconciliationSettings,
     SchedulerSettings,
+    StreamFilterSettings,
 )
 
 
@@ -100,6 +103,13 @@ def get_all_settings(conn: Connection) -> AllSettings:
             retry_count=row["api_retry_count"] or 3,
             soccer_cache_refresh_frequency=(row["soccer_cache_refresh_frequency"] or "weekly"),
             team_cache_refresh_frequency=row["team_cache_refresh_frequency"] or "weekly",
+        ),
+        stream_filter=StreamFilterSettings(
+            require_event_pattern=bool(row["stream_filter_require_event_pattern"])
+            if row["stream_filter_require_event_pattern"] is not None
+            else True,
+            include_patterns=json.loads(row["stream_filter_include_patterns"] or "[]"),
+            exclude_patterns=json.loads(row["stream_filter_exclude_patterns"] or "[]"),
         ),
         epg_generation_counter=row["epg_generation_counter"] or 0,
         schema_version=row["schema_version"] or 2,
@@ -241,4 +251,33 @@ def get_display_settings(conn: Connection) -> DisplaySettings:
         channel_id_format=row["channel_id_format"] or "{team_name_pascal}.{league}",
         xmltv_generator_name=row["xmltv_generator_name"] or "Teamarr v2",
         xmltv_generator_url=row["xmltv_generator_url"] or "",
+    )
+
+
+def get_stream_filter_settings(conn: Connection) -> StreamFilterSettings:
+    """Get stream filtering settings.
+
+    Args:
+        conn: Database connection
+
+    Returns:
+        StreamFilterSettings object with global filter configuration
+    """
+    cursor = conn.execute(
+        """SELECT stream_filter_require_event_pattern,
+                  stream_filter_include_patterns,
+                  stream_filter_exclude_patterns
+           FROM settings WHERE id = 1"""
+    )
+    row = cursor.fetchone()
+
+    if not row:
+        return StreamFilterSettings()
+
+    return StreamFilterSettings(
+        require_event_pattern=bool(row["stream_filter_require_event_pattern"])
+        if row["stream_filter_require_event_pattern"] is not None
+        else True,
+        include_patterns=json.loads(row["stream_filter_include_patterns"] or "[]"),
+        exclude_patterns=json.loads(row["stream_filter_exclude_patterns"] or "[]"),
     )

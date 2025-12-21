@@ -10,6 +10,7 @@ from teamarr.api.models import (
     EPGGenerateRequest,
     EPGGenerateResponse,
     EventEPGRequest,
+    MatchStats,
     StreamBatchMatchRequest,
     StreamBatchMatchResponse,
     StreamMatchResultModel,
@@ -153,41 +154,105 @@ def generate_epg(
     request: EPGGenerateRequest,
     service: SportsDataService = Depends(get_sports_service),
 ):
-    """Generate EPG for teams."""
-    epg_service = create_epg_service(service)
-    configs = _load_team_configs(request.team_ids)
+    """Generate full EPG: teams, event groups, and channel lifecycle.
 
-    if not configs:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No active teams found",
-        )
+    This is the unified generation endpoint that handles:
+    1. Team-based EPG generation (per-team schedules)
+    2. Event group processing (stream matching + channel lifecycle)
+    3. XMLTV file output
+    4. Dispatcharr integration (EPG refresh, channel association)
+    """
+    import time
+    from pathlib import Path
+
+    from teamarr.consumers import process_all_event_groups, process_all_teams
+    from teamarr.consumers.team_processor import get_all_team_xmltv
+    from teamarr.database.groups import get_all_group_xmltv
+    from teamarr.database.settings import get_dispatcharr_settings, get_epg_settings
+    from teamarr.dispatcharr import EPGManager, M3UManager, get_dispatcharr_client
+    from teamarr.utilities.xmltv import merge_xmltv_content
+
+    start_time = time.time()
 
     # Create stats run for tracking
     with get_db() as conn:
-        stats_run = create_run(conn, run_type="team_epg")
-
-    # Use settings defaults
-    settings = _get_settings()
-    schedule_days = settings["team_schedule_days_ahead"]
-    output_days = (
-        request.days_ahead if request.days_ahead is not None else settings["epg_output_days_ahead"]
-    )
-
-    options = TeamEPGOptions(
-        schedule_days_ahead=schedule_days,
-        output_days_ahead=output_days,
-        sport_durations=settings["sport_durations"],
-        default_duration_hours=settings["default_duration"],
-    )
+        stats_run = create_run(conn, run_type="full_epg")
 
     try:
-        result = epg_service.generate_team_epg(configs, options)
+        # Get settings
+        with get_db() as conn:
+            settings_row = get_epg_settings(conn)
+            dispatcharr_settings = get_dispatcharr_settings(conn)
+
+        # Create Dispatcharr client if configured
+        dispatcharr_client = None
+        if dispatcharr_settings.enabled and dispatcharr_settings.url:
+            dispatcharr_client = get_dispatcharr_client(get_db)
+
+        # Step 1: Refresh M3U accounts (with skip cache)
+        if dispatcharr_client:
+            from teamarr.database.groups import get_all_groups
+
+            with get_db() as conn:
+                groups = get_all_groups(conn, include_disabled=False)
+
+            account_ids = set()
+            for group in groups:
+                if group.m3u_account_id:
+                    account_ids.add(group.m3u_account_id)
+
+            if account_ids:
+                m3u_manager = M3UManager(dispatcharr_client)
+                m3u_manager.refresh_multiple(
+                    list(account_ids),
+                    timeout=120,
+                    skip_if_recent_minutes=60,
+                )
+
+        # Step 2: Process all active teams
+        team_result = process_all_teams(db_factory=get_db)
+
+        # Step 3: Process all event groups (matching + channel lifecycle)
+        group_result = process_all_event_groups(
+            db_factory=get_db,
+            dispatcharr_client=dispatcharr_client,
+        )
+
+        # Step 4: Get all stored XMLTV content and merge
+        xmltv_contents: list[str] = []
+        with get_db() as conn:
+            team_xmltv = get_all_team_xmltv(conn)
+            xmltv_contents.extend(team_xmltv)
+            group_xmltv = get_all_group_xmltv(conn)
+            xmltv_contents.extend(group_xmltv)
+
+        # Step 5: Write to output file if configured
+        output_path = settings_row.epg_output_path
+        file_written = False
+        file_size = 0
+
+        if xmltv_contents and output_path:
+            merged_xmltv = merge_xmltv_content(xmltv_contents)
+            output_file = Path(output_path)
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(merged_xmltv, encoding="utf-8")
+            file_written = True
+            file_size = len(merged_xmltv)
+
+        # Step 6: Trigger Dispatcharr EPG refresh
+        if dispatcharr_client and dispatcharr_settings.epg_id:
+            epg_manager = EPGManager(dispatcharr_client)
+            epg_manager.wait_for_refresh(dispatcharr_settings.epg_id, timeout=60)
 
         # Update stats run
-        stats_run.programmes_total = len(result.programmes)
-        stats_run.extra_metrics["teams_processed"] = result.teams_processed
+        total_programmes = team_result.total_programmes + group_result.total_programmes
+        stats_run.programmes_total = total_programmes
+        stats_run.extra_metrics["teams_processed"] = team_result.teams_processed
+        stats_run.extra_metrics["groups_processed"] = group_result.groups_processed
+        stats_run.extra_metrics["file_written"] = file_written
+        stats_run.extra_metrics["file_size"] = file_size
         stats_run.complete(status="completed")
+
     except Exception as e:
         stats_run.complete(status="failed", error=str(e))
         with get_db() as conn:
@@ -197,11 +262,41 @@ def generate_epg(
     with get_db() as conn:
         save_run(conn, stats_run)
 
+    duration = time.time() - start_time
+
+    # Aggregate match stats from group results
+    total_fetched = 0
+    total_filtered = 0
+    total_matched = 0
+    total_unmatched = 0
+
+    for result in group_result.results:
+        total_fetched += result.streams_fetched
+        total_filtered += result.filtered_not_event + result.filtered_include_regex + result.filtered_exclude_regex
+        total_matched += result.streams_matched
+        total_unmatched += result.streams_unmatched
+
+    # Calculate eligible (streams that passed filters) and match rate
+    total_eligible = total_matched + total_unmatched
+    match_rate = (total_matched / total_eligible * 100) if total_eligible > 0 else 0.0
+
+    match_stats = MatchStats(
+        streams_fetched=total_fetched,
+        streams_filtered=total_filtered,
+        streams_eligible=total_eligible,
+        streams_matched=total_matched,
+        streams_unmatched=total_unmatched,
+        streams_cached=0,  # Could aggregate from results if tracked
+        match_rate=round(match_rate, 1),
+    )
+
     return EPGGenerateResponse(
-        programmes_count=len(result.programmes),
-        teams_processed=result.teams_processed,
-        events_processed=0,
-        duration_seconds=(result.completed_at - result.started_at).total_seconds(),
+        programmes_count=total_programmes,
+        teams_processed=team_result.teams_processed,
+        events_processed=group_result.total_programmes,
+        duration_seconds=duration,
+        run_id=stats_run.id,
+        match_stats=match_stats,
     )
 
 
@@ -591,3 +686,83 @@ def get_epg_content(
         "truncated": truncated,
         "size_bytes": len(xmltv.encode("utf-8")),
     }
+
+
+# =============================================================================
+# Match stats endpoints
+# =============================================================================
+
+
+@router.get("/epg/matched-streams")
+def get_matched_streams(
+    run_id: int | None = Query(None, description="Processing run ID (defaults to latest)"),
+    group_id: int | None = Query(None, description="Filter by event group ID"),
+    limit: int = Query(500, ge=1, le=2000, description="Max results"),
+):
+    """Get matched streams from an EPG generation run.
+
+    Returns list of streams that were successfully matched to events.
+    """
+    from teamarr.database.stats import get_matched_streams as db_get_matched
+
+    with get_db() as conn:
+        streams = db_get_matched(conn, run_id=run_id, group_id=group_id, limit=limit)
+
+    return {
+        "count": len(streams),
+        "run_id": run_id,
+        "group_id": group_id,
+        "streams": streams,
+    }
+
+
+@router.get("/epg/failed-matches")
+def get_failed_matches(
+    run_id: int | None = Query(None, description="Processing run ID (defaults to latest)"),
+    group_id: int | None = Query(None, description="Filter by event group ID"),
+    reason: str | None = Query(None, description="Filter by failure reason"),
+    limit: int = Query(500, ge=1, le=2000, description="Max results"),
+):
+    """Get failed matches from an EPG generation run.
+
+    Returns list of streams that failed to match to events.
+
+    Reasons:
+    - unmatched: No event found for stream
+    - excluded_league: Matched but event is in non-configured league
+    - exception: Stream contains exception keyword
+    """
+    from teamarr.database.stats import get_failed_matches as db_get_failed
+
+    with get_db() as conn:
+        failures = db_get_failed(
+            conn, run_id=run_id, group_id=group_id, reason=reason, limit=limit
+        )
+
+    return {
+        "count": len(failures),
+        "run_id": run_id,
+        "group_id": group_id,
+        "reason_filter": reason,
+        "failures": failures,
+    }
+
+
+@router.get("/epg/match-stats")
+def get_match_stats(
+    run_id: int | None = Query(None, description="Processing run ID (defaults to latest)"),
+):
+    """Get match statistics summary for an EPG generation run.
+
+    Returns:
+    - Total matched/unmatched/cached counts
+    - Match rate percentage
+    - Breakdown by group and league
+    - Failure reasons breakdown
+    """
+    from teamarr.database.stats import get_match_stats_summary
+
+    with get_db() as conn:
+        stats = get_match_stats_summary(conn, run_id=run_id)
+
+    return stats

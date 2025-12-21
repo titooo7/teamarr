@@ -86,13 +86,16 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
         if league == "ufc":
             return self._get_ufc_events(target_date)
 
+        # Get sport/league from database config
+        sport_league = self._get_sport_league_from_db(league)
+
         # Check if this is a tournament sport
-        sport = self._get_sport(league)
+        sport = sport_league[0] if sport_league else self._get_sport(league)
         if sport in TOURNAMENT_SPORTS:
             return self._get_tournament_events(league, target_date, sport)
 
         date_str = target_date.strftime("%Y%m%d")
-        data = self._client.get_scoreboard(league, date_str)
+        data = self._client.get_scoreboard(league, date_str, sport_league)
         if not data:
             return []
 
@@ -116,18 +119,21 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
         For soccer, we scan the scoreboard endpoint for upcoming days and filter
         by team ID to find their games.
         """
-        sport = self._get_sport(league)
+        # Get sport/league from database config
+        sport_league = self._get_sport_league_from_db(league)
+        sport = sport_league[0] if sport_league else self._get_sport(league)
+
         now = datetime.now(UTC)
         cutoff = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
         # For soccer, the schedule endpoint only returns past games.
         # Use scoreboard scanning instead.
         if sport == "soccer":
-            return self._get_soccer_team_schedule(team_id, league, days_ahead)
+            return self._get_soccer_team_schedule(team_id, league, days_ahead, sport_league)
 
         # Standard behavior for US sports
         # ESPN schedule endpoint returns full season - filter by days_ahead
-        data = self._client.get_team_schedule(league, team_id)
+        data = self._client.get_team_schedule(league, team_id, sport_league)
         if not data:
             return []
 
@@ -147,6 +153,7 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
         team_id: str,
         league: str,
         days_ahead: int,
+        sport_league: tuple[str, str] | None = None,
     ) -> list[Event]:
         """Get soccer team schedule by scanning scoreboard.
 
@@ -163,7 +170,7 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
             target_date = today + timedelta(days=day_offset)
             date_str = target_date.strftime("%Y%m%d")
 
-            data = self._client.get_scoreboard(league, date_str)
+            data = self._client.get_scoreboard(league, date_str, sport_league)
             if not data:
                 continue
 
@@ -190,7 +197,10 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
         return False
 
     def get_team(self, team_id: str, league: str) -> Team | None:
-        data = self._client.get_team(league, team_id)
+        # Get sport/league from database config
+        sport_league = self._get_sport_league_from_db(league)
+
+        data = self._client.get_team(league, team_id, sport_league)
         if not data:
             return None
 
@@ -199,7 +209,7 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
             return None
 
         logo_url = self._extract_logo(team_data)
-        sport = self._get_sport(league)
+        sport = sport_league[0] if sport_league else self._get_sport(league)
 
         return Team(
             id=team_data.get("id", team_id),
@@ -227,7 +237,10 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
 
     def get_event(self, event_id: str, league: str) -> Event | None:
         """Fetch single event with full details from summary endpoint."""
-        data = self._client.get_event(league, event_id)
+        # Get sport/league from database config
+        sport_league = self._get_sport_league_from_db(league)
+
+        data = self._client.get_event(league, event_id, sport_league)
         if not data:
             return None
 
@@ -587,7 +600,10 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
         Returns TeamStats with record, rankings, scoring averages,
         and conference/division info.
         """
-        data = self._client.get_team(league, team_id)
+        # Get sport/league from database config
+        sport_league = self._get_sport_league_from_db(league)
+
+        data = self._client.get_team(league, team_id, sport_league)
         if not data or "team" not in data:
             return None
 

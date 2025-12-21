@@ -20,6 +20,64 @@ except ImportError:
     SUPPORTS_VARIABLE_LOOKBEHIND = False
 
 
+# Builtin patterns for identifying EVENT streams (inclusion approach)
+# Streams that look like actual sports events (team vs team, with date/time)
+# This is more robust than exclusion - only match streams that look like events
+BUILTIN_EVENT_PATTERNS = [
+    # Team vs Team separators
+    r"\s+(?:vs\.?|versus)\s+",  # "Team A vs Team B" or "Team A versus Team B"
+    r"\s+@\s+",  # "Team A @ Team B"
+    r"\s+at\s+",  # "Team A at Team B" (word boundary)
+    r"\s+v\s+",  # "Team A v Team B"
+    # Date patterns commonly used in event streams
+    r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\b",
+    r"\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b",  # MM/DD or MM/DD/YYYY
+    r"\b\d{4}-\d{2}-\d{2}\b",  # ISO date
+    # Time patterns
+    r"\d{1,2}:\d{2}\s*(?:AM|PM|ET|PT|CT|MT)\b",
+    # Event-style patterns (non-team-vs-team sports)
+    r"\bWeek\s+\d+\b",  # "Week 16" (NFL, etc.) - may not match event but passes filter
+    r"\bDay\s+\d+\b",  # "Day 5" (Tennis Grand Slams, etc.)
+    r"\bRound\s+\d+\b",  # "Round 3" (Golf, Tennis, etc.)
+    r"\bRace\s+\d+\b",  # "Race 1" (Motorsports)
+    r"\bGame\s+\d+\b",  # "Game 7" (Playoffs)
+    r"\bMatch\s+\d+\b",  # "Match 1"
+    r"\bUFC\s+\d+\b",  # "UFC 310"
+    r"\bPPV\b",  # Pay-per-view events
+    r"\bRedZone\b",  # NFL RedZone - passes filter, may not match event
+]
+
+# Compiled regex for event stream detection
+_BUILTIN_EVENT_REGEX: Pattern | None = None
+
+
+def get_builtin_event_pattern() -> Pattern:
+    """Get compiled regex pattern for detecting event-like streams."""
+    global _BUILTIN_EVENT_REGEX
+    if _BUILTIN_EVENT_REGEX is None:
+        combined = "|".join(f"({p})" for p in BUILTIN_EVENT_PATTERNS)
+        _BUILTIN_EVENT_REGEX = REGEX_MODULE.compile(combined, REGEX_MODULE.IGNORECASE)
+    return _BUILTIN_EVENT_REGEX
+
+
+def is_event_stream(stream_name: str) -> bool:
+    """Check if a stream name looks like a sports event.
+
+    Uses inclusion patterns - returns True if the stream contains
+    team separators (vs, @, at) or date/time patterns.
+
+    Args:
+        stream_name: The stream name to check
+
+    Returns:
+        True if stream looks like an event, False otherwise
+    """
+    if not stream_name or not stream_name.strip():
+        return False
+    pattern = get_builtin_event_pattern()
+    return bool(pattern.search(stream_name))
+
+
 @dataclass
 class StreamFilterConfig:
     """Configuration for stream filtering."""
@@ -31,6 +89,9 @@ class StreamFilterConfig:
     custom_teams_regex: str | None = None
     custom_teams_enabled: bool = False
     skip_builtin: bool = False
+    # Inclusion filter: only process streams that look like events (vs, @, date/time)
+    # Disabled by default - rely on matching to filter non-events
+    require_event_pattern: bool = False
 
 
 @dataclass
@@ -44,6 +105,7 @@ class FilterResult:
     total_input: int = 0
     filtered_include: int = 0  # Didn't match include pattern
     filtered_exclude: int = 0  # Matched exclude pattern
+    filtered_not_event: int = 0  # Didn't look like an event stream
     passed_count: int = 0
 
 
@@ -110,6 +172,7 @@ class StreamFilter:
         self._include_pattern: Pattern | None = None
         self._exclude_pattern: Pattern | None = None
         self._teams_pattern: Pattern | None = None
+        self._event_pattern: Pattern | None = None
 
         # Compile patterns
         if config.include_enabled and config.include_regex:
@@ -121,8 +184,17 @@ class StreamFilter:
         if config.custom_teams_enabled and config.custom_teams_regex:
             self._teams_pattern = compile_pattern(config.custom_teams_regex)
 
+        # Event pattern for inclusion filtering (if enabled)
+        if config.require_event_pattern:
+            self._event_pattern = get_builtin_event_pattern()
+
     def filter(self, streams: list[dict]) -> FilterResult:
         """Apply filters and return filtered streams with stats.
+
+        Filter order:
+        1. Event pattern check (if enabled) - stream must look like an event
+        2. Include filter (if enabled)
+        3. Exclude filter (if enabled)
 
         Args:
             streams: List of stream dicts with at least 'id' and 'name' keys
@@ -134,6 +206,12 @@ class StreamFilter:
 
         for stream in streams:
             name = stream.get("name", "")
+
+            # Event pattern filter: stream must look like an event (vs, @, date/time)
+            if self._event_pattern:
+                if not self._event_pattern.search(name):
+                    result.filtered_not_event += 1
+                    continue
 
             # Include filter: stream must match
             if self._include_pattern:

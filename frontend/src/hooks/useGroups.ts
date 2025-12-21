@@ -6,6 +6,7 @@ import {
   enableGroup,
   getGroup,
   listGroups,
+  previewGroup,
   processGroup,
   updateGroup,
 } from "@/api/groups"
@@ -81,5 +82,11 @@ export function useProcessGroup() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groups"] })
     },
+  })
+}
+
+export function usePreviewGroup() {
+  return useMutation({
+    mutationFn: (groupId: number) => previewGroup(groupId),
   })
 }

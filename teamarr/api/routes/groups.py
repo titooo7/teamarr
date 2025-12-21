@@ -778,6 +778,101 @@ class ProcessAllResponse(BaseModel):
     results: list[ProcessGroupResponse]
 
 
+class PreviewStreamModel(BaseModel):
+    """Individual stream preview result."""
+
+    stream_id: int
+    stream_name: str
+    matched: bool
+    event_id: str | None = None
+    event_name: str | None = None
+    home_team: str | None = None
+    away_team: str | None = None
+    league: str | None = None
+    start_time: str | None = None
+    from_cache: bool = False
+    exclusion_reason: str | None = None
+
+
+class PreviewGroupResponse(BaseModel):
+    """Response from previewing stream matches for a group."""
+
+    group_id: int
+    group_name: str
+    total_streams: int
+    filtered_count: int
+    matched_count: int
+    unmatched_count: int
+    filtered_not_event: int = 0
+    filtered_include_regex: int = 0
+    filtered_exclude_regex: int = 0
+    cache_hits: int = 0
+    cache_misses: int = 0
+    streams: list[PreviewStreamModel]
+    errors: list[str]
+
+
+@router.get("/{group_id}/preview", response_model=PreviewGroupResponse)
+def preview_group(group_id: int):
+    """Preview stream matching for a group without creating channels.
+
+    Fetches streams from Dispatcharr, filters them, matches them to events,
+    but does NOT create channels or generate EPG.
+    """
+    from datetime import date
+
+    from teamarr.database.groups import get_group
+    from teamarr.dispatcharr import get_factory
+    from teamarr.services import create_group_service
+
+    with get_db() as conn:
+        group = get_group(conn, group_id)
+        if not group:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Group {group_id} not found",
+            )
+
+    # Get Dispatcharr connection (has m3u manager)
+    factory = get_factory(get_db)
+    conn = factory.get_connection() if factory else None
+
+    # Preview the group
+    group_service = create_group_service(get_db, conn)
+    result = group_service.preview_group(group_id, date.today())
+
+    return PreviewGroupResponse(
+        group_id=result.group_id,
+        group_name=result.group_name,
+        total_streams=result.total_streams,
+        filtered_count=result.filtered_count,
+        matched_count=result.matched_count,
+        unmatched_count=result.unmatched_count,
+        filtered_not_event=result.filtered_not_event,
+        filtered_include_regex=result.filtered_include_regex,
+        filtered_exclude_regex=result.filtered_exclude_regex,
+        cache_hits=result.cache_hits,
+        cache_misses=result.cache_misses,
+        streams=[
+            PreviewStreamModel(
+                stream_id=s.stream_id,
+                stream_name=s.stream_name,
+                matched=s.matched,
+                event_id=s.event_id,
+                event_name=s.event_name,
+                home_team=s.home_team,
+                away_team=s.away_team,
+                league=s.league,
+                start_time=s.start_time,
+                from_cache=s.from_cache,
+                exclusion_reason=s.exclusion_reason,
+            )
+            for s in result.streams
+        ],
+        errors=result.errors,
+    )
+
+
 @router.post("/{group_id}/process", response_model=ProcessGroupResponse)
 def process_group(group_id: int):
     """Process an event EPG group.

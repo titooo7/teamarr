@@ -7,10 +7,27 @@ Provides REST API for:
 - Lifecycle sync (create/delete based on timing)
 """
 
+from datetime import date, datetime
+from typing import Any
+
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from teamarr.database import get_db
+
+
+def _safe_isoformat(value: Any) -> str | None:
+    """Safely convert a date/datetime value to ISO format string.
+
+    Handles cases where the value might already be a string from the database.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    return str(value)
 
 router = APIRouter()
 
@@ -163,16 +180,14 @@ def list_managed_channels(
                 dispatcharr_uuid=c.dispatcharr_uuid,
                 home_team=c.home_team,
                 away_team=c.away_team,
-                event_date=c.event_date.isoformat() if c.event_date else None,
+                event_date=_safe_isoformat(c.event_date),
                 event_name=c.event_name,
                 league=c.league,
                 sport=c.sport,
-                scheduled_delete_at=(
-                    c.scheduled_delete_at.isoformat() if c.scheduled_delete_at else None
-                ),
+                scheduled_delete_at=_safe_isoformat(c.scheduled_delete_at),
                 sync_status=c.sync_status,
-                created_at=c.created_at.isoformat() if c.created_at else None,
-                updated_at=c.updated_at.isoformat() if c.updated_at else None,
+                created_at=_safe_isoformat(c.created_at),
+                updated_at=_safe_isoformat(c.updated_at),
             )
             for c in channels
         ],
@@ -207,16 +222,14 @@ def get_managed_channel(channel_id: int):
         dispatcharr_uuid=channel.dispatcharr_uuid,
         home_team=channel.home_team,
         away_team=channel.away_team,
-        event_date=channel.event_date.isoformat() if channel.event_date else None,
+        event_date=_safe_isoformat(channel.event_date),
         event_name=channel.event_name,
         league=channel.league,
         sport=channel.sport,
-        scheduled_delete_at=(
-            channel.scheduled_delete_at.isoformat() if channel.scheduled_delete_at else None
-        ),
+        scheduled_delete_at=_safe_isoformat(channel.scheduled_delete_at),
         sync_status=channel.sync_status,
-        created_at=channel.created_at.isoformat() if channel.created_at else None,
-        updated_at=channel.updated_at.isoformat() if channel.updated_at else None,
+        created_at=_safe_isoformat(channel.created_at),
+        updated_at=_safe_isoformat(channel.updated_at),
     )
 
 
@@ -472,9 +485,7 @@ def get_pending_deletions() -> dict:
                 "id": c.id,
                 "channel_name": c.channel_name,
                 "tvg_id": c.tvg_id,
-                "scheduled_delete_at": (
-                    c.scheduled_delete_at.isoformat() if c.scheduled_delete_at else None
-                ),
+                "scheduled_delete_at": _safe_isoformat(c.scheduled_delete_at),
                 "dispatcharr_channel_id": c.dispatcharr_channel_id,
             }
             for c in channels

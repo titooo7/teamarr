@@ -39,21 +39,21 @@ CREATE TABLE IF NOT EXISTS templates (
     xmltv_categories JSON DEFAULT '["Sports"]',
     categories_apply_to TEXT DEFAULT 'events' CHECK(categories_apply_to IN ('all', 'events')),
 
-    -- Filler: Pre-Game
+    -- Filler: Pre-Game (uses .next suffix for upcoming game)
     pregame_enabled BOOLEAN DEFAULT 1,
     pregame_periods JSON DEFAULT '[
-        {"start_hours_before": 24, "end_hours_before": 6, "title": "Game Preview", "description": "{team_name} plays {opponent} in {hours_until} hours at {venue}"},
-        {"start_hours_before": 6, "end_hours_before": 2, "title": "Pre-Game Coverage", "description": "{team_name} vs {opponent} starts at {game_time}"},
-        {"start_hours_before": 2, "end_hours_before": 0, "title": "Game Starting Soon", "description": "{team_name} vs {opponent} starts in {hours_until} hours"}
+        {"start_hours_before": 24, "end_hours_before": 6, "title": "Game Preview", "description": "{team_name} plays {opponent.next} in {hours_until.next} hours at {venue.next}"},
+        {"start_hours_before": 6, "end_hours_before": 2, "title": "Pre-Game Coverage", "description": "{team_name} vs {opponent.next} starts at {game_time.next}"},
+        {"start_hours_before": 2, "end_hours_before": 0, "title": "Game Starting Soon", "description": "{team_name} vs {opponent.next} starts in {hours_until.next} hours"}
     ]',
-    pregame_fallback JSON DEFAULT '{"title": "Pregame Coverage", "subtitle": null, "description": "{team_name} plays {opponent} today at {game_time}", "art_url": null}',
+    pregame_fallback JSON DEFAULT '{"title": "Pregame Coverage", "subtitle": null, "description": "{team_name} plays {opponent.next} today at {game_time.next}", "art_url": null}',
 
-    -- Filler: Post-Game
+    -- Filler: Post-Game (uses .last suffix for completed game)
     postgame_enabled BOOLEAN DEFAULT 1,
     postgame_periods JSON DEFAULT '[
-        {"start_hours_after": 0, "end_hours_after": 3, "title": "Game Recap", "description": "{team_name} {result_text} {final_score}"},
-        {"start_hours_after": 3, "end_hours_after": 12, "title": "Extended Highlights", "description": "Highlights: {team_name} {result_text} {final_score} vs {opponent}"},
-        {"start_hours_after": 12, "end_hours_after": 24, "title": "Full Game Replay", "description": "Replay: {team_name} vs {opponent}"}
+        {"start_hours_after": 0, "end_hours_after": 3, "title": "Game Recap", "description": "{team_name} {result_text.last} {final_score.last}"},
+        {"start_hours_after": 3, "end_hours_after": 12, "title": "Extended Highlights", "description": "Highlights: {team_name} {result_text.last} {final_score.last} vs {opponent.last}"},
+        {"start_hours_after": 12, "end_hours_after": 24, "title": "Full Game Replay", "description": "Replay: {team_name} vs {opponent.last}"}
     ]',
     postgame_fallback JSON DEFAULT '{"title": "Postgame Recap", "subtitle": null, "description": "{team_name} {result_text.last} the {opponent.last} {final_score.last}", "art_url": null}',
     postgame_conditional JSON DEFAULT '{"enabled": false, "description_final": null, "description_not_final": null}',
@@ -234,6 +234,14 @@ CREATE TABLE IF NOT EXISTS settings (
     -- Background Scheduler
     scheduler_enabled BOOLEAN DEFAULT 1,
     scheduler_interval_minutes INTEGER DEFAULT 15,
+
+    -- Stream Filtering (global defaults for event groups)
+    -- Require event pattern: only match streams that look like events (have vs/@/at/date patterns)
+    stream_filter_require_event_pattern BOOLEAN DEFAULT 1,
+    -- Custom inclusion patterns (JSON array of regex patterns) - stream must match at least one
+    stream_filter_include_patterns JSON DEFAULT '[]',
+    -- Custom exclusion patterns (JSON array of regex patterns) - stream must NOT match any
+    stream_filter_exclude_patterns JSON DEFAULT '[]',
 
     -- Schema Version
     schema_version INTEGER DEFAULT 2
@@ -421,6 +429,11 @@ CREATE INDEX IF NOT EXISTS idx_managed_channels_delete ON managed_channels(sched
 CREATE INDEX IF NOT EXISTS idx_managed_channels_dispatcharr ON managed_channels(dispatcharr_channel_id);
 CREATE INDEX IF NOT EXISTS idx_managed_channels_tvg ON managed_channels(tvg_id);
 CREATE INDEX IF NOT EXISTS idx_managed_channels_sync ON managed_channels(sync_status);
+
+-- Unique constraint for event channels (allows different exception_keywords for same event)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mc_unique_event
+    ON managed_channels(event_epg_group_id, event_id, event_provider, COALESCE(exception_keyword, ''))
+    WHERE deleted_at IS NULL;
 
 CREATE TRIGGER IF NOT EXISTS update_managed_channels_timestamp
 AFTER UPDATE ON managed_channels
@@ -731,7 +744,7 @@ CREATE TABLE IF NOT EXISTS managed_channel_history (
 
     -- Change source
     change_source TEXT
-        CHECK(change_source IN ('epg_generation', 'reconciliation', 'api', 'scheduler', 'manual', 'external_sync')),
+        CHECK(change_source IN ('epg_generation', 'reconciliation', 'api', 'scheduler', 'manual', 'external_sync', 'lifecycle', 'cross_group_enforcement', 'keyword_enforcement')),
 
     -- Change details
     field_name TEXT,                         -- For 'modified': which field changed
@@ -965,4 +978,77 @@ CREATE TABLE IF NOT EXISTS stats_snapshots (
 );
 
 CREATE INDEX IF NOT EXISTS idx_stats_snapshots_type ON stats_snapshots(snapshot_type);
-CREATE INDEX IF NOT EXISTS idx_stats_snapshots_period ON stats_snapshots(period_start)
+CREATE INDEX IF NOT EXISTS idx_stats_snapshots_period ON stats_snapshots(period_start);
+
+
+-- =============================================================================
+-- EPG_MATCHED_STREAMS TABLE
+-- Details of successfully matched streams per generation run
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS epg_matched_streams (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Link to processing run
+    run_id INTEGER NOT NULL,
+
+    -- Group info
+    group_id INTEGER NOT NULL,
+    group_name TEXT,
+
+    -- Stream info
+    stream_id INTEGER,
+    stream_name TEXT NOT NULL,
+
+    -- Event info
+    event_id TEXT NOT NULL,
+    event_name TEXT,
+    event_date TEXT,
+
+    -- Match details
+    detected_league TEXT,
+    home_team TEXT,
+    away_team TEXT,
+    from_cache BOOLEAN DEFAULT 0,
+
+    FOREIGN KEY (run_id) REFERENCES processing_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (group_id) REFERENCES event_epg_groups(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_matched_streams_run ON epg_matched_streams(run_id);
+CREATE INDEX IF NOT EXISTS idx_matched_streams_group ON epg_matched_streams(group_id);
+
+
+-- =============================================================================
+-- EPG_FAILED_MATCHES TABLE
+-- Details of streams that failed to match per generation run
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS epg_failed_matches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Link to processing run
+    run_id INTEGER NOT NULL,
+
+    -- Group info
+    group_id INTEGER NOT NULL,
+    group_name TEXT,
+
+    -- Stream info
+    stream_id INTEGER,
+    stream_name TEXT NOT NULL,
+
+    -- Failure details
+    reason TEXT NOT NULL,  -- 'unmatched', 'excluded_league', 'filtered_include', 'filtered_exclude', 'exception'
+    exclusion_reason TEXT,  -- For excluded_league: specific reason
+    detail TEXT,            -- Additional context
+
+    FOREIGN KEY (run_id) REFERENCES processing_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (group_id) REFERENCES event_epg_groups(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_failed_matches_run ON epg_failed_matches(run_id);
+CREATE INDEX IF NOT EXISTS idx_failed_matches_group ON epg_failed_matches(group_id);
+CREATE INDEX IF NOT EXISTS idx_failed_matches_reason ON epg_failed_matches(reason)

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { useQuery } from "@tanstack/react-query"
 import {
-  Play,
+  Search,
   Trash2,
   Pencil,
   Power,
@@ -11,6 +11,8 @@ import {
   Loader2,
   Download,
   X,
+  Check,
+  AlertCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -38,10 +40,10 @@ import {
   useGroups,
   useDeleteGroup,
   useToggleGroup,
-  useProcessGroup,
+  usePreviewGroup,
 } from "@/hooks/useGroups"
 import { useTemplates } from "@/hooks/useTemplates"
-import type { EventGroup } from "@/api/types"
+import type { EventGroup, PreviewGroupResponse } from "@/api/types"
 
 // Fetch leagues for logo lookup
 async function fetchLeagues(): Promise<{ slug: string; name: string; logo_url: string | null }[]> {
@@ -58,7 +60,11 @@ export function EventGroups() {
   const { data: cachedLeagues } = useQuery({ queryKey: ["leagues"], queryFn: fetchLeagues })
   const deleteMutation = useDeleteGroup()
   const toggleMutation = useToggleGroup()
-  const processMutation = useProcessGroup()
+  const previewMutation = usePreviewGroup()
+
+  // Preview modal state
+  const [previewData, setPreviewData] = useState<PreviewGroupResponse | null>(null)
+  const [showPreviewModal, setShowPreviewModal] = useState(false)
 
   // Create league logo lookup map
   const leagueLogos = useMemo(() => {
@@ -139,14 +145,13 @@ export function EventGroups() {
     }
   }
 
-  const handleProcess = async (group: EventGroup) => {
+  const handlePreview = async (group: EventGroup) => {
     try {
-      const result = await processMutation.mutateAsync(group.id)
-      toast.success(
-        `Processed "${group.name}": ${result.channels_created} created, ${result.streams_matched} matched`
-      )
+      const result = await previewMutation.mutateAsync(group.id)
+      setPreviewData(result)
+      setShowPreviewModal(true)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to process group")
+      toast.error(err instanceof Error ? err.message : "Failed to preview group")
     }
   }
 
@@ -438,15 +443,15 @@ export function EventGroups() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={() => handleProcess(group)}
-                          disabled={processMutation.isPending}
-                          title="Process group"
+                          onClick={() => handlePreview(group)}
+                          disabled={previewMutation.isPending}
+                          title="Preview stream matches"
                         >
-                          {processMutation.isPending &&
-                          processMutation.variables === group.id ? (
+                          {previewMutation.isPending &&
+                          previewMutation.variables === group.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
-                            <Play className="h-4 w-4" />
+                            <Search className="h-4 w-4" />
                           )}
                         </Button>
                         <Button
@@ -545,6 +550,130 @@ export function EventGroups() {
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               )}
               Delete {selectedIds.size} Groups
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Stream Preview Modal */}
+      <Dialog open={showPreviewModal} onOpenChange={setShowPreviewModal}>
+        <DialogContent onClose={() => setShowPreviewModal(false)} className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>
+              Stream Preview: {previewData?.group_name}
+            </DialogTitle>
+            <DialogDescription>
+              Preview of stream matching results. Processing is done via EPG generation.
+            </DialogDescription>
+          </DialogHeader>
+
+          {previewData && (
+            <div className="flex-1 overflow-hidden flex flex-col gap-4">
+              {/* Summary stats */}
+              <div className="flex items-center gap-4 p-3 bg-muted/50 rounded-lg text-sm">
+                <span>{previewData.total_streams} streams</span>
+                <span className="text-muted-foreground">|</span>
+                <span className="text-green-600 dark:text-green-400">
+                  {previewData.matched_count} matched
+                </span>
+                <span className="text-muted-foreground">|</span>
+                <span className="text-amber-600 dark:text-amber-400">
+                  {previewData.unmatched_count} unmatched
+                </span>
+                {previewData.filtered_count > 0 && (
+                  <>
+                    <span className="text-muted-foreground">|</span>
+                    <span className="text-muted-foreground">
+                      {previewData.filtered_count} filtered
+                    </span>
+                  </>
+                )}
+                {previewData.cache_hits > 0 && (
+                  <>
+                    <span className="text-muted-foreground">|</span>
+                    <span className="text-muted-foreground">
+                      {previewData.cache_hits}/{previewData.cache_hits + previewData.cache_misses} cached
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {/* Errors */}
+              {previewData.errors.length > 0 && (
+                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive">
+                  {previewData.errors.map((err, i) => (
+                    <div key={i}>{err}</div>
+                  ))}
+                </div>
+              )}
+
+              {/* Stream table */}
+              <div className="flex-1 overflow-auto border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">Status</TableHead>
+                      <TableHead className="w-[40%]">Stream Name</TableHead>
+                      <TableHead>League</TableHead>
+                      <TableHead>Event Match</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {previewData.streams.map((stream, i) => (
+                      <TableRow key={i}>
+                        <TableCell>
+                          {stream.matched ? (
+                            <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                          ) : (
+                            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {stream.stream_name}
+                        </TableCell>
+                        <TableCell>
+                          {stream.league ? (
+                            <Badge variant="secondary">{stream.league.toUpperCase()}</Badge>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {stream.matched ? (
+                            <div className="text-sm">
+                              <div className="font-medium">{stream.event_name}</div>
+                              {stream.start_time && (
+                                <div className="text-muted-foreground text-xs">
+                                  {new Date(stream.start_time).toLocaleString()}
+                                </div>
+                              )}
+                            </div>
+                          ) : stream.exclusion_reason ? (
+                            <span className="text-muted-foreground text-xs">
+                              {stream.exclusion_reason}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">No match</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {previewData.streams.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                          No streams to display
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPreviewModal(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

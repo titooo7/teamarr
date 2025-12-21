@@ -48,19 +48,26 @@ export interface ProcessingRun {
   duration_ms: number | null
   status: string
   error_message: string | null
-  streams_fetched: number
-  streams_matched: number
-  streams_unmatched: number
-  streams_cached: number
-  channels_created: number
-  channels_updated: number
-  channels_deleted: number
-  channels_errors: number
-  programmes_total: number
-  programmes_events: number
-  programmes_pregame: number
-  programmes_postgame: number
-  programmes_idle: number
+  streams?: {
+    fetched: number
+    matched: number
+    unmatched: number
+    cached: number
+  }
+  channels?: {
+    created: number
+    updated: number
+    deleted: number
+    skipped: number
+    errors: number
+  }
+  programmes?: {
+    total: number
+    events: number
+    pregame: number
+    postgame: number
+    idle: number
+  }
   xmltv_size_bytes: number
   extra_metrics: Record<string, unknown>
 }

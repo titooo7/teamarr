@@ -336,7 +336,7 @@ export function EPG() {
                   <div className="text-2xl font-bold">{analysis.channels.total}</div>
                   <div className="text-xs text-muted-foreground">Channels</div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    {analysis.channels.team_based} team / {analysis.channels.event_based} event
+                    {analysis.channels.team_based} team-based / {analysis.channels.event_based} event-based
                   </div>
                 </div>
                 <div className="text-center p-3 bg-muted/50 rounded-lg">
@@ -548,11 +548,11 @@ export function EPG() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Status</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Started</TableHead>
-                  <TableHead>Duration</TableHead>
+                  <TableHead>Generated At</TableHead>
+                  <TableHead>Channels</TableHead>
+                  <TableHead>Events</TableHead>
                   <TableHead>Programmes</TableHead>
-                  <TableHead>Streams</TableHead>
+                  <TableHead>Duration</TableHead>
                   <TableHead>Size</TableHead>
                 </TableRow>
               </TableHeader>
@@ -570,25 +570,13 @@ export function EPG() {
                         <Clock className="h-4 w-4 text-muted-foreground" />
                       )}
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{run.run_type}</Badge>
-                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {formatRelativeTime(run.started_at)}
                     </TableCell>
+                    <TableCell>{(run.channels?.created ?? 0) + (run.channels?.updated ?? 0) + (run.channels?.skipped ?? 0)}</TableCell>
+                    <TableCell>{run.programmes?.events ?? 0}</TableCell>
+                    <TableCell>{run.programmes?.total ?? 0}</TableCell>
                     <TableCell>{formatDuration(run.duration_ms)}</TableCell>
-                    <TableCell>{run.programmes_total}</TableCell>
-                    <TableCell>
-                      {run.streams_matched > 0 && (
-                        <span className="text-green-600">{run.streams_matched}</span>
-                      )}
-                      {run.streams_unmatched > 0 && (
-                        <span className="text-red-600 ml-1">
-                          /{run.streams_unmatched}
-                        </span>
-                      )}
-                      {run.streams_matched === 0 && run.streams_unmatched === 0 && "-"}
-                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {formatBytes(run.xmltv_size_bytes)}
                     </TableCell>

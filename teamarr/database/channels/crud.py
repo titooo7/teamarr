@@ -30,8 +30,30 @@ def create_managed_channel(
         **kwargs: Additional fields (channel_number, logo_url, etc.)
 
     Returns:
-        ID of created record
+        ID of created record, or existing record ID if duplicate
     """
+    exception_keyword = kwargs.get("exception_keyword")
+
+    # Check for existing channel first (handles race conditions)
+    if exception_keyword:
+        existing = conn.execute(
+            """SELECT id FROM managed_channels
+               WHERE event_epg_group_id = ? AND event_id = ? AND event_provider = ?
+                 AND exception_keyword = ? AND deleted_at IS NULL""",
+            (event_epg_group_id, event_id, event_provider, exception_keyword),
+        ).fetchone()
+    else:
+        existing = conn.execute(
+            """SELECT id FROM managed_channels
+               WHERE event_epg_group_id = ? AND event_id = ? AND event_provider = ?
+                 AND (exception_keyword IS NULL OR exception_keyword = '')
+                 AND deleted_at IS NULL""",
+            (event_epg_group_id, event_id, event_provider),
+        ).fetchone()
+
+    if existing:
+        return existing[0]
+
     # Build column list and values
     columns = [
         "event_epg_group_id",
@@ -82,11 +104,35 @@ def create_managed_channel(
     placeholders = ", ".join(["?"] * len(values))
     column_str = ", ".join(columns)
 
-    cursor = conn.execute(
-        f"INSERT INTO managed_channels ({column_str}) VALUES ({placeholders})",
-        values,
-    )
-    return cursor.lastrowid
+    try:
+        cursor = conn.execute(
+            f"INSERT INTO managed_channels ({column_str}) VALUES ({placeholders})",
+            values,
+        )
+        return cursor.lastrowid
+    except Exception:
+        # Handle race condition - record may have been created between check and insert
+        # Re-check for existing record
+        if exception_keyword:
+            existing = conn.execute(
+                """SELECT id FROM managed_channels
+                   WHERE event_epg_group_id = ? AND event_id = ? AND event_provider = ?
+                     AND exception_keyword = ? AND deleted_at IS NULL""",
+                (event_epg_group_id, event_id, event_provider, exception_keyword),
+            ).fetchone()
+        else:
+            existing = conn.execute(
+                """SELECT id FROM managed_channels
+                   WHERE event_epg_group_id = ? AND event_id = ? AND event_provider = ?
+                     AND (exception_keyword IS NULL OR exception_keyword = '')
+                     AND deleted_at IS NULL""",
+                (event_epg_group_id, event_id, event_provider),
+            ).fetchone()
+
+        if existing:
+            return existing[0]
+        # Re-raise if we still can't find it
+        raise
 
 
 def get_managed_channel(conn: Connection, channel_id: int) -> ManagedChannel | None:
@@ -307,8 +353,7 @@ def mark_channel_deleted(
     cursor = conn.execute(
         """UPDATE managed_channels
            SET deleted_at = datetime('now'),
-               delete_reason = ?,
-               sync_status = 'deleted'
+               delete_reason = ?
            WHERE id = ?""",
         (reason, channel_id),
     )

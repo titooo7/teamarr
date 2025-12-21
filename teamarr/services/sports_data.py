@@ -22,12 +22,35 @@ from teamarr.utilities.cache import (
 logger = logging.getLogger(__name__)
 
 
+def _ensure_registry_initialized() -> None:
+    """Ensure ProviderRegistry is initialized with dependencies.
+
+    Called automatically by create_default_service() to ensure providers
+    have access to league mappings from the database.
+    """
+    if ProviderRegistry.is_initialized():
+        return
+
+    from teamarr.database import get_db
+    from teamarr.services.league_mappings import init_league_mapping_service
+
+    league_mapping_service = init_league_mapping_service(get_db)
+    ProviderRegistry.initialize(league_mapping_service)
+    logger.info("Auto-initialized ProviderRegistry with league mappings")
+
+
 def create_default_service() -> "SportsDataService":
     """Create SportsDataService with providers from registry.
 
     Providers are registered in teamarr/providers/__init__.py.
     Priority is determined by registration order and priority values.
+
+    Automatically initializes ProviderRegistry if not already done
+    (e.g., when called from CLI or scheduler outside FastAPI context).
     """
+    # Ensure registry is initialized with database league mappings
+    _ensure_registry_initialized()
+
     # Get all enabled providers from the registry, sorted by priority
     providers = ProviderRegistry.get_all()
     return SportsDataService(providers=providers)

@@ -67,6 +67,9 @@ async def lifespan(app: FastAPI):
     cache_service.refresh()
     logger.info("Team/league cache refreshed")
 
+    # Reload league mapping service to pick up new league names from cache
+    league_mapping_service.reload()
+
     # Load display settings from database into config cache
     from teamarr.config import set_display_settings, set_timezone
     from teamarr.database.settings import get_display_settings, get_epg_settings

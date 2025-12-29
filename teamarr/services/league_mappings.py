@@ -2,19 +2,33 @@
 
 Provides database-backed implementation of LeagueMappingSource.
 Providers depend on this service, not the database directly.
+
+IMPORTANT: All league mappings are cached in memory at initialization.
+This is critical for thread-safety during parallel team processing.
 """
 
+import logging
 from collections.abc import Callable, Generator
 from sqlite3 import Connection
 
 from teamarr.core import LeagueMapping
 
+logger = logging.getLogger(__name__)
+
 
 class LeagueMappingService:
-    """Database-backed league mapping source.
+    """Cached league mapping source.
 
     Implements the LeagueMappingSource protocol defined in core.
     Providers receive an instance of this service at construction time.
+
+    THREAD-SAFETY: All mappings are loaded into memory at initialization.
+    No database access occurs after initialization, making this safe for
+    use in parallel processing threads.
+
+    Provides methods for template variable resolution:
+    - get_league_id(league_code) - returns alias or league_code
+    - get_league_display_name(league_code) - returns display_name or fallback
     """
 
     def __init__(
@@ -22,60 +36,35 @@ class LeagueMappingService:
         db_getter: Callable[[], Generator[Connection, None, None]],
     ):
         self._db_getter = db_getter
+        # Cache all mappings at initialization for thread-safety
+        self._mappings: dict[tuple[str, str], LeagueMapping] = {}
+        self._provider_leagues: dict[str, list[LeagueMapping]] = {}
+        # Additional caches for template variable resolution
+        self._league_id_aliases: dict[str, str] = {}  # league_code -> alias
+        self._league_display_names: dict[str, str] = {}  # league_code -> display_name
+        self._league_cache_names: dict[str, str] = {}  # league_code -> cached league_name
+        self._load_all_mappings()
 
-    def get_mapping(self, league_code: str, provider: str) -> LeagueMapping | None:
-        """Get mapping for a specific league and provider."""
+    def _load_all_mappings(self) -> None:
+        """Load all league mappings into memory.
+
+        Called once at initialization. After this, no DB access is needed.
+        Also loads league_id_alias and display_name for template variable resolution.
+        """
         with self._db_getter() as conn:
+            # Load configured leagues with aliases
             cursor = conn.execute(
                 """
                 SELECT league_code, provider, provider_league_id,
-                       provider_league_name, sport, display_name, logo_url
+                       provider_league_name, sport, display_name, logo_url,
+                       league_id_alias
                 FROM leagues
-                WHERE league_code = ? AND provider = ? AND enabled = 1
-                """,
-                (league_code.lower(), provider),
-            )
-            row = cursor.fetchone()
-            if not row:
-                return None
-
-            return LeagueMapping(
-                league_code=row["league_code"],
-                provider=row["provider"],
-                provider_league_id=row["provider_league_id"],
-                provider_league_name=row["provider_league_name"],
-                sport=row["sport"],
-                display_name=row["display_name"],
-                logo_url=row["logo_url"],
-            )
-
-    def supports_league(self, league_code: str, provider: str) -> bool:
-        """Check if provider supports the given league."""
-        with self._db_getter() as conn:
-            cursor = conn.execute(
+                WHERE enabled = 1
+                ORDER BY provider, league_code
                 """
-                SELECT 1 FROM leagues
-                WHERE league_code = ? AND provider = ? AND enabled = 1
-                """,
-                (league_code.lower(), provider),
             )
-            return cursor.fetchone() is not None
-
-    def get_leagues_for_provider(self, provider: str) -> list[LeagueMapping]:
-        """Get all leagues supported by a provider."""
-        with self._db_getter() as conn:
-            cursor = conn.execute(
-                """
-                SELECT league_code, provider, provider_league_id,
-                       provider_league_name, sport, display_name, logo_url
-                FROM leagues
-                WHERE provider = ? AND enabled = 1
-                ORDER BY league_code
-                """,
-                (provider,),
-            )
-            return [
-                LeagueMapping(
+            for row in cursor.fetchall():
+                mapping = LeagueMapping(
                     league_code=row["league_code"],
                     provider=row["provider"],
                     provider_league_id=row["provider_league_id"],
@@ -83,9 +72,123 @@ class LeagueMappingService:
                     sport=row["sport"],
                     display_name=row["display_name"],
                     logo_url=row["logo_url"],
+                    league_id_alias=row["league_id_alias"],
                 )
-                for row in cursor.fetchall()
-            ]
+                # Index by (league_code, provider) for fast lookup
+                key = (row["league_code"].lower(), row["provider"])
+                self._mappings[key] = mapping
+
+                # Also index by provider for get_leagues_for_provider
+                if row["provider"] not in self._provider_leagues:
+                    self._provider_leagues[row["provider"]] = []
+                self._provider_leagues[row["provider"]].append(mapping)
+
+                # Cache league_id_alias for template variables
+                league_code_lower = row["league_code"].lower()
+                if row["league_id_alias"]:
+                    self._league_id_aliases[league_code_lower] = row["league_id_alias"]
+
+                # Cache display_name for template variables
+                if row["display_name"]:
+                    self._league_display_names[league_code_lower] = row["display_name"]
+
+            # Also load league names from league_cache for fallback
+            cursor = conn.execute(
+                """
+                SELECT league_slug, league_name
+                FROM league_cache
+                WHERE league_name IS NOT NULL
+                """
+            )
+            for row in cursor.fetchall():
+                slug = row["league_slug"].lower()
+                if slug not in self._league_cache_names:
+                    self._league_cache_names[slug] = row["league_name"]
+
+        logger.info(
+            f"Loaded {len(self._mappings)} league mappings into memory "
+            f"({len(self._provider_leagues)} providers, "
+            f"{len(self._league_id_aliases)} aliases)"
+        )
+
+    def reload(self) -> None:
+        """Reload all mappings from database.
+
+        Call this if leagues table is modified and you need fresh data.
+        """
+        self._mappings.clear()
+        self._provider_leagues.clear()
+        self._league_id_aliases.clear()
+        self._league_display_names.clear()
+        self._league_cache_names.clear()
+        self._load_all_mappings()
+
+    def get_league_id(self, league_code: str) -> str:
+        """Get the display league ID for a league.
+
+        Returns league_id_alias if configured, otherwise returns league_code.
+        Thread-safe: uses in-memory cache, no DB access.
+
+        Args:
+            league_code: Raw league code (e.g., 'eng.1', 'college-football')
+
+        Returns:
+            Alias (e.g., 'epl', 'ncaaf') if configured, otherwise league_code
+        """
+        key = league_code.lower()
+        return self._league_id_aliases.get(key, league_code)
+
+    def get_league_display_name(self, league_code: str) -> str:
+        """Get the full display name for a league.
+
+        Fallback chain:
+            1. display_name from leagues table
+            2. league_name from league_cache table
+            3. league_code uppercase
+
+        Thread-safe: uses in-memory cache, no DB access.
+
+        Args:
+            league_code: Raw league code (e.g., 'eng.1', 'nfl')
+
+        Returns:
+            Display name (e.g., 'English Premier League', 'NFL')
+        """
+        key = league_code.lower()
+
+        # Try display_name from leagues table
+        if key in self._league_display_names:
+            return self._league_display_names[key]
+
+        # Fallback to league_name from league_cache
+        if key in self._league_cache_names:
+            return self._league_cache_names[key]
+
+        # Final fallback to league_code uppercase
+        return league_code.upper()
+
+    def get_mapping(self, league_code: str, provider: str) -> LeagueMapping | None:
+        """Get mapping for a specific league and provider.
+
+        Thread-safe: uses in-memory cache, no DB access.
+        """
+        key = (league_code.lower(), provider)
+        return self._mappings.get(key)
+
+    def supports_league(self, league_code: str, provider: str) -> bool:
+        """Check if provider supports the given league.
+
+        Thread-safe: uses in-memory cache, no DB access.
+        """
+        key = (league_code.lower(), provider)
+        return key in self._mappings
+
+    def get_leagues_for_provider(self, provider: str) -> list[LeagueMapping]:
+        """Get all leagues supported by a provider.
+
+        Thread-safe: uses in-memory cache, no DB access.
+        """
+        return self._provider_leagues.get(provider, [])
 
 
 # Singleton instance - initialized by app startup

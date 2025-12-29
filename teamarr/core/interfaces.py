@@ -30,6 +30,7 @@ class LeagueMapping:
     sport: str  # 'Football', 'Hockey', 'Soccer'
     display_name: str  # 'NFL', 'Ontario Hockey League'
     logo_url: str | None = None
+    league_id_alias: str | None = None  # Override for {league_id} variable
 
 
 class LeagueMappingSource(Protocol):

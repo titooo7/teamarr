@@ -143,12 +143,13 @@ def extract_league(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
         mens-college-basketball → NCAAM (alias)
         eng.1 → EPL (alias)
         nfl → NFL (code, no alias needed)
-    """
-    from teamarr.database import get_db
-    from teamarr.database.leagues import get_league_id
 
-    with get_db() as conn:
-        league_id = get_league_id(conn, ctx.team_config.league)
+    THREAD-SAFE: Uses in-memory cache, no DB access.
+    """
+    from teamarr.services.league_mappings import get_league_mapping_service
+
+    service = get_league_mapping_service()
+    league_id = service.get_league_id(ctx.team_config.league)
     return league_id.upper()
 
 
@@ -170,32 +171,13 @@ def extract_league_name(ctx: TemplateContext, game_ctx: GameContext | None) -> s
         nfl → NFL
         mens-college-basketball → NCAA Men's Basketball
         eng.1 → English Premier League
+
+    THREAD-SAFE: Uses in-memory cache, no DB access.
     """
-    from teamarr.database import get_db
+    from teamarr.services.league_mappings import get_league_mapping_service
 
-    league_code = ctx.team_config.league
-
-    with get_db() as conn:
-        # 1. Check our curated display_name in leagues table
-        cursor = conn.execute(
-            "SELECT display_name FROM leagues WHERE league_code = ?",
-            (league_code,),
-        )
-        row = cursor.fetchone()
-        if row and row["display_name"]:
-            return row["display_name"]
-
-        # 2. Fallback to API's league_name from league_cache
-        cursor = conn.execute(
-            "SELECT league_name FROM league_cache WHERE league_slug = ?",
-            (league_code,),
-        )
-        row = cursor.fetchone()
-        if row and row["league_name"]:
-            return row["league_name"]
-
-    # 3. Final fallback to league code uppercase
-    return league_code.upper()
+    service = get_league_mapping_service()
+    return service.get_league_display_name(ctx.team_config.league)
 
 
 @register_variable(
@@ -237,12 +219,14 @@ def extract_sport_lower(ctx: TemplateContext, game_ctx: GameContext | None) -> s
     description="League identifier - uses alias if configured (e.g., 'nfl', 'epl', 'ncaam')",
 )
 def extract_league_id(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
-    """Return league_id_alias if configured, otherwise league_code."""
-    from teamarr.database import get_db
-    from teamarr.database.leagues import get_league_id
+    """Return league_id_alias if configured, otherwise league_code.
 
-    with get_db() as conn:
-        return get_league_id(conn, ctx.team_config.league)
+    THREAD-SAFE: Uses in-memory cache, no DB access.
+    """
+    from teamarr.services.league_mappings import get_league_mapping_service
+
+    service = get_league_mapping_service()
+    return service.get_league_id(ctx.team_config.league)
 
 
 @register_variable(

@@ -105,6 +105,7 @@ class CachedMatcher:
         self._service = service
         self._get_connection = get_connection
         self._group_id = group_id
+        self._include_final_events = include_final_events
 
         # Initialize matcher and cache
         self._matcher = MultiLeagueMatcher(
@@ -154,6 +155,30 @@ class CachedMatcher:
                 cache_hits += 1
                 # Cache hit - use cached event, refresh dynamic fields
                 event = self._refresh_event(cached.event_id, cached.league)
+
+                # Check if event became final and should now be excluded
+                if event and not self._include_final_events:
+                    if event.status.state == "final":
+                        # Event is now final - invalidate cache and exclude
+                        self._cache.delete(self._group_id, stream_id, stream_name)
+                        logger.debug(
+                            f"[CACHE] Event {cached.event_id} became final, "
+                            f"invalidating cache for stream {stream_name}"
+                        )
+                        result = CachedMatchResult(
+                            stream_name=stream_name,
+                            matched=True,
+                            event=event,
+                            league=cached.league,
+                            included=False,
+                            exclusion_reason="event_final",
+                            from_cache=True,
+                            refreshed=True,
+                        )
+                        results.append(result)
+                        continue
+
+                # Event is valid - touch cache and return match
                 self._cache.touch(self._group_id, stream_id, stream_name, self._generation)
 
                 result = CachedMatchResult(

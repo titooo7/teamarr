@@ -260,6 +260,41 @@ class StreamMatchCache:
             logger.warning(f"[CACHE] purge_stale failed: {e}")
             return 0
 
+    def delete(
+        self,
+        group_id: int,
+        stream_id: int,
+        stream_name: str,
+    ) -> bool:
+        """Delete a single cache entry.
+
+        Use when a cached match is no longer valid (e.g., event became final).
+
+        Args:
+            group_id: Event group ID
+            stream_id: Stream ID
+            stream_name: Exact stream name
+
+        Returns:
+            True if entry was deleted
+        """
+        fingerprint = compute_fingerprint(group_id, stream_id, stream_name)
+
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.execute(
+                    "DELETE FROM stream_match_cache WHERE fingerprint = ?",
+                    (fingerprint,),
+                )
+                conn.commit()
+                deleted = cursor.rowcount > 0
+                if deleted:
+                    logger.debug(f"[CACHE DELETE] Invalidated entry for stream_id={stream_id}")
+                return deleted
+        except sqlite3.Error as e:
+            logger.warning(f"[CACHE] delete failed: {e}")
+            return False
+
     def clear_group(self, group_id: int) -> int:
         """Clear all cache entries for a specific group.
 
@@ -325,22 +360,31 @@ def get_generation_counter(get_connection: Callable) -> int:
 
 
 def increment_generation_counter(get_connection: Callable) -> int:
-    """Increment and return the new EPG generation counter."""
-    with get_connection() as conn:
-        conn.execute(
-            """
-            UPDATE settings
-            SET epg_generation_counter = COALESCE(epg_generation_counter, 0) + 1
-            WHERE id = 1
-            """
-        )
-        conn.commit()
+    """Increment and return the new EPG generation counter.
 
-        cursor = conn.execute("SELECT epg_generation_counter FROM settings WHERE id = 1")
-        row = cursor.fetchone()
-        new_value = row["epg_generation_counter"] if row else 1
-        logger.debug(f"EPG generation counter: {new_value}")
-        return new_value
+    Uses BEGIN EXCLUSIVE to ensure atomic UPDATE + SELECT.
+    This prevents race conditions when multiple processes run EPG generation.
+    """
+    with get_connection() as conn:
+        # Use exclusive transaction to ensure atomicity
+        conn.execute("BEGIN EXCLUSIVE")
+        try:
+            conn.execute(
+                """
+                UPDATE settings
+                SET epg_generation_counter = COALESCE(epg_generation_counter, 0) + 1
+                WHERE id = 1
+                """
+            )
+            cursor = conn.execute("SELECT epg_generation_counter FROM settings WHERE id = 1")
+            row = cursor.fetchone()
+            new_value = row["epg_generation_counter"] if row else 1
+            conn.commit()
+            logger.debug(f"EPG generation counter: {new_value}")
+            return new_value
+        except Exception:
+            conn.rollback()
+            raise
 
 
 def event_to_cache_data(event: Event) -> dict[str, Any]:

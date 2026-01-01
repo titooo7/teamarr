@@ -1,0 +1,553 @@
+"""Match Result System for stream-to-event matching.
+
+Comprehensive result hierarchy with three categories:
+- FILTERED: Stream excluded before matching attempted
+- FAILED: Matching attempted but couldn't complete
+- MATCHED: Successfully matched to an event
+
+Ported from V1 with simplifications for V2:
+- Removed legacy string compatibility
+- Removed unsupported sport detection (handled by classifier)
+- Added MatchMethod enum (replaces MatchedTier)
+- Added confidence score for fuzzy matches
+"""
+
+import logging
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any
+
+from teamarr.core.types import Event
+
+# =============================================================================
+# RESULT CATEGORIES
+# =============================================================================
+
+
+class ResultCategory(Enum):
+    """Top-level result category for stream matching."""
+
+    FILTERED = "filtered"  # Stream excluded before matching
+    FAILED = "failed"  # Matching attempted but failed
+    MATCHED = "matched"  # Successfully matched to event
+
+
+# =============================================================================
+# FILTERED REASONS - Stream excluded before matching attempted
+# =============================================================================
+
+
+class FilteredReason(Enum):
+    """Reasons for filtering a stream BEFORE matching is attempted.
+
+    These are expected exclusions based on stream characteristics or
+    user configuration - not failures.
+    """
+
+    # Pre-filter exclusions (stream doesn't look like a game)
+    NO_GAME_INDICATOR = "no_game_indicator"  # No vs/@/at detected
+    PLACEHOLDER = "placeholder"  # Matches placeholder pattern (e.g., "ESPN+ 45")
+    INCLUDE_REGEX_MISS = "include_regex_miss"  # Didn't match inclusion pattern
+    EXCLUDE_REGEX_MATCH = "exclude_regex_match"  # Matched exclusion pattern
+
+    # Event timing exclusions
+    EVENT_PAST = "event_past"  # Event already completed (past day)
+    EVENT_FINAL = "event_final"  # Event is final (excluded by setting)
+    EVENT_OUTSIDE_WINDOW = "event_outside_window"  # Outside lookahead window
+    DATE_MISMATCH = "date_mismatch"  # Stream date doesn't match event date
+
+    # Configuration exclusions
+    LEAGUE_NOT_ENABLED = "league_not_enabled"  # Event in non-enabled league
+
+
+# =============================================================================
+# FAILED REASONS - Matching attempted but couldn't complete
+# =============================================================================
+
+
+class FailedReason(Enum):
+    """Reasons for match FAILURE - matching was attempted but couldn't complete.
+
+    These represent genuine failures that might indicate:
+    - Data issues (teams not in provider)
+    - Detection limitations (ambiguous streams)
+    - Scheduling gaps (no event found)
+    """
+
+    # Team parsing failures
+    TEAMS_NOT_PARSED = "teams_not_parsed"  # Couldn't extract team names
+
+    # Team lookup failures
+    TEAM1_NOT_FOUND = "team1_not_found"  # First team not found
+    TEAM2_NOT_FOUND = "team2_not_found"  # Second team not found
+    BOTH_TEAMS_NOT_FOUND = "both_teams_not_found"  # Neither team found
+    NO_COMMON_LEAGUE = "no_common_league"  # Teams in different leagues
+
+    # League detection failures (multi-sport groups)
+    NO_LEAGUE_DETECTED = "no_league_detected"  # Teams matched but can't determine league
+    AMBIGUOUS_LEAGUE = "ambiguous_league"  # Multiple possible leagues, can't decide
+
+    # Event lookup failures
+    NO_EVENT_FOUND = "no_event_found"  # Teams matched, league detected, no game scheduled
+
+    # Event card failures (UFC, boxing)
+    NO_EVENT_CARD_MATCH = "no_event_card_match"  # Could not match to event card
+
+
+# =============================================================================
+# MATCH METHOD - How the match was made
+# =============================================================================
+
+
+class MatchMethod(Enum):
+    """Method used to achieve a successful match.
+
+    Different methods have different confidence levels.
+    """
+
+    # Cache lookups (fastest)
+    CACHE = "cache"  # Hit existing algorithmic cache entry
+    USER_CORRECTED = "user_corrected"  # User-corrected match (pinned)
+
+    # Alias matching (high confidence)
+    ALIAS = "alias"  # Matched via user-defined alias
+
+    # Pattern matching (high confidence)
+    PATTERN = "pattern"  # Matched via team name pattern from events
+
+    # Fuzzy matching (varies by score)
+    FUZZY = "fuzzy"  # Matched via fuzzy string matching
+
+    # Keyword matching (for event cards)
+    KEYWORD = "keyword"  # Matched via keyword (UFC, boxing)
+
+    # Direct assignment (single-league groups)
+    DIRECT = "direct"  # Group has single assigned league
+
+
+# =============================================================================
+# MATCH OUTCOME - Unified result object
+# =============================================================================
+
+
+@dataclass
+class MatchOutcome:
+    """Unified result object for stream matching.
+
+    Use the factory methods to create instances:
+        MatchOutcome.filtered(FilteredReason.NO_GAME_INDICATOR)
+        MatchOutcome.failed(FailedReason.NO_EVENT_FOUND, detail="...")
+        MatchOutcome.matched(MatchMethod.FUZZY, event=event, confidence=0.85)
+    """
+
+    category: ResultCategory
+
+    # For FILTERED results
+    filtered_reason: FilteredReason | None = None
+
+    # For FAILED results
+    failed_reason: FailedReason | None = None
+
+    # For MATCHED results
+    match_method: MatchMethod | None = None
+    event: Event | None = None
+    detected_league: str | None = None
+    confidence: float = 0.0  # 0.0 to 1.0, relevant for fuzzy matches
+
+    # Common fields
+    stream_name: str | None = None
+    stream_id: int | None = None
+    detail: str | None = None
+
+    # Parsed team info (for debugging/display)
+    parsed_team1: str | None = None
+    parsed_team2: str | None = None
+
+    # For LEAGUE_NOT_ENABLED - the league that was found
+    found_league: str | None = None
+    found_league_name: str | None = None
+
+    @classmethod
+    def filtered(
+        cls,
+        reason: FilteredReason,
+        *,
+        stream_name: str | None = None,
+        stream_id: int | None = None,
+        detail: str | None = None,
+        found_league: str | None = None,
+        found_league_name: str | None = None,
+    ) -> "MatchOutcome":
+        """Create a FILTERED result."""
+        return cls(
+            category=ResultCategory.FILTERED,
+            filtered_reason=reason,
+            stream_name=stream_name,
+            stream_id=stream_id,
+            detail=detail,
+            found_league=found_league,
+            found_league_name=found_league_name,
+        )
+
+    @classmethod
+    def failed(
+        cls,
+        reason: FailedReason,
+        *,
+        stream_name: str | None = None,
+        stream_id: int | None = None,
+        detail: str | None = None,
+        parsed_team1: str | None = None,
+        parsed_team2: str | None = None,
+    ) -> "MatchOutcome":
+        """Create a FAILED result."""
+        return cls(
+            category=ResultCategory.FAILED,
+            failed_reason=reason,
+            stream_name=stream_name,
+            stream_id=stream_id,
+            detail=detail,
+            parsed_team1=parsed_team1,
+            parsed_team2=parsed_team2,
+        )
+
+    @classmethod
+    def matched(
+        cls,
+        method: MatchMethod,
+        event: Event,
+        *,
+        detected_league: str | None = None,
+        confidence: float = 1.0,
+        stream_name: str | None = None,
+        stream_id: int | None = None,
+        parsed_team1: str | None = None,
+        parsed_team2: str | None = None,
+    ) -> "MatchOutcome":
+        """Create a MATCHED result."""
+        return cls(
+            category=ResultCategory.MATCHED,
+            match_method=method,
+            event=event,
+            detected_league=detected_league or event.league,
+            confidence=confidence,
+            stream_name=stream_name,
+            stream_id=stream_id,
+            parsed_team1=parsed_team1,
+            parsed_team2=parsed_team2,
+        )
+
+    @property
+    def is_filtered(self) -> bool:
+        """Check if this is a FILTERED result."""
+        return self.category == ResultCategory.FILTERED
+
+    @property
+    def is_failed(self) -> bool:
+        """Check if this is a FAILED result."""
+        return self.category == ResultCategory.FAILED
+
+    @property
+    def is_matched(self) -> bool:
+        """Check if this is a MATCHED result."""
+        return self.category == ResultCategory.MATCHED
+
+    @property
+    def reason(self) -> FilteredReason | FailedReason | None:
+        """Get the reason enum (for FILTERED or FAILED results)."""
+        if self.filtered_reason:
+            return self.filtered_reason
+        if self.failed_reason:
+            return self.failed_reason
+        return None
+
+    @property
+    def reason_value(self) -> str | None:
+        """Get the string value of the reason."""
+        reason = self.reason
+        return reason.value if reason else None
+
+    def should_record_as_failure(self) -> bool:
+        """Check if this outcome should be recorded in the failed matches table.
+
+        Only actual failures are recorded - filtered streams are expected exclusions.
+        """
+        return self.is_failed
+
+    def affects_match_rate(self) -> bool:
+        """Check if this outcome counts toward match rate calculation.
+
+        Returns True for outcomes where we TRIED to match (failed or matched).
+        Returns False for pre-filtered streams that never entered matching.
+        """
+        if self.is_matched or self.is_failed:
+            return True
+
+        # Some filtered reasons still count toward rate (we tried to match)
+        if self.filtered_reason in (
+            FilteredReason.DATE_MISMATCH,
+            FilteredReason.LEAGUE_NOT_ENABLED,
+        ):
+            return True
+
+        return False
+
+
+# =============================================================================
+# DISPLAY TEXT - Human-readable descriptions
+# =============================================================================
+
+FILTERED_DISPLAY: dict[FilteredReason, str] = {
+    FilteredReason.NO_GAME_INDICATOR: "No game indicator (vs/@/at)",
+    FilteredReason.PLACEHOLDER: "Placeholder stream (no event info)",
+    FilteredReason.INCLUDE_REGEX_MISS: "Did not match inclusion pattern",
+    FilteredReason.EXCLUDE_REGEX_MATCH: "Matched exclusion pattern",
+    FilteredReason.EVENT_PAST: "Event already completed",
+    FilteredReason.EVENT_FINAL: "Event is final (excluded)",
+    FilteredReason.EVENT_OUTSIDE_WINDOW: "Outside lookahead window",
+    FilteredReason.DATE_MISMATCH: "Stream date doesn't match event",
+    FilteredReason.LEAGUE_NOT_ENABLED: "League not enabled",
+}
+
+FAILED_DISPLAY: dict[FailedReason, str] = {
+    FailedReason.TEAMS_NOT_PARSED: "Could not parse team names",
+    FailedReason.TEAM1_NOT_FOUND: "First team not found",
+    FailedReason.TEAM2_NOT_FOUND: "Second team not found",
+    FailedReason.BOTH_TEAMS_NOT_FOUND: "Neither team found",
+    FailedReason.NO_COMMON_LEAGUE: "Teams have no common league",
+    FailedReason.NO_LEAGUE_DETECTED: "Could not detect league",
+    FailedReason.AMBIGUOUS_LEAGUE: "Multiple leagues possible",
+    FailedReason.NO_EVENT_FOUND: "No scheduled event found",
+    FailedReason.NO_EVENT_CARD_MATCH: "No matching event card",
+}
+
+METHOD_DISPLAY: dict[MatchMethod, str] = {
+    MatchMethod.CACHE: "Cache hit",
+    MatchMethod.USER_CORRECTED: "User corrected",
+    MatchMethod.ALIAS: "Alias match",
+    MatchMethod.PATTERN: "Pattern match",
+    MatchMethod.FUZZY: "Fuzzy match",
+    MatchMethod.KEYWORD: "Keyword match",
+    MatchMethod.DIRECT: "Direct assignment",
+}
+
+
+def get_display_text(outcome: MatchOutcome) -> str:
+    """Get human-readable display text for a match result.
+
+    Args:
+        outcome: MatchOutcome object
+
+    Returns:
+        Human-readable description
+    """
+    if outcome.is_matched:
+        method_text = METHOD_DISPLAY.get(outcome.match_method, str(outcome.match_method))
+        if outcome.match_method == MatchMethod.FUZZY and outcome.confidence < 1.0:
+            return f"{method_text} ({outcome.confidence:.0%})"
+        return method_text
+
+    elif outcome.is_failed:
+        return FAILED_DISPLAY.get(outcome.failed_reason, str(outcome.failed_reason))
+
+    elif outcome.is_filtered:
+        text = FILTERED_DISPLAY.get(outcome.filtered_reason, str(outcome.filtered_reason))
+        if (
+            outcome.filtered_reason == FilteredReason.LEAGUE_NOT_ENABLED
+            and outcome.found_league_name
+        ):
+            return f"Found in {outcome.found_league_name} (not enabled)"
+        return text
+
+    return str(outcome)
+
+
+# =============================================================================
+# LOGGING UTILITIES
+# =============================================================================
+
+
+def log_result(
+    logger: logging.Logger,
+    outcome: MatchOutcome,
+    max_stream_len: int = 60,
+) -> None:
+    """Log a match result with consistent formatting.
+
+    Format:
+        [FILTERED:reason] stream_name | detail
+        [FAILED:reason] stream_name | detail
+        [METHOD] stream_name -> LEAGUE | event_name
+
+    Args:
+        logger: Logger instance
+        outcome: MatchOutcome to log
+        max_stream_len: Max length before truncating stream name
+    """
+    stream_name = outcome.stream_name or ""
+    display_name = stream_name[:max_stream_len]
+    if len(stream_name) > max_stream_len:
+        display_name += "..."
+
+    if outcome.is_matched:
+        method = outcome.match_method.value if outcome.match_method else "?"
+        league = (outcome.detected_league or "").upper()
+        event_name = ""
+        if outcome.event:
+            event_name = outcome.event.short_name or outcome.event.name
+
+        conf = f" ({outcome.confidence:.0%})" if outcome.confidence < 1.0 else ""
+        logger.info(f"[{method.upper()}{conf}] {display_name} -> {league} | {event_name}")
+
+    elif outcome.is_failed:
+        reason = outcome.failed_reason.value if outcome.failed_reason else "unknown"
+        detail = outcome.detail or ""
+
+        if detail:
+            logger.info(f"[FAILED:{reason}] {display_name} | {detail}")
+        else:
+            logger.info(f"[FAILED:{reason}] {display_name}")
+
+    elif outcome.is_filtered:
+        reason = outcome.filtered_reason.value if outcome.filtered_reason else "unknown"
+
+        # Some filtered reasons are debug-level (expected high volume)
+        if outcome.filtered_reason in (
+            FilteredReason.NO_GAME_INDICATOR,
+            FilteredReason.PLACEHOLDER,
+            FilteredReason.INCLUDE_REGEX_MISS,
+            FilteredReason.EXCLUDE_REGEX_MATCH,
+        ):
+            logger.debug(f"[FILTERED:{reason}] {display_name}")
+        else:
+            detail = outcome.detail or ""
+            if detail:
+                logger.info(f"[FILTERED:{reason}] {display_name} | {detail}")
+            else:
+                logger.info(f"[FILTERED:{reason}] {display_name}")
+
+
+def format_result_summary(
+    filtered_count: int = 0,
+    failed_count: int = 0,
+    matched_count: int = 0,
+    by_filtered_reason: dict[FilteredReason, int] | None = None,
+    by_failed_reason: dict[FailedReason, int] | None = None,
+    by_method: dict[MatchMethod, int] | None = None,
+) -> str:
+    """Format a summary of match results for logging.
+
+    Returns:
+        Multi-line summary string
+    """
+    lines = []
+    total = filtered_count + failed_count + matched_count
+    rate = f"{matched_count / total:.0%}" if total > 0 else "N/A"
+
+    lines.append(
+        f"Match Results: {matched_count} matched, {failed_count} failed, "
+        f"{filtered_count} filtered (rate: {rate})"
+    )
+
+    if by_method:
+        method_parts = [f"{m.value}:{c}" for m, c in sorted(by_method.items(), key=lambda x: -x[1])]
+        lines.append(f"  By method: {', '.join(method_parts)}")
+
+    if by_failed_reason:
+        fail_parts = [f"{r.value}:{c}" for r, c in by_failed_reason.items()]
+        lines.append(f"  Failed: {', '.join(fail_parts)}")
+
+    if by_filtered_reason:
+        filt_parts = [f"{r.value}:{c}" for r, c in by_filtered_reason.items()]
+        lines.append(f"  Filtered: {', '.join(filt_parts)}")
+
+    return "\n".join(lines)
+
+
+# =============================================================================
+# RESULT AGGREGATOR
+# =============================================================================
+
+
+@dataclass
+class ResultAggregator:
+    """Aggregates match results for statistics.
+
+    Usage:
+        agg = ResultAggregator()
+        for outcome in outcomes:
+            agg.add(outcome)
+        print(agg.summary())
+    """
+
+    matched: int = 0
+    failed: int = 0
+    filtered: int = 0
+
+    by_method: dict[MatchMethod, int] = field(default_factory=dict)
+    by_failed_reason: dict[FailedReason, int] = field(default_factory=dict)
+    by_filtered_reason: dict[FilteredReason, int] = field(default_factory=dict)
+
+    # For match rate calculation (excludes pre-filtered streams)
+    eligible: int = 0
+
+    def add(self, outcome: MatchOutcome) -> None:
+        """Add an outcome to the aggregation."""
+        if outcome.is_matched:
+            self.matched += 1
+            if outcome.match_method:
+                self.by_method[outcome.match_method] = (
+                    self.by_method.get(outcome.match_method, 0) + 1
+                )
+        elif outcome.is_failed:
+            self.failed += 1
+            if outcome.failed_reason:
+                self.by_failed_reason[outcome.failed_reason] = (
+                    self.by_failed_reason.get(outcome.failed_reason, 0) + 1
+                )
+        elif outcome.is_filtered:
+            self.filtered += 1
+            if outcome.filtered_reason:
+                self.by_filtered_reason[outcome.filtered_reason] = (
+                    self.by_filtered_reason.get(outcome.filtered_reason, 0) + 1
+                )
+
+        if outcome.affects_match_rate():
+            self.eligible += 1
+
+    @property
+    def total(self) -> int:
+        """Total outcomes processed."""
+        return self.matched + self.failed + self.filtered
+
+    @property
+    def match_rate(self) -> float:
+        """Match rate as a fraction (0.0 to 1.0)."""
+        if self.eligible == 0:
+            return 0.0
+        return self.matched / self.eligible
+
+    def summary(self) -> str:
+        """Get formatted summary string."""
+        return format_result_summary(
+            filtered_count=self.filtered,
+            failed_count=self.failed,
+            matched_count=self.matched,
+            by_filtered_reason=self.by_filtered_reason if self.by_filtered_reason else None,
+            by_failed_reason=self.by_failed_reason if self.by_failed_reason else None,
+            by_method=self.by_method if self.by_method else None,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for API response."""
+        return {
+            "matched": self.matched,
+            "failed": self.failed,
+            "filtered": self.filtered,
+            "total": self.total,
+            "eligible": self.eligible,
+            "match_rate": self.match_rate,
+            "by_method": {m.value: c for m, c in self.by_method.items()},
+            "by_failed_reason": {r.value: c for r, c in self.by_failed_reason.items()},
+            "by_filtered_reason": {r.value: c for r, c in self.by_filtered_reason.items()},
+        }

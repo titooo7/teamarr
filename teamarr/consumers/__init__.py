@@ -12,10 +12,10 @@ from teamarr.consumers.cache import (
     refresh_cache,
     refresh_cache_if_needed,
 )
-from teamarr.consumers.cached_matcher import (
-    CachedBatchResult,
-    CachedMatcher,
-    CachedMatchResult,
+from teamarr.consumers.matching import (
+    BatchMatchResult,
+    MatchedStreamResult,
+    StreamMatcher,
 )
 from teamarr.consumers.channel_lifecycle import (
     ChannelCreationResult,
@@ -56,11 +56,6 @@ from teamarr.consumers.filler import (
     FillerType,
     OffseasonFillerTemplate,
 )
-from teamarr.consumers.multi_league_matcher import (
-    BatchMatchResult,
-    MultiLeagueMatcher,
-    StreamMatchResult,
-)
 from teamarr.consumers.orchestrator import (
     GenerationResult,
     Orchestrator,
@@ -79,7 +74,6 @@ from teamarr.consumers.scheduler import (
     start_lifecycle_scheduler,
     stop_lifecycle_scheduler,
 )
-from teamarr.consumers.single_league_matcher import MatchResult, SingleLeagueMatcher
 from teamarr.consumers.stream_match_cache import (
     StreamCacheEntry,
     StreamMatchCache,
@@ -114,15 +108,9 @@ __all__ = [
     "generate_event_tvg_id",
     "get_lifecycle_settings",
     # Stream matching
-    "MatchResult",
-    "SingleLeagueMatcher",
+    "StreamMatcher",
+    "MatchedStreamResult",
     "BatchMatchResult",
-    "MultiLeagueMatcher",
-    "StreamMatchResult",
-    # Cached stream matching
-    "CachedBatchResult",
-    "CachedMatcher",
-    "CachedMatchResult",
     # Stream match cache
     "StreamCacheEntry",
     "StreamMatchCache",

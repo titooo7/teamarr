@@ -516,3 +516,62 @@ def get_channel_history(
         "channel_name": channel.channel_name,
         "history": history,
     }
+
+
+@router.delete("/dispatcharr/{channel_id}", response_model=DeleteResponse)
+def delete_dispatcharr_channel(channel_id: int):
+    """Delete a channel directly from Dispatcharr by its Dispatcharr ID.
+
+    Use this for orphan_dispatcharr channels that exist in Dispatcharr
+    but aren't tracked by Teamarr. This bypasses the managed channels table.
+    """
+    from teamarr.database.settings import get_dispatcharr_settings
+    from teamarr.dispatcharr import get_dispatcharr_client
+    from teamarr.dispatcharr.managers.channels import ChannelManager
+
+    with get_db() as conn:
+        settings = get_dispatcharr_settings(conn)
+
+    if not settings.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dispatcharr not configured",
+        )
+
+    try:
+        client = get_dispatcharr_client(get_db)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to connect to Dispatcharr: {e}",
+        ) from e
+
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dispatcharr connection not available",
+        )
+
+    manager = ChannelManager(client)
+
+    # First verify the channel exists
+    channel = manager.get_channel(channel_id, use_cache=False)
+    if not channel:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Channel {channel_id} not found in Dispatcharr",
+        )
+
+    # Delete it
+    result = manager.delete_channel(channel_id)
+
+    if result.success:
+        return DeleteResponse(
+            success=True,
+            message=f"Channel '{channel.name}' (ID: {channel_id}) deleted from Dispatcharr",
+        )
+    else:
+        return DeleteResponse(
+            success=False,
+            message=f"Failed to delete channel: {result.error}",
+        )

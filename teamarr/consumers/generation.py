@@ -236,7 +236,7 @@ def run_full_generation(
 
         # Update stats run
         stats_run.programmes_total = result.programmes_total
-        stats_run.programmes_events = team_result.total_events + result.groups_programmes
+        stats_run.programmes_events = team_result.total_events + group_result.total_events
         stats_run.programmes_pregame = team_result.total_pregame
         stats_run.programmes_postgame = team_result.total_postgame
         stats_run.programmes_idle = team_result.total_idle

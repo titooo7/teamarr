@@ -88,6 +88,7 @@ class ProcessingResult:
 
     # EPG generation
     programmes_generated: int = 0
+    events_count: int = 0  # Actual event programmes (excluding filler)
     xmltv_size: int = 0
 
     # Errors
@@ -118,6 +119,7 @@ class ProcessingResult:
             },
             "epg": {
                 "programmes": self.programmes_generated,
+                "events": self.events_count,
                 "xmltv_bytes": self.xmltv_size,
             },
             "errors": self.errors,
@@ -148,6 +150,11 @@ class BatchProcessingResult:
     @property
     def total_programmes(self) -> int:
         return sum(r.programmes_generated for r in self.results)
+
+    @property
+    def total_events(self) -> int:
+        """Actual event programmes (excluding filler)."""
+        return sum(r.events_count for r in self.results)
 
     def to_dict(self) -> dict:
         """Convert to dict for JSON serialization."""
@@ -846,6 +853,7 @@ class EventGroupProcessor:
                     matched_streams, group, conn
                 )
                 result.programmes_generated = programmes_total
+                result.events_count = event_programmes
                 result.xmltv_size = len(xmltv_content.encode("utf-8")) if xmltv_content else 0
 
                 stats_run.programmes_total = programmes_total
@@ -1265,7 +1273,7 @@ class EventGroupProcessor:
         matched_streams: list[dict],
         group: EventEPGGroup,
         conn: Connection,
-    ) -> tuple[str, int]:
+    ) -> tuple[str, int, int]:
         """Generate XMLTV content from matched streams.
 
         Args:
@@ -1274,10 +1282,10 @@ class EventGroupProcessor:
             conn: Database connection
 
         Returns:
-            Tuple of (xmltv_content, programme_count)
+            Tuple of (xmltv_content, total_programmes, event_programmes)
         """
         if not matched_streams:
-            return "", 0
+            return "", 0, 0
 
         # Load template options if configured
         options = EventEPGOptions()

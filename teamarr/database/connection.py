@@ -95,6 +95,10 @@ def init_db(db_path: Path | str | None = None) -> None:
             # (schema.sql INSERT OR REPLACE references league_alias column)
             _add_league_alias_column_if_needed(conn)
 
+            # Pre-migration: add gracenote_category column before schema.sql runs
+            # (schema.sql INSERT OR REPLACE references gracenote_category column)
+            _add_gracenote_category_column_if_needed(conn)
+
             # Apply schema (creates tables if missing, INSERT OR REPLACE updates seed data)
             conn.executescript(schema_sql)
             # Run remaining migrations for existing databases
@@ -229,6 +233,32 @@ def _add_league_alias_column_if_needed(conn: sqlite3.Connection) -> None:
         logger.info("Added leagues.league_alias column")
 
 
+def _add_gracenote_category_column_if_needed(conn: sqlite3.Connection) -> None:
+    """Add gracenote_category column if it doesn't exist.
+
+    This MUST run before schema.sql because schema.sql INSERT OR REPLACE
+    statements reference the gracenote_category column.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # Check if leagues table exists
+    cursor = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='leagues'"
+    )
+    if not cursor.fetchone():
+        return  # Fresh database, schema.sql will create table with correct column
+
+    # Check if column exists
+    cursor = conn.execute("PRAGMA table_info(leagues)")
+    columns = {row["name"] for row in cursor.fetchall()}
+
+    if "gracenote_category" not in columns:
+        conn.execute("ALTER TABLE leagues ADD COLUMN gracenote_category TEXT")
+        logger.info("Added leagues.gracenote_category column")
+
+
 def _seed_tsdb_cache_if_needed(conn: sqlite3.Connection) -> None:
     """Seed TSDB cache from distributed seed file if needed."""
     from teamarr.database.seed import seed_if_needed
@@ -350,6 +380,13 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         conn.execute("UPDATE settings SET schema_version = 6 WHERE id = 1")
         logger.info("Schema upgraded to version 6 (league_alias, managed_channels fix)")
         current_version = 6
+
+    # Version 7: gracenote_category column (handled in pre-migration)
+    if current_version < 7:
+        # Column is added by _add_gracenote_category_column_if_needed before schema.sql
+        conn.execute("UPDATE settings SET schema_version = 7 WHERE id = 1")
+        logger.info("Schema upgraded to version 7 (gracenote_category)")
+        current_version = 7
 
 
 def _migrate_teams_to_leagues_array(conn: sqlite3.Connection) -> bool:

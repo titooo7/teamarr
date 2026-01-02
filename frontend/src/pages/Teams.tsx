@@ -6,15 +6,12 @@ import {
   Trash2,
   Pencil,
   Loader2,
-  Search,
-  Filter,
-  X,
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import {
   Table,
@@ -38,6 +35,7 @@ import { Select } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RichTooltip } from "@/components/ui/rich-tooltip"
+import { FilterSelect } from "@/components/ui/filter-select"
 import { cn } from "@/lib/utils"
 import {
   useTeams,
@@ -164,7 +162,7 @@ function EditTeamDialog({ team, templates, open, onOpenChange, onSave, isSaving 
               value={formData.template_id?.toString() ?? ""}
               onChange={(e) => setFormData({ ...formData, template_id: e.target.value ? parseInt(e.target.value) : null })}
             >
-              <option value="">No Template</option>
+              <option value="">Unassigned</option>
               {templates.map((template) => (
                 <option key={template.id} value={template.id.toString()}>
                   {template.name}
@@ -226,12 +224,10 @@ export function Teams() {
   const deleteMutation = useDeleteTeam()
 
   // Filter state
-  const [searchFilter, setSearchFilter] = useState("")
   const [leagueFilter, setLeagueFilter] = useState<string>("")
   const [sportFilter, setSportFilter] = useState<string>("")
   const [templateFilter, setTemplateFilter] = useState<string>("")
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("all")
-  const [showFilters, setShowFilters] = useState(false)
 
   // Sorting state
   const [sortColumn, setSortColumn] = useState<SortColumn>(null)
@@ -303,18 +299,6 @@ export function Teams() {
 
     // First filter
     let result = teams.filter((team) => {
-      // Search filter
-      if (searchFilter) {
-        const q = searchFilter.toLowerCase()
-        const matches =
-          team.team_name.toLowerCase().includes(q) ||
-          team.team_abbrev?.toLowerCase().includes(q) ||
-          team.channel_id.toLowerCase().includes(q) ||
-          team.primary_league.toLowerCase().includes(q) ||
-          team.leagues.some((l) => l.toLowerCase().includes(q))
-        if (!matches) return false
-      }
-
       // League filter - match if any of the team's leagues match
       if (leagueFilter && !team.leagues.includes(leagueFilter)) return false
 
@@ -379,13 +363,13 @@ export function Teams() {
     }
 
     return result
-  }, [teams, searchFilter, leagueFilter, sportFilter, templateFilter, activeFilter, sortColumn, sortDirection, teamTemplates])
+  }, [teams, leagueFilter, sportFilter, templateFilter, activeFilter, sortColumn, sortDirection, teamTemplates])
 
   // Clear selection when filters change
   useEffect(() => {
     setSelectedIds(new Set())
     setLastClickedIndex(null)
-  }, [searchFilter, leagueFilter, sportFilter, templateFilter, activeFilter])
+  }, [leagueFilter, sportFilter, templateFilter, activeFilter])
 
   // Handle column sort
   const handleSort = (column: SortColumn) => {
@@ -562,67 +546,55 @@ export function Teams() {
     }
   }
 
-  const hasActiveFilters = searchFilter || leagueFilter || sportFilter || templateFilter || activeFilter !== "all"
-
-  const clearFilters = () => {
-    setSearchFilter("")
-    setLeagueFilter("")
-    setSportFilter("")
-    setTemplateFilter("")
-    setActiveFilter("all")
-  }
-
   if (error) {
     return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-bold">Teams</h1>
-        <Card className="border-destructive">
-          <CardContent className="pt-6">
-            <p className="text-destructive">Error loading teams: {error.message}</p>
-            <Button className="mt-4" onClick={() => refetch()}>
-              Retry
-            </Button>
-          </CardContent>
+      <div className="space-y-2">
+        <h1 className="text-xl font-bold">Teams</h1>
+        <Card className="border-destructive p-4">
+          <p className="text-destructive">Error loading teams: {error.message}</p>
+          <Button className="mt-4" onClick={() => refetch()}>
+            Retry
+          </Button>
         </Card>
       </div>
     )
   }
 
   return (
-    <div className="space-y-3">
-      {/* Header */}
+    <div className="space-y-2">
+      {/* Header - Compact */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Teams</h1>
-          <p className="text-muted-foreground">Team-based EPG channel configurations</p>
+          <h1 className="text-xl font-bold">Teams</h1>
+          <p className="text-sm text-muted-foreground">
+            Team-based EPG channel configurations
+          </p>
         </div>
-        <Button onClick={() => navigate("/teams/import")}>
-          <Plus className="h-4 w-4 mr-1.5" />
-          Import Teams
+        <Button size="sm" onClick={() => navigate("/teams/import")}>
+          <Plus className="h-4 w-4 mr-1" />
+          Import
         </Button>
       </div>
 
-      {/* Stats Tiles */}
+      {/* Stats Tiles - V1 Style: Grid with 4 equal columns filling width */}
       {teams && teams.length > 0 && (
         <div className="grid grid-cols-4 gap-3">
           {/* Configured */}
           <div className="group relative">
-            <Card className="p-3 cursor-help">
-              <div className="text-2xl font-bold">{teamStats.total}</div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wide">Configured</div>
-            </Card>
+            <div className="bg-secondary rounded px-3 py-2 cursor-help">
+              <div className="text-xl font-bold">{teamStats.total}</div>
+              <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wider">Configured</div>
+            </div>
             <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block">
-              <Card className="p-3 shadow-lg min-w-[160px]">
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 pb-1 border-b">
-                  By League
-                </div>
-                <div className="space-y-1">
+              <Card className="p-3 shadow-lg border min-w-[160px]">
+                <div className="text-xs font-medium text-muted-foreground mb-2">By League</div>
+                <div className="space-y-1 max-h-48 overflow-y-auto">
                   {Object.entries(teamStats.byLeague)
                     .sort(([a], [b]) => (leagueLookup.aliases[a] || a).localeCompare(leagueLookup.aliases[b] || b))
                     .map(([league, counts]) => (
                       <div key={league} className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">{leagueLookup.aliases[league] || league.toUpperCase()}</span>
-                        <span className="font-medium">{counts.total}</span>
+                        <span className="truncate max-w-[100px]">{leagueLookup.aliases[league] || league.toUpperCase()}</span>
+                        <span className="font-medium ml-2">{counts.total}</span>
                       </div>
                     ))}
                 </div>
@@ -632,23 +604,21 @@ export function Teams() {
 
           {/* Enabled */}
           <div className="group relative">
-            <Card className="p-3 cursor-help">
-              <div className="text-2xl font-bold">{teamStats.enabled}</div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wide">Enabled</div>
-            </Card>
+            <div className="bg-secondary rounded px-3 py-2 cursor-help">
+              <div className="text-xl font-bold text-green-500">{teamStats.enabled}</div>
+              <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wider">Enabled</div>
+            </div>
             <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block">
-              <Card className="p-3 shadow-lg min-w-[160px]">
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 pb-1 border-b">
-                  By League
-                </div>
-                <div className="space-y-1">
+              <Card className="p-3 shadow-lg border min-w-[160px]">
+                <div className="text-xs font-medium text-muted-foreground mb-2">By League</div>
+                <div className="space-y-1 max-h-48 overflow-y-auto">
                   {Object.entries(teamStats.byLeague)
                     .filter(([, counts]) => counts.enabled > 0)
                     .sort(([a], [b]) => (leagueLookup.aliases[a] || a).localeCompare(leagueLookup.aliases[b] || b))
                     .map(([league, counts]) => (
                       <div key={league} className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">{leagueLookup.aliases[league] || league.toUpperCase()}</span>
-                        <span className="font-medium">{counts.enabled}</span>
+                        <span className="truncate max-w-[100px]">{leagueLookup.aliases[league] || league.toUpperCase()}</span>
+                        <span className="font-medium ml-2">{counts.enabled}</span>
                       </div>
                     ))}
                 </div>
@@ -658,25 +628,23 @@ export function Teams() {
 
           {/* Games Today */}
           <div className="group relative">
-            <Card className="p-3 cursor-help">
+            <div className="bg-secondary rounded px-3 py-2 cursor-help">
               <div className={cn(
-                "text-2xl font-bold",
+                "text-xl font-bold",
                 liveStats?.team.games_today ? "" : "text-muted-foreground"
               )}>
                 {liveStats?.team.games_today ?? "--"}
               </div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wide">Games Today</div>
-            </Card>
+              <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wider">Games Today</div>
+            </div>
             {liveStats?.team.by_league && liveStats.team.by_league.length > 0 && (
               <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block">
-                <Card className="p-3 shadow-lg min-w-[120px]">
-                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 pb-1 border-b">
-                    By League
-                  </div>
-                  <div className="space-y-1">
+                <Card className="p-3 shadow-lg border min-w-[120px]">
+                  <div className="text-xs font-medium text-muted-foreground mb-2">By League</div>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
                     {liveStats.team.by_league.map((item) => (
                       <div key={item.league} className="flex justify-between text-sm gap-3">
-                        <span className="text-muted-foreground">{item.league}</span>
+                        <span>{item.league}</span>
                         <span className="font-medium">{item.count}</span>
                       </div>
                     ))}
@@ -688,22 +656,20 @@ export function Teams() {
 
           {/* Live Now */}
           <div className="group relative">
-            <Card className={cn("p-3", liveStats?.team.live_events?.length && "cursor-help")}>
+            <div className={cn("bg-secondary rounded px-3 py-2", liveStats?.team.live_events?.length && "cursor-help")}>
               <div className={cn(
-                "text-2xl font-bold",
-                liveStats?.team.live_now ? "text-green-600" : "text-muted-foreground"
+                "text-xl font-bold",
+                liveStats?.team.live_now ? "text-green-500" : "text-muted-foreground"
               )}>
                 {liveStats?.team.live_now ?? "--"}
               </div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wide">Live Now</div>
-            </Card>
+              <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wider">Live Now</div>
+            </div>
             {liveStats?.team.live_events && liveStats.team.live_events.length > 0 && (
-              <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block">
-                <Card className="p-3 shadow-lg min-w-[240px] max-w-[320px]">
-                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 pb-1 border-b">
-                    Live Now
-                  </div>
-                  <div className="space-y-2">
+              <div className="absolute right-0 top-full mt-1 z-50 hidden group-hover:block">
+                <Card className="p-3 shadow-lg border min-w-[240px] max-w-[320px]">
+                  <div className="text-xs font-medium text-muted-foreground mb-2">Live Now</div>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
                     {liveStats.team.live_events.map((event, idx) => (
                       <div key={idx} className="text-sm">
                         <div className="font-medium truncate" title={event.title}>
@@ -723,184 +689,34 @@ export function Teams() {
         </div>
       )}
 
-      {/* Filters and View Toggle */}
-      <Card>
-        <CardContent className="py-3">
-          <div className="flex items-center gap-3">
-            {/* Search */}
-            <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={searchFilter}
-                onChange={(e) => setSearchFilter(e.target.value)}
-                placeholder="Search teams..."
-                className="pl-10"
-              />
-            </div>
+      {/* Batch Operations Bar - V1 Style Compact */}
+      <div className="flex items-center justify-between bg-secondary border border-border rounded px-3 py-2">
+        <div className="flex items-center gap-2 text-sm">
+          <span className="font-medium">Batch Operations</span>
+          <span className="text-muted-foreground">({selectedIds.size} selected)</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button variant="outline" size="sm" onClick={() => handleBulkToggleActive(true)} disabled={selectedIds.size === 0}>
+            Enable
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => handleBulkToggleActive(false)} disabled={selectedIds.size === 0}>
+            Disable
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowBulkTemplate(true)} disabled={selectedIds.size === 0}>
+            Assign Template
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowBulkChannelId(true)} disabled={selectedIds.size === 0}>
+            Channel ID
+          </Button>
+          <Button variant="destructive" size="sm" onClick={() => setShowBulkDelete(true)} disabled={selectedIds.size === 0}>
+            <Trash2 className="h-3 w-3 mr-1" />
+            Delete
+          </Button>
+        </div>
+      </div>
 
-            {/* Filter toggle */}
-            <Button
-              variant={showFilters ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => setShowFilters(!showFilters)}
-            >
-              <Filter className="h-4 w-4 mr-1" />
-              Filters
-              {hasActiveFilters && (
-                <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 justify-center">
-                  {(leagueFilter ? 1 : 0) + (sportFilter ? 1 : 0) + (templateFilter ? 1 : 0) + (activeFilter !== "all" ? 1 : 0)}
-                </Badge>
-              )}
-            </Button>
-
-            {hasActiveFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters}>
-                <X className="h-4 w-4 mr-1" />
-                Clear
-              </Button>
-            )}
-          </div>
-
-          {/* Expanded filters */}
-          {showFilters && (
-            <div className="flex items-center gap-3 mt-3 pt-3 border-t">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">League</Label>
-                <Select
-                  value={leagueFilter}
-                  onChange={(e) => setLeagueFilter(e.target.value)}
-                  className="w-40"
-                >
-                  <option value="">All leagues</option>
-                  {leagues.map((league) => (
-                    <option key={league} value={league}>
-                      {league}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Sport</Label>
-                <Select
-                  value={sportFilter}
-                  onChange={(e) => setSportFilter(e.target.value)}
-                  className="w-32"
-                >
-                  <option value="">All sports</option>
-                  {sports.map((sport) => (
-                    <option key={sport} value={sport}>
-                      {sport.charAt(0).toUpperCase() + sport.slice(1)}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Template</Label>
-                <Select
-                  value={templateFilter}
-                  onChange={(e) => setTemplateFilter(e.target.value)}
-                  className="w-40"
-                >
-                  <option value="">All templates</option>
-                  <option value="_unassigned">Unassigned</option>
-                  {teamTemplates.map((template) => (
-                    <option key={template.id} value={template.id.toString()}>
-                      {template.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Status</Label>
-                <Select
-                  value={activeFilter}
-                  onChange={(e) => setActiveFilter(e.target.value as ActiveFilter)}
-                  className="w-32"
-                >
-                  <option value="all">All</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </Select>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Bulk Actions Bar - always visible */}
-      <Card className={cn(
-        "transition-colors",
-        selectedIds.size > 0 ? "bg-primary/5 border-primary/20" : "bg-muted/30"
-      )}>
-        <CardContent className="py-3">
-          <div className="flex items-center gap-3">
-            <span className={cn(
-              "text-sm font-medium",
-              selectedIds.size === 0 && "text-muted-foreground"
-            )}>
-              {selectedIds.size > 0
-                ? `${selectedIds.size} team${selectedIds.size !== 1 ? "s" : ""} selected`
-                : "No teams selected"}
-            </span>
-            <div className="flex-1" />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleBulkToggleActive(true)}
-              disabled={selectedIds.size === 0}
-            >
-              Enable
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleBulkToggleActive(false)}
-              disabled={selectedIds.size === 0}
-            >
-              Disable
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowBulkTemplate(true)}
-              disabled={selectedIds.size === 0}
-            >
-              Assign Template
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowBulkChannelId(true)}
-              disabled={selectedIds.size === 0}
-            >
-              Change Channel ID
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setShowBulkDelete(true)}
-              disabled={selectedIds.size === 0}
-            >
-              <Trash2 className="h-4 w-4 mr-1" />
-              Delete
-            </Button>
-            {selectedIds.size > 0 && (
-              <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
-                <X className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Teams List */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle>
-            Teams
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+      {/* Teams Table - No card wrapper for more compact look */}
+      <div className="border border-border rounded-lg overflow-hidden">
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -915,7 +731,7 @@ export function Teams() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-10">
+                  <TableHead className="w-8">
                     <Checkbox
                       checked={
                         selectedIds.size === filteredTeams.length && filteredTeams.length > 0
@@ -924,54 +740,103 @@ export function Teams() {
                     />
                   </TableHead>
                   <TableHead
-                    className="cursor-pointer select-none hover:bg-muted/50"
+                    className="cursor-pointer hover:bg-muted/50"
                     onClick={() => handleSort("team")}
                   >
                     <div className="flex items-center">
-                      Team{renderSortIcon("team")}
+                      Team {renderSortIcon("team")}
                     </div>
                   </TableHead>
                   <TableHead
-                    className="w-16 cursor-pointer select-none hover:bg-muted/50"
+                    className="w-[100px] cursor-pointer hover:bg-muted/50"
                     onClick={() => handleSort("league")}
                   >
                     <div className="flex items-center">
-                      League{renderSortIcon("league")}
+                      League {renderSortIcon("league")}
                     </div>
                   </TableHead>
                   <TableHead
-                    className="w-14 cursor-pointer select-none hover:bg-muted/50"
+                    className="w-[70px] text-center cursor-pointer hover:bg-muted/50"
                     onClick={() => handleSort("sport")}
                   >
-                    <div className="flex items-center">
-                      Sport{renderSortIcon("sport")}
+                    <div className="flex items-center justify-center">
+                      Sport {renderSortIcon("sport")}
                     </div>
                   </TableHead>
                   <TableHead
-                    className="cursor-pointer select-none hover:bg-muted/50"
+                    className="cursor-pointer hover:bg-muted/50"
                     onClick={() => handleSort("channel")}
                   >
                     <div className="flex items-center">
-                      Channel ID{renderSortIcon("channel")}
+                      Channel ID {renderSortIcon("channel")}
                     </div>
                   </TableHead>
                   <TableHead
-                    className="cursor-pointer select-none hover:bg-muted/50"
+                    className="w-[120px] cursor-pointer hover:bg-muted/50"
                     onClick={() => handleSort("template")}
                   >
                     <div className="flex items-center">
-                      Template{renderSortIcon("template")}
+                      Template {renderSortIcon("template")}
                     </div>
                   </TableHead>
                   <TableHead
-                    className="w-16 cursor-pointer select-none hover:bg-muted/50"
+                    className="w-[70px] cursor-pointer hover:bg-muted/50"
                     onClick={() => handleSort("status")}
                   >
                     <div className="flex items-center">
-                      Status{renderSortIcon("status")}
+                      Status {renderSortIcon("status")}
                     </div>
                   </TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="w-[70px] text-right">Actions</TableHead>
+                </TableRow>
+                {/* Filter row - styled like V1 */}
+                <TableRow className="border-b-2 border-border">
+                  <TableHead className="py-0.5 pb-1.5"></TableHead>
+                  <TableHead className="py-0.5 pb-1.5"></TableHead>
+                  <TableHead className="py-0.5 pb-1.5">
+                    <FilterSelect
+                      value={leagueFilter}
+                      onChange={setLeagueFilter}
+                      options={[
+                        { value: "", label: "All" },
+                        ...leagues.map((l) => ({ value: l, label: leagueLookup.aliases[l] || l })),
+                      ]}
+                    />
+                  </TableHead>
+                  <TableHead className="py-0.5 pb-1.5">
+                    <FilterSelect
+                      value={sportFilter}
+                      onChange={setSportFilter}
+                      options={[
+                        { value: "", label: "All" },
+                        ...sports.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
+                      ]}
+                    />
+                  </TableHead>
+                  <TableHead className="py-0.5 pb-1.5"></TableHead>
+                  <TableHead className="py-0.5 pb-1.5">
+                    <FilterSelect
+                      value={templateFilter}
+                      onChange={setTemplateFilter}
+                      options={[
+                        { value: "", label: "All" },
+                        { value: "_unassigned", label: "Unassigned" },
+                        ...teamTemplates.map((t) => ({ value: t.id.toString(), label: t.name })),
+                      ]}
+                    />
+                  </TableHead>
+                  <TableHead className="py-0.5 pb-1.5">
+                    <FilterSelect
+                      value={activeFilter}
+                      onChange={(v) => setActiveFilter(v as ActiveFilter)}
+                      options={[
+                        { value: "all", label: "All" },
+                        { value: "active", label: "Active" },
+                        { value: "inactive", label: "Inactive" },
+                      ]}
+                    />
+                  </TableHead>
+                  <TableHead className="py-0.5 pb-1.5"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1112,8 +977,7 @@ export function Teams() {
               </TableBody>
             </Table>
           )}
-        </CardContent>
-      </Card>
+      </div>
 
       {/* Edit Team Dialog */}
       {editingTeam && (
@@ -1174,7 +1038,7 @@ export function Teams() {
                 setBulkTemplateId(e.target.value ? parseInt(e.target.value) : null)
               }
             >
-              <option value="">No Template</option>
+              <option value="">Unassigned</option>
               {teamTemplates.map((template) => (
                 <option key={template.id} value={template.id.toString()}>
                   {template.name}

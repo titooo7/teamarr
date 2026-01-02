@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { MainLayout } from "@/layouts/MainLayout"
 import { GenerationProvider } from "@/contexts/GenerationContext"
+import { StartupOverlay } from "@/components/StartupOverlay"
 import {
   Dashboard,
   Templates,
@@ -30,6 +31,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <GenerationProvider>
+      <StartupOverlay />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<MainLayout />}>

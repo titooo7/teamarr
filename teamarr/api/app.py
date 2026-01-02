@@ -1,6 +1,7 @@
 """FastAPI application factory - Clean V2 API with React UI."""
 
 import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -25,17 +26,17 @@ from teamarr.api.routes import (
     templates,
     variables,
 )
+from teamarr.api.startup_state import StartupPhase, get_startup_state
 from teamarr.utilities.logging import setup_logging
 
 logger = logging.getLogger(__name__)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan handler - runs on startup and shutdown."""
-    from teamarr.database import get_db, init_db
+def _run_startup_tasks():
+    """Run startup tasks in background thread."""
+    from teamarr.database import get_db
     from teamarr.database.settings import get_scheduler_settings
-    from teamarr.dispatcharr import close_dispatcharr, get_factory
+    from teamarr.dispatcharr import get_factory
     from teamarr.providers import ProviderRegistry
     from teamarr.services import (
         create_cache_service,
@@ -43,11 +44,110 @@ async def lifespan(app: FastAPI):
         init_league_mapping_service,
     )
 
-    # Startup
+    startup_state = get_startup_state()
+
+    try:
+        # Initialize services and providers with dependencies
+        startup_state.set_phase(StartupPhase.INITIALIZING)
+        league_mapping_service = init_league_mapping_service(get_db)
+        ProviderRegistry.initialize(league_mapping_service)
+        logger.info("League mapping service and providers initialized")
+
+        # Refresh team/league cache (this takes time)
+        startup_state.set_phase(StartupPhase.REFRESHING_CACHE)
+        cache_service = create_cache_service(get_db)
+        logger.info("Refreshing team/league cache on startup...")
+        cache_service.refresh()
+        logger.info("Team/league cache refreshed")
+
+        # Reload league mapping service to pick up new league names from cache
+        league_mapping_service.reload()
+
+        # Load display settings from database into config cache
+        startup_state.set_phase(StartupPhase.LOADING_SETTINGS)
+        from teamarr.config import set_display_settings, set_timezone
+        from teamarr.database.settings import get_display_settings, get_epg_settings
+
+        with get_db() as conn:
+            # Load timezone
+            epg_settings = get_epg_settings(conn)
+            set_timezone(epg_settings.epg_timezone)
+
+            # Load display settings
+            display = get_display_settings(conn)
+            set_display_settings(
+                time_format=display.time_format,
+                show_timezone=display.show_timezone,
+                channel_id_format=display.channel_id_format,
+                xmltv_generator_name=display.xmltv_generator_name,
+                xmltv_generator_url=display.xmltv_generator_url,
+            )
+        logger.info("Display settings loaded into config cache")
+
+        # Initialize Dispatcharr factory (lazy connection)
+        startup_state.set_phase(StartupPhase.CONNECTING_DISPATCHARR)
+        try:
+            factory = get_factory(get_db)
+            if factory.is_configured:
+                logger.info("Dispatcharr configured, connection will be established on first use")
+            else:
+                logger.info("Dispatcharr not configured")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Dispatcharr factory: {e}")
+
+        # Start background scheduler if enabled
+        startup_state.set_phase(StartupPhase.STARTING_SCHEDULER)
+        from teamarr.database.settings import get_epg_settings
+
+        with get_db() as conn:
+            scheduler_settings = get_scheduler_settings(conn)
+            epg_settings = get_epg_settings(conn)
+
+        if scheduler_settings.enabled:
+            try:
+                # Get Dispatcharr client for scheduler (may be None)
+                client = None
+                try:
+                    factory = get_factory()
+                    client = factory.get_client()
+                except Exception:
+                    pass
+
+                scheduler_service = create_scheduler_service(get_db, client)
+                cron_expr = epg_settings.cron_expression or "0 * * * *"
+                started = scheduler_service.start(cron_expression=cron_expr)
+                if started:
+                    logger.info(f"Background scheduler started (cron: {cron_expr})")
+                # Store scheduler service reference for shutdown
+                _app_state["scheduler_service"] = scheduler_service
+            except Exception as e:
+                logger.warning(f"Failed to start scheduler: {e}")
+        else:
+            logger.info("Background scheduler disabled")
+
+        startup_state.set_phase(StartupPhase.READY)
+        logger.info("Teamarr V2 ready")
+
+    except Exception as e:
+        logger.exception(f"Startup failed: {e}")
+        startup_state.set_error(str(e))
+
+
+# Store app-level state for cleanup
+_app_state: dict = {}
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan handler - runs on startup and shutdown."""
+    from teamarr.database import get_db, init_db
+    from teamarr.dispatcharr import close_dispatcharr
+
+    # Startup - minimal blocking, then background tasks
     setup_logging()
     logger.info("Starting Teamarr V2...")
 
-    # Initialize database
+    # Initialize database (fast)
     init_db()
 
     # Cleanup any stuck processing runs from previous crashes
@@ -56,79 +156,9 @@ async def lifespan(app: FastAPI):
     with get_db() as conn:
         cleanup_stuck_runs(conn)
 
-    # Initialize services and providers with dependencies
-    league_mapping_service = init_league_mapping_service(get_db)
-    ProviderRegistry.initialize(league_mapping_service)
-    logger.info("League mapping service and providers initialized")
-
-    # Always refresh team/league cache on startup
-    cache_service = create_cache_service(get_db)
-    logger.info("Refreshing team/league cache on startup...")
-    cache_service.refresh()
-    logger.info("Team/league cache refreshed")
-
-    # Reload league mapping service to pick up new league names from cache
-    league_mapping_service.reload()
-
-    # Load display settings from database into config cache
-    from teamarr.config import set_display_settings, set_timezone
-    from teamarr.database.settings import get_display_settings, get_epg_settings
-
-    with get_db() as conn:
-        # Load timezone
-        epg_settings = get_epg_settings(conn)
-        set_timezone(epg_settings.epg_timezone)
-
-        # Load display settings
-        display = get_display_settings(conn)
-        set_display_settings(
-            time_format=display.time_format,
-            show_timezone=display.show_timezone,
-            channel_id_format=display.channel_id_format,
-            xmltv_generator_name=display.xmltv_generator_name,
-            xmltv_generator_url=display.xmltv_generator_url,
-        )
-    logger.info("Display settings loaded into config cache")
-
-    # Initialize Dispatcharr factory (lazy connection)
-    try:
-        factory = get_factory(get_db)
-        if factory.is_configured:
-            logger.info("Dispatcharr configured, connection will be established on first use")
-        else:
-            logger.info("Dispatcharr not configured")
-    except Exception as e:
-        logger.warning(f"Failed to initialize Dispatcharr factory: {e}")
-
-    # Start background scheduler if enabled
-    from teamarr.database.settings import get_epg_settings
-
-    with get_db() as conn:
-        scheduler_settings = get_scheduler_settings(conn)
-        epg_settings = get_epg_settings(conn)
-
-    scheduler_service = None
-    if scheduler_settings.enabled:
-        try:
-            # Get Dispatcharr client for scheduler (may be None)
-            client = None
-            try:
-                factory = get_factory()
-                client = factory.get_client()
-            except Exception:
-                pass
-
-            scheduler_service = create_scheduler_service(get_db, client)
-            cron_expr = epg_settings.cron_expression or "0 * * * *"
-            started = scheduler_service.start(cron_expression=cron_expr)
-            if started:
-                logger.info(f"Background scheduler started (cron: {cron_expr})")
-        except Exception as e:
-            logger.warning(f"Failed to start scheduler: {e}")
-    else:
-        logger.info("Background scheduler disabled")
-
-    logger.info("Teamarr V2 ready")
+    # Start background startup tasks (cache refresh, etc.)
+    startup_thread = threading.Thread(target=_run_startup_tasks, daemon=True)
+    startup_thread.start()
 
     yield
 
@@ -136,6 +166,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Teamarr V2...")
 
     # Stop scheduler
+    scheduler_service = _app_state.get("scheduler_service")
     if scheduler_service:
         scheduler_service.stop()
 

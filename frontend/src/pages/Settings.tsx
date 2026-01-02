@@ -91,7 +91,19 @@ function CronPreview({ expression }: { expression: string }) {
   )
 }
 
+type SettingsTab = "general" | "teams" | "events" | "epg" | "integrations" | "advanced"
+
+const TABS: { id: SettingsTab; label: string }[] = [
+  { id: "general", label: "General" },
+  { id: "teams", label: "Teams" },
+  { id: "events", label: "Event Groups" },
+  { id: "epg", label: "EPG Generation" },
+  { id: "integrations", label: "Integrations" },
+  { id: "advanced", label: "Advanced" },
+]
+
 export function Settings() {
+  const [activeTab, setActiveTab] = useState<SettingsTab>("general")
   const { data: settings, isLoading, error, refetch } = useSettings()
   const dispatcharrStatus = useDispatcharrStatus()
   const epgSourcesQuery = useDispatcharrEPGSources(dispatcharrStatus.data?.connected ?? false)
@@ -116,7 +128,12 @@ export function Settings() {
 
   // V1 Migration state
   const [v1DbPath, setV1DbPath] = useState("/v1-data/teamarr.db")
-  const [isMigrating, setIsMigrating] = useState(false)
+  const [isMigrating, setIsMigrating] = useState<string | null>(null)
+  const [migrationResults, setMigrationResults] = useState<{
+    templates?: { count: number; items: string[] }
+    teams?: { count: number; items: string[] }
+    groups?: { count: number; items: string[] }
+  } | null>(null)
 
   // Local form state
   const [dispatcharr, setDispatcharr] = useState<Partial<DispatcharrSettings>>({})
@@ -285,14 +302,18 @@ export function Settings() {
     }
   }
 
-  const handleMigrateV1 = async () => {
+  const handleMigrateV1 = async (type: "templates" | "teams" | "groups" | "all") => {
     if (!v1DbPath.trim()) {
       toast.error("Please enter the path to your V1 database")
       return
     }
-    setIsMigrating(true)
+    setIsMigrating(type)
     try {
-      const response = await fetch("/api/v1/templates/migrate-v1", {
+      const endpoint = type === "all"
+        ? "/api/v1/templates/migrate-v1-all"
+        : `/api/v1/templates/migrate-v1${type === "templates" ? "" : `-${type}`}`
+
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ v1_db_path: v1DbPath }),
@@ -301,7 +322,39 @@ export function Settings() {
       if (!response.ok) {
         throw new Error(data.detail || "Migration failed")
       }
-      if (data.migrated_count > 0) {
+
+      // Update results based on type
+      if (type === "all") {
+        setMigrationResults({
+          templates: { count: data.templates_migrated, items: [] },
+          teams: { count: data.teams_migrated, items: [] },
+          groups: { count: data.groups_migrated, items: [] },
+        })
+      } else if (type === "templates") {
+        setMigrationResults(prev => ({
+          ...prev,
+          templates: { count: data.migrated_count, items: data.templates || [] },
+        }))
+      } else if (type === "teams") {
+        setMigrationResults(prev => ({
+          ...prev,
+          teams: { count: data.migrated_count, items: data.teams || [] },
+        }))
+      } else if (type === "groups") {
+        setMigrationResults(prev => ({
+          ...prev,
+          groups: { count: data.migrated_count, items: data.groups || [] },
+        }))
+      }
+
+      if (type === "all") {
+        const total = data.templates_migrated + data.teams_migrated + data.groups_migrated
+        if (total > 0) {
+          toast.success(data.message)
+        } else {
+          toast.info(data.message)
+        }
+      } else if (data.migrated_count > 0) {
         toast.success(data.message)
       } else {
         toast.info(data.message)
@@ -309,7 +362,7 @@ export function Settings() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Migration failed")
     } finally {
-      setIsMigrating(false)
+      setIsMigrating(null)
     }
   }
 
@@ -350,7 +403,28 @@ export function Settings() {
         </Button>
       </div>
 
-      {/* 1. System Settings (Display) */}
+      {/* Tab Navigation */}
+      <div className="flex gap-1 border-b border-border pb-px">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-3 py-1.5 text-sm font-medium rounded-t transition-colors ${
+              activeTab === tab.id
+                ? "bg-card text-foreground border border-border border-b-card -mb-px"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab Content */}
+      <div className="space-y-3 min-h-[400px]">
+
+      {/* General Tab */}
+      {activeTab === "general" && (
       <Card>
         <CardHeader>
           <CardTitle>System Settings</CardTitle>
@@ -413,8 +487,10 @@ export function Settings() {
           </Button>
         </CardContent>
       </Card>
+      )}
 
-      {/* 2. Team Based Streams */}
+      {/* Teams Tab */}
+      {activeTab === "teams" && (
       <Card>
         <CardHeader>
           <CardTitle>Team Based Streams</CardTitle>
@@ -481,8 +557,10 @@ export function Settings() {
           </Button>
         </CardContent>
       </Card>
+      )}
 
-      {/* 3. Event Based Streams */}
+      {/* Event Groups Tab */}
+      {activeTab === "events" && (
       <Card>
         <CardHeader>
           <CardTitle>Event Based Streams</CardTitle>
@@ -684,8 +762,11 @@ export function Settings() {
           </Button>
         </CardContent>
       </Card>
+      )}
 
-      {/* 4. EPG Generation */}
+      {/* EPG Generation Tab */}
+      {activeTab === "epg" && (
+      <>
       <Card>
         <CardHeader>
           <CardTitle>EPG Generation</CardTitle>
@@ -850,7 +931,6 @@ export function Settings() {
         </CardContent>
       </Card>
 
-      {/* 5. Game Durations */}
       <Card>
         <CardHeader>
           <CardTitle>Game Durations</CardTitle>
@@ -891,8 +971,12 @@ export function Settings() {
           </Button>
         </CardContent>
       </Card>
+      </>
+      )}
 
-      {/* 6. Dispatcharr Connection */}
+      {/* Integrations Tab */}
+      {activeTab === "integrations" && (
+      <>
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -999,7 +1083,6 @@ export function Settings() {
         </CardContent>
       </Card>
 
-      {/* 7. Local Caching */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -1090,8 +1173,12 @@ export function Settings() {
           </Button>
         </CardContent>
       </Card>
+      </>
+      )}
 
-      {/* 8. V1 Migration */}
+      {/* Advanced Tab */}
+      {activeTab === "advanced" && (
+      <>
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -1100,47 +1187,109 @@ export function Settings() {
                 <Upload className="h-5 w-5" />
                 Import from V1
               </CardTitle>
-              <CardDescription>Migrate templates from a Teamarr V1 database</CardDescription>
+              <CardDescription>Migrate templates, teams, and event groups from Teamarr V1</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-            <p className="text-sm">
-              <strong>How to migrate from V1:</strong>
-            </p>
+          <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+            <p className="text-sm font-medium">Setup Instructions:</p>
             <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-1">
-              <li>Mount your V1 data directory into the container (see docker-compose.yml)</li>
-              <li>Enter the path to your V1 database below</li>
-              <li>Click "Import Templates" to migrate</li>
+              <li>Add a volume mount in docker-compose.yml: <code className="bg-secondary px-1 rounded">- ./v1-data:/v1-data:ro</code></li>
+              <li>Copy your V1 <code className="bg-secondary px-1 rounded">teamarr.db</code> to the v1-data folder</li>
+              <li>Enter the container path below and run migration</li>
             </ol>
           </div>
 
-          <div className="flex gap-2">
-            <div className="flex-1 space-y-2">
-              <Label htmlFor="v1-db-path">V1 Database Path</Label>
-              <Input
-                id="v1-db-path"
-                value={v1DbPath}
-                onChange={(e) => setV1DbPath(e.target.value)}
-                placeholder="/v1-data/teamarr.db"
-                className="font-mono text-sm"
-              />
-            </div>
+          <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 space-y-2">
+            <p className="text-sm font-medium text-blue-400">Migration Order (Recommended):</p>
+            <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-1">
+              <li><strong>Templates first</strong> — Creates the templates that teams and groups reference</li>
+              <li><strong>Teams second</strong> — Imports team channels with template assignments</li>
+              <li><strong>Event Groups last</strong> — Imports groups with parent/child relationships</li>
+            </ol>
+            <p className="text-xs text-muted-foreground mt-2">
+              Or use "Migrate All" to run all three in the correct order automatically.
+            </p>
           </div>
 
-          <Button onClick={handleMigrateV1} disabled={isMigrating}>
-            {isMigrating ? (
-              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-            ) : (
-              <ArrowRight className="h-4 w-4 mr-1" />
-            )}
-            Import Templates
-          </Button>
+          <div className="space-y-2">
+            <Label htmlFor="v1-db-path">V1 Database Path</Label>
+            <Input
+              id="v1-db-path"
+              value={v1DbPath}
+              onChange={(e) => setV1DbPath(e.target.value)}
+              placeholder="/v1-data/teamarr.db"
+              className="font-mono text-sm"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => handleMigrateV1("all")}
+              disabled={!!isMigrating}
+            >
+              {isMigrating === "all" ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <ArrowRight className="h-4 w-4 mr-1" />
+              )}
+              Migrate All
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleMigrateV1("templates")}
+              disabled={!!isMigrating}
+            >
+              {isMigrating === "templates" ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : null}
+              Templates Only
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleMigrateV1("teams")}
+              disabled={!!isMigrating}
+            >
+              {isMigrating === "teams" ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : null}
+              Teams Only
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleMigrateV1("groups")}
+              disabled={!!isMigrating}
+            >
+              {isMigrating === "groups" ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : null}
+              Event Groups Only
+            </Button>
+          </div>
+
+          {migrationResults && (
+            <div className="bg-secondary/50 rounded-lg p-3 space-y-2">
+              <p className="text-sm font-medium">Migration Results:</p>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Templates:</span>{" "}
+                  <span className="font-medium">{migrationResults.templates?.count ?? 0}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Teams:</span>{" "}
+                  <span className="font-medium">{migrationResults.teams?.count ?? 0}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Event Groups:</span>{" "}
+                  <span className="font-medium">{migrationResults.groups?.count ?? 0}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* 9. Advanced Settings */}
       <Card>
         <CardHeader>
           <CardTitle>Advanced Settings</CardTitle>
@@ -1177,6 +1326,10 @@ export function Settings() {
           </Button>
         </CardContent>
       </Card>
+      </>
+      )}
+
+      </div>
     </div>
   )
 }

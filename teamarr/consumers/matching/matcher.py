@@ -285,6 +285,7 @@ class StreamMatcher:
                 stream_id=stream_id,
                 generation=self._generation,
                 user_tz=self._user_tz,
+                sport_durations=self._sport_durations,
             )
         else:
             return self._team_matcher.match_multi_league(
@@ -295,6 +296,7 @@ class StreamMatcher:
                 stream_id=stream_id,
                 generation=self._generation,
                 user_tz=self._user_tz,
+                sport_durations=self._sport_durations,
             )
 
     def _match_event_card(

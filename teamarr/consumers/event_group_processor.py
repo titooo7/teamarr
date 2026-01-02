@@ -634,6 +634,7 @@ class EventGroupProcessor:
                     matched_count=0,
                     filtered_include_regex=filter_result.filtered_include,
                     filtered_exclude_regex=filter_result.filtered_exclude,
+                    filtered_not_event=filter_result.filtered_not_event,
                     total_stream_count=result.streams_fetched,  # V1 parity
                 )
                 return result
@@ -654,6 +655,18 @@ class EventGroupProcessor:
                 result.completed_at = datetime.now()
                 stats_run.complete(status="completed", error="No events found")
                 save_run(conn, stats_run)
+                # Update stats - streams are eligible but no events to match against
+                update_group_stats(
+                    conn,
+                    group.id,
+                    stream_count=result.streams_after_filter,  # Eligible streams
+                    matched_count=0,
+                    filtered_include_regex=result.filtered_include_regex,
+                    filtered_exclude_regex=result.filtered_exclude_regex,
+                    filtered_no_match=result.streams_after_filter,  # All unmatched due to no events
+                    filtered_not_event=result.filtered_not_event,
+                    total_stream_count=result.streams_fetched,
+                )
                 return result
 
             # Step 3: Match streams to events
@@ -712,6 +725,7 @@ class EventGroupProcessor:
                 filtered_include_regex=result.filtered_include_regex,
                 filtered_exclude_regex=result.filtered_exclude_regex,
                 filtered_no_match=result.streams_unmatched,
+                filtered_not_event=result.filtered_not_event,
                 total_stream_count=result.streams_fetched,  # V1 parity
             )
 
@@ -817,26 +831,30 @@ class EventGroupProcessor:
                     matched_count=0,
                     filtered_include_regex=filter_result.filtered_include,
                     filtered_exclude_regex=filter_result.filtered_exclude,
+                    filtered_not_event=filter_result.filtered_not_event,
                     total_stream_count=result.streams_fetched,  # V1 parity
                 )
                 return result
 
             # Step 2: Fetch events from data providers
             events = self._fetch_events(group.leagues, target_date)
+            logger.info(f"Fetched {len(events)} events for group '{group.name}' leagues={group.leagues}")
 
             if not events:
                 result.errors.append(f"No events found for leagues: {group.leagues}")
                 result.completed_at = datetime.now()
                 stats_run.complete(status="completed", error="No events found")
                 save_run(conn, stats_run)
-                # V1 parity: Update total_stream_count even when no events
+                # Update stats - streams are eligible but no events to match against
                 update_group_stats(
                     conn,
                     group.id,
-                    stream_count=0,
+                    stream_count=result.streams_after_filter,  # Eligible streams
                     matched_count=0,
                     filtered_include_regex=filter_result.filtered_include,
                     filtered_exclude_regex=filter_result.filtered_exclude,
+                    filtered_no_match=result.streams_after_filter,  # All unmatched due to no events
+                    filtered_not_event=filter_result.filtered_not_event,
                     total_stream_count=result.streams_fetched,
                 )
                 return result
@@ -922,6 +940,7 @@ class EventGroupProcessor:
                 filtered_include_regex=result.filtered_include_regex,
                 filtered_exclude_regex=result.filtered_exclude_regex,
                 filtered_no_match=result.streams_unmatched,
+                filtered_not_event=result.filtered_not_event,
                 total_stream_count=result.streams_fetched,  # V1 parity
             )
 
@@ -1042,32 +1061,45 @@ class EventGroupProcessor:
             return [row[0] for row in cursor.fetchall()]
 
     def _fetch_events(self, leagues: list[str], target_date: date) -> list[Event]:
-        """Fetch events from data providers for leagues in parallel."""
+        """Fetch events from data providers for leagues in parallel.
+
+        Fetches both today's events AND yesterday's events to catch games
+        that started yesterday but are still ongoing (crossed midnight).
+        """
         if not leagues:
             return []
 
         all_events: list[Event] = []
         num_workers = min(MAX_WORKERS, len(leagues))
 
-        def fetch_league_events(league: str) -> tuple[str, list[Event]]:
-            """Fetch events for a single league (for parallel execution)."""
+        # Fetch both today and yesterday to catch ongoing games that crossed midnight
+        yesterday = target_date - timedelta(days=1)
+        dates_to_fetch = [yesterday, target_date]
+
+        def fetch_league_events(league: str, fetch_date: date) -> tuple[str, date, list[Event]]:
+            """Fetch events for a single league/date (for parallel execution)."""
             try:
-                events = self._service.get_events(league, target_date)
-                return (league, events)
+                events = self._service.get_events(league, fetch_date)
+                return (league, fetch_date, events)
             except Exception as e:
-                logger.warning(f"Failed to fetch events for {league}: {e}")
-                return (league, [])
+                logger.warning(f"Failed to fetch events for {league} on {fetch_date}: {e}")
+                return (league, fetch_date, [])
 
         with ThreadPoolExecutor(max_workers=num_workers) as executor:
-            futures = {executor.submit(fetch_league_events, league): league for league in leagues}
+            # Create tasks for all league/date combinations
+            futures = {}
+            for league in leagues:
+                for fetch_date in dates_to_fetch:
+                    future = executor.submit(fetch_league_events, league, fetch_date)
+                    futures[future] = (league, fetch_date)
 
             for future in as_completed(futures):
                 try:
-                    league, events = future.result()
+                    league, fetch_date, events = future.result()
                     all_events.extend(events)
                 except Exception as e:
-                    league = futures[future]
-                    logger.warning(f"Failed to fetch events for {league}: {e}")
+                    league, fetch_date = futures[future]
+                    logger.warning(f"Failed to fetch events for {league} on {fetch_date}: {e}")
 
         return all_events
 

@@ -7,8 +7,8 @@ Supports two modes:
 """
 
 import logging
-from dataclasses import dataclass
-from datetime import date, datetime, time
+from dataclasses import dataclass, field
+from datetime import date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -46,6 +46,49 @@ class MatchContext:
     # Extracted team names (from classifier)
     team1: str | None = None
     team2: str | None = None
+
+    # Sport durations for ongoing event detection (hours)
+    sport_durations: dict[str, float] = field(default_factory=dict)
+
+    def is_event_ongoing(self, event: "Event") -> bool:
+        """Check if an event should be considered for matching.
+
+        V1 Parity: Yesterday's events are only candidates if NOT final/completed.
+        The SEARCH_DAYS_BACK is for catching in-progress games, not finished ones.
+
+        Returns True if:
+        - Event is today (regardless of status - final exclusion handled elsewhere)
+        - Event is from yesterday AND not completed/final AND within duration window
+        """
+        now = datetime.now(self.user_tz)
+        event_start = event.start_time.astimezone(self.user_tz)
+        event_date = event_start.date()
+
+        # Today's events are always candidates (final status handled elsewhere)
+        if event_date == self.target_date:
+            return True
+
+        # Yesterday's events: only if NOT final/completed
+        if event_date == self.target_date - timedelta(days=1):
+            # Check event status - final events from yesterday are NOT candidates
+            if event.status:
+                status_state = event.status.state.lower() if event.status.state else ""
+                status_detail = event.status.detail.lower() if event.status.detail else ""
+                is_completed = (
+                    status_state in ("final", "post", "completed")
+                    or "final" in status_detail
+                )
+                if is_completed:
+                    return False
+
+            # Not completed - check duration window as safety net
+            sport = event.sport.lower() if event.sport else "default"
+            duration_hours = self.sport_durations.get(sport, 3.0)  # Default 3 hours
+            event_end_estimate = event_start + timedelta(hours=duration_hours)
+            return event_end_estimate > now
+
+        # Older events are not candidates
+        return False
 
 
 class TeamMatcher:
@@ -86,6 +129,7 @@ class TeamMatcher:
         stream_id: int,
         generation: int,
         user_tz: ZoneInfo,
+        sport_durations: dict[str, float] | None = None,
     ) -> MatchOutcome:
         """Single-league matching - search only the specified league.
 
@@ -99,6 +143,7 @@ class TeamMatcher:
             stream_id: Stream ID (for caching)
             generation: Cache generation counter
             user_tz: User timezone for date validation
+            sport_durations: Sport duration settings for ongoing event detection
 
         Returns:
             MatchOutcome with result
@@ -120,6 +165,7 @@ class TeamMatcher:
             classified=classified,
             team1=classified.team1,
             team2=classified.team2,
+            sport_durations=sport_durations or {},
         )
 
         # Check cache first
@@ -127,8 +173,13 @@ class TeamMatcher:
         if cache_result:
             return cache_result
 
-        # Get events for this league
-        events = self._service.get_events(league, target_date)
+        # Get events for this league - include yesterday to catch ongoing games
+        # V1 Parity: SEARCH_DAYS_BACK = 1 for in-progress games crossing midnight
+        yesterday = target_date - timedelta(days=1)
+        events_today = self._service.get_events(league, target_date)
+        events_yesterday = self._service.get_events(league, yesterday)
+        events = events_today + events_yesterday
+
         if not events:
             return MatchOutcome.failed(
                 FailedReason.NO_EVENT_FOUND,
@@ -139,7 +190,7 @@ class TeamMatcher:
                 parsed_team2=ctx.team2,
             )
 
-        # Try to match
+        # Try to match (is_event_ongoing filters out completed yesterday events)
         result = self._match_against_events(ctx, events, league)
 
         # Cache successful matches
@@ -157,6 +208,7 @@ class TeamMatcher:
         stream_id: int,
         generation: int,
         user_tz: ZoneInfo,
+        sport_durations: dict[str, float] | None = None,
     ) -> MatchOutcome:
         """Multi-league matching with league hint detection.
 
@@ -178,6 +230,7 @@ class TeamMatcher:
             stream_id: Stream ID (for caching)
             generation: Cache generation counter
             user_tz: User timezone for date validation
+            sport_durations: Sport duration settings for ongoing event detection
 
         Returns:
             MatchOutcome with result
@@ -199,6 +252,7 @@ class TeamMatcher:
             classified=classified,
             team1=classified.team1,
             team2=classified.team2,
+            sport_durations=sport_durations or {},
         )
 
         # Check cache first
@@ -225,11 +279,16 @@ class TeamMatcher:
             # No hint, search all enabled leagues
             leagues_to_search = enabled_leagues
 
-        # Gather events from all leagues to search
+        # Gather events from all leagues to search - include yesterday for ongoing games
+        # V1 Parity: SEARCH_DAYS_BACK = 1 for in-progress games crossing midnight
+        yesterday = target_date - timedelta(days=1)
         all_events: list[tuple[str, Event]] = []
         for league in leagues_to_search:
-            events = self._service.get_events(league, target_date)
-            for event in events:
+            events_today = self._service.get_events(league, target_date)
+            events_yesterday = self._service.get_events(league, yesterday)
+            for event in events_today:
+                all_events.append((league, event))
+            for event in events_yesterday:
                 all_events.append((league, event))
 
         if not all_events:
@@ -278,10 +337,16 @@ class TeamMatcher:
             self._cache.delete(ctx.group_id, ctx.stream_id, ctx.stream_name)
             return None
 
-        # Validate date (cache might be stale for different target date)
+        # V1 Parity: Cached events from yesterday should be re-matched to get fresh status.
+        # The cached event has OLD status from when it was cached, which may have
+        # changed to "final". Re-matching ensures we get current status from ESPN.
         event_date = event.start_time.astimezone(ctx.user_tz).date()
+        if event_date < ctx.target_date:
+            # Event is from a previous day - invalidate cache to get fresh status
+            return None
+
+        # Today's events: use cache (final status handled in _outcome_to_result)
         if event_date != ctx.target_date:
-            # Different date, need fresh match
             return None
 
         return MatchOutcome.matched(
@@ -318,10 +383,11 @@ class TeamMatcher:
         best_confidence: float = 0.0
 
         for event in events:
-            # Validate date
-            event_date = event.start_time.astimezone(ctx.user_tz).date()
-            if event_date != ctx.target_date:
+            # Validate date - include today's events and ongoing events from yesterday
+            if not ctx.is_event_ongoing(event):
                 continue
+
+            event_date = event.start_time.astimezone(ctx.user_tz).date()
 
             # Check for date mismatch from stream (if extracted)
             if ctx.classified.normalized.extracted_date:
@@ -403,10 +469,11 @@ class TeamMatcher:
         best_confidence: float = 0.0
 
         for league, event in events:
-            # Validate date
-            event_date = event.start_time.astimezone(ctx.user_tz).date()
-            if event_date != ctx.target_date:
+            # Validate date - include today's events and ongoing events from yesterday
+            if not ctx.is_event_ongoing(event):
                 continue
+
+            event_date = event.start_time.astimezone(ctx.user_tz).date()
 
             # Check for date mismatch from stream (if extracted)
             if ctx.classified.normalized.extracted_date:

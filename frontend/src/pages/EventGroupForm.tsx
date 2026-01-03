@@ -269,7 +269,7 @@ export function EventGroupForm() {
     return channelGroups.filter(g => g.name.toLowerCase().includes(filter))
   }, [channelGroups, channelGroupFilter])
 
-  // Eligible parent groups (single-league only, not multi-sport)
+  // Eligible parent groups (single-league only, not multi-sport, not already a child)
   const eligibleParents = useMemo(() => {
     if (!groupsData?.groups) return []
     return groupsData.groups.filter(g => {
@@ -279,6 +279,8 @@ export function EventGroupForm() {
       if (g.leagues.length !== 1) return false
       // Must match our league
       if (selectedLeague && g.leagues[0] !== selectedLeague) return false
+      // Can't be a child group (groups with parents can't be parents themselves)
+      if (g.parent_group_id != null) return false
       return true
     })
   }, [groupsData, isEdit, groupId, selectedLeague])

@@ -29,6 +29,7 @@ def _safe_isoformat(value: Any) -> str | None:
         return value.isoformat()
     return str(value)
 
+
 router = APIRouter()
 
 
@@ -64,6 +65,7 @@ class ManagedChannelModel(BaseModel):
 
     created_at: str | None = None
     updated_at: str | None = None
+    deleted_at: str | None = None
 
 
 class ManagedChannelListResponse(BaseModel):
@@ -188,6 +190,7 @@ def list_managed_channels(
                 sync_status=c.sync_status,
                 created_at=_safe_isoformat(c.created_at),
                 updated_at=_safe_isoformat(c.updated_at),
+                deleted_at=_safe_isoformat(c.deleted_at),
             )
             for c in channels
         ],

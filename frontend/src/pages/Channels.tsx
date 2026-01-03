@@ -123,6 +123,22 @@ export function Channels() {
   } = useManagedChannels(selectedGroupId, includeDeleted)
   const { data: pendingData } = usePendingDeletions()
 
+  // Fetch all channels including deleted for the Recently Deleted section
+  const { data: allChannelsData } = useManagedChannels(undefined, true)
+
+  // Filter to get only deleted channels (last 50, sorted by deletion time)
+  const deletedChannels = useMemo(() => {
+    if (!allChannelsData?.channels) return []
+    return allChannelsData.channels
+      .filter((ch) => ch.deleted_at !== null)
+      .sort((a, b) => {
+        const dateA = new Date(a.deleted_at!).getTime()
+        const dateB = new Date(b.deleted_at!).getTime()
+        return dateB - dateA // Most recent first
+      })
+      .slice(0, 50)
+  }, [allChannelsData])
+
   const deleteMutation = useDeleteManagedChannel()
 
   // Fetch reconciliation status (for orphans)
@@ -547,8 +563,21 @@ export function Channels() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="max-w-xs truncate text-sm">
-                        {channel.away_team} @ {channel.home_team}
+                      <div className="max-w-xs">
+                        <div className="truncate text-sm">
+                          {channel.away_team} @ {channel.home_team}
+                        </div>
+                        {channel.event_date && (
+                          <div className="text-xs text-muted-foreground">
+                            {new Date(channel.event_date).toLocaleString(undefined, {
+                              weekday: "short",
+                              month: "short",
+                              day: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                          </div>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-sm truncate">
@@ -580,6 +609,73 @@ export function Channels() {
           )}
         </CardContent>
       </Card>
+
+      {/* Recently Deleted */}
+      {deletedChannels.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              Recently Deleted ({deletedChannels.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Channel</TableHead>
+                  <TableHead>Event</TableHead>
+                  <TableHead>Group</TableHead>
+                  <TableHead>League</TableHead>
+                  <TableHead>Deleted</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {deletedChannels.map((channel) => (
+                  <TableRow key={channel.id} className="text-muted-foreground">
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {channel.logo_url && (
+                          <img
+                            src={channel.logo_url}
+                            alt=""
+                            className="h-6 w-6 object-contain opacity-50"
+                          />
+                        )}
+                        <div>
+                          <div className="font-medium">{channel.channel_name}</div>
+                          <div className="text-xs">{channel.tvg_id}</div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="max-w-xs truncate text-sm">
+                        {channel.away_team} @ {channel.home_team}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {groupLookup.get(channel.event_epg_group_id) ?? "-"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="text-xs">{channel.league ?? "-"}</Badge>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {channel.deleted_at
+                        ? new Date(channel.deleted_at).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })
+                        : "-"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Delete Confirmation */}
       <Dialog

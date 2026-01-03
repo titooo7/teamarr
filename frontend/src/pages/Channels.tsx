@@ -7,12 +7,11 @@ import {
   RefreshCw,
   Clock,
   Tv,
-  Wrench,
   Search,
   AlertTriangle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -31,18 +30,21 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Select } from "@/components/ui/select"
+import { FilterSelect } from "@/components/ui/filter-select"
 import {
   useManagedChannels,
   useDeleteManagedChannel,
-  useSyncLifecycle,
-  useRunReconciliation,
   usePendingDeletions,
   useReconciliationStatus,
 } from "@/hooks/useChannels"
 import { useGroups } from "@/hooks/useGroups"
-import { deleteDispatcharrChannel, deleteManagedChannel } from "@/api/channels"
-import type { ManagedChannel } from "@/api/channels"
+import {
+  deleteDispatcharrChannel,
+  deleteManagedChannel,
+  previewResetChannels,
+  executeResetChannels,
+} from "@/api/channels"
+import type { ManagedChannel, ResetChannelInfo } from "@/api/channels"
 
 function formatDateTime(dateStr: string | null): string {
   if (!dateStr) return "-"
@@ -91,17 +93,28 @@ function getSyncStatusBadge(status: string) {
 }
 
 export function Channels() {
-  const [selectedGroupId, setSelectedGroupId] = useState<number | undefined>(undefined)
+  // Filter states
+  const [groupFilter, setGroupFilter] = useState<string>("")
+  const [leagueFilter, setLeagueFilter] = useState<string>("")
+  const [statusFilter, setStatusFilter] = useState<string>("")
   const [includeDeleted, setIncludeDeleted] = useState(false)
+
+  // UI states
   const [deleteConfirm, setDeleteConfirm] = useState<ManagedChannel | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
   const [orphansModalOpen, setOrphansModalOpen] = useState(false)
   const [deletingOrphanId, setDeletingOrphanId] = useState<number | null>(null)
+  const [deletingAllOrphans, setDeletingAllOrphans] = useState(false)
+  const [resetModalOpen, setResetModalOpen] = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetExecuting, setResetExecuting] = useState(false)
+  const [resetChannels, setResetChannels] = useState<ResetChannelInfo[]>([])
 
   const queryClient = useQueryClient()
 
   const { data: groups } = useGroups()
+  const selectedGroupId = groupFilter ? parseInt(groupFilter) : undefined
   const {
     data: channelsData,
     isLoading,
@@ -111,8 +124,6 @@ export function Channels() {
   const { data: pendingData } = usePendingDeletions()
 
   const deleteMutation = useDeleteManagedChannel()
-  const syncMutation = useSyncLifecycle()
-  const reconcileMutation = useRunReconciliation()
 
   // Fetch reconciliation status (for orphans)
   const {
@@ -128,6 +139,42 @@ export function Channels() {
       (issue) => issue.issue_type === "orphan_dispatcharr"
     )
   }, [reconciliationData])
+
+  // Extract unique filter values from data
+  const { leagues, statuses } = useMemo(() => {
+    const channels = channelsData?.channels ?? []
+    const leagueSet = new Set<string>()
+    const statusSet = new Set<string>()
+    for (const ch of channels) {
+      if (ch.league) leagueSet.add(ch.league)
+      if (ch.sync_status) statusSet.add(ch.sync_status)
+    }
+    return {
+      leagues: Array.from(leagueSet).sort(),
+      statuses: Array.from(statusSet).sort(),
+    }
+  }, [channelsData])
+
+  // Group ID -> name lookup
+  const groupLookup = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const g of groups?.groups ?? []) {
+      map.set(g.id, g.name)
+    }
+    return map
+  }, [groups])
+
+  // Apply client-side filters
+  const filteredChannels = useMemo(() => {
+    let channels = channelsData?.channels ?? []
+    if (leagueFilter) {
+      channels = channels.filter((ch) => ch.league === leagueFilter)
+    }
+    if (statusFilter) {
+      channels = channels.filter((ch) => ch.sync_status === statusFilter)
+    }
+    return channels
+  }, [channelsData, leagueFilter, statusFilter])
 
   // Mutation for deleting orphan channel
   const deleteOrphanMutation = useMutation({
@@ -175,32 +222,6 @@ export function Channels() {
     }
   }
 
-  const handleSync = async () => {
-    try {
-      const result = await syncMutation.mutateAsync()
-      toast.success(
-        `Sync complete: ${result.deleted_count} deleted, ${result.error_count} errors`
-      )
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to sync lifecycle")
-    }
-  }
-
-  const handleReconcile = async (autoFix: boolean) => {
-    try {
-      const result = await reconcileMutation.mutateAsync({ autoFix })
-      if (autoFix) {
-        toast.success(
-          `Reconciliation complete: ${result.summary.fixed} fixed, ${result.summary.errors} errors`
-        )
-      } else {
-        toast.info(`Found ${result.summary.total} issues`)
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Reconciliation failed")
-    }
-  }
-
   const handleDeleteOrphan = async (channelId: number) => {
     setDeletingOrphanId(channelId)
     try {
@@ -210,6 +231,68 @@ export function Channels() {
       toast.error(err instanceof Error ? err.message : "Failed to delete orphan")
     } finally {
       setDeletingOrphanId(null)
+    }
+  }
+
+  const handleDeleteAllOrphans = async () => {
+    const channelIds = orphanChannels
+      .map((o) => o.dispatcharr_channel_id)
+      .filter((id): id is number => id !== null && id !== undefined)
+
+    if (channelIds.length === 0) return
+
+    setDeletingAllOrphans(true)
+    try {
+      const results = await Promise.allSettled(
+        channelIds.map((id) => deleteOrphanMutation.mutateAsync(id))
+      )
+      const succeeded = results.filter((r) => r.status === "fulfilled").length
+      const failed = results.filter((r) => r.status === "rejected").length
+
+      if (failed === 0) {
+        toast.success(`Deleted ${succeeded} orphan channels`)
+      } else {
+        toast.warning(`Deleted ${succeeded}, failed ${failed}`)
+      }
+      refetchReconciliation()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete orphans")
+    } finally {
+      setDeletingAllOrphans(false)
+    }
+  }
+
+  const handleOpenResetModal = async () => {
+    setResetModalOpen(true)
+    setResetLoading(true)
+    try {
+      const response = await previewResetChannels()
+      setResetChannels(response.channels)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load reset preview")
+    } finally {
+      setResetLoading(false)
+    }
+  }
+
+  const handleExecuteReset = async () => {
+    setResetExecuting(true)
+    try {
+      const response = await executeResetChannels()
+      if (response.success) {
+        toast.success(`Deleted ${response.deleted_count} channels from Dispatcharr`)
+      } else {
+        toast.warning(
+          `Deleted ${response.deleted_count}, failed ${response.error_count}`
+        )
+      }
+      setResetModalOpen(false)
+      refetch()
+      queryClient.invalidateQueries({ queryKey: ["reconciliation"] })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to reset channels")
+    } finally {
+      setResetExecuting(false)
     }
   }
 
@@ -229,18 +312,17 @@ export function Channels() {
   }
 
   const toggleSelectAll = () => {
-    if (!channelsData?.channels) return
-    if (selectedIds.size === channelsData.channels.length) {
+    if (filteredChannels.length === 0) return
+    if (selectedIds.size === filteredChannels.length) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(channelsData.channels.map((c) => c.id)))
+      setSelectedIds(new Set(filteredChannels.map((c) => c.id)))
     }
   }
 
   const isAllSelected =
-    channelsData?.channels &&
-    channelsData.channels.length > 0 &&
-    selectedIds.size === channelsData.channels.length
+    filteredChannels.length > 0 &&
+    selectedIds.size === filteredChannels.length
 
   if (error) {
     return (
@@ -283,13 +365,21 @@ export function Channels() {
             <RefreshCw className="h-4 w-4 mr-1" />
             Refresh
           </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleOpenResetModal}
+          >
+            <AlertTriangle className="h-4 w-4 mr-1" />
+            Reset All
+          </Button>
         </div>
       </div>
 
-      {/* Batch Operations Bar */}
+      {/* Fixed Batch Operations Bar */}
       {selectedIds.size > 0 && (
-        <Card className="bg-muted/50">
-          <CardContent className="py-3">
+        <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          <div className="container max-w-screen-xl mx-auto px-4 py-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">
                 {selectedIds.size} channel{selectedIds.size > 1 ? "s" : ""} selected
@@ -312,138 +402,60 @@ export function Channels() {
                 </Button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pending Deletions Info */}
+      {pendingData && pendingData.count > 0 && (
+        <Card className="bg-muted/50">
+          <CardContent className="py-3">
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm">
+                <strong>{pendingData.count}</strong> channel{pendingData.count > 1 ? "s" : ""} pending deletion
+                {pendingData.channels[0] && (
+                  <span className="text-muted-foreground">
+                    {" "}— Next: {pendingData.channels[0].channel_name}
+                  </span>
+                )}
+              </span>
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Action Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Lifecycle Sync */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <RefreshCw className="h-5 w-5" />
-              Lifecycle Sync
-            </CardTitle>
-            <CardDescription>Process pending creates/deletes</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button
-              onClick={handleSync}
-              disabled={syncMutation.isPending}
-              className="w-full"
-            >
-              {syncMutation.isPending && (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              )}
-              Sync Now
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Reconciliation */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Wrench className="h-5 w-5" />
-              Reconciliation
-            </CardTitle>
-            <CardDescription>Detect and fix sync issues</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleReconcile(false)}
-                disabled={reconcileMutation.isPending}
-                className="flex-1"
-              >
-                Check
-              </Button>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => handleReconcile(true)}
-                disabled={reconcileMutation.isPending}
-                className="flex-1"
-              >
-                {reconcileMutation.isPending && (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                )}
-                Fix
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Pending Deletions */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Pending Deletions
-            </CardTitle>
-            <CardDescription>Channels awaiting deletion</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{pendingData?.count ?? 0}</div>
-            {pendingData && pendingData.count > 0 && (
-              <p className="text-sm text-muted-foreground mt-1">
-                Next: {pendingData.channels[0]?.channel_name}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters */}
+      {/* Channels List */}
       <Card>
-        <CardContent className="pt-4">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Group:</span>
-              <Select
-                value={selectedGroupId?.toString() ?? ""}
-                onChange={(e) =>
-                  setSelectedGroupId(e.target.value ? parseInt(e.target.value) : undefined)
-                }
-                className="w-48"
-              >
-                <option value="">All Groups</option>
-                {groups?.groups?.map((group) => (
-                  <option key={group.id} value={group.id.toString()}>
-                    {group.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <label className="flex items-center gap-2 text-sm">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Tv className="h-5 w-5" />
+              Channels ({filteredChannels.length}
+              {filteredChannels.length !== (channelsData?.channels.length ?? 0) && (
+                <span className="text-muted-foreground font-normal">
+                  {" "}of {channelsData?.channels.length ?? 0}
+                </span>
+              )}
+              )
+            </CardTitle>
+            <label className="flex items-center gap-2 text-sm font-normal">
               <input
                 type="checkbox"
                 checked={includeDeleted}
                 onChange={(e) => setIncludeDeleted(e.target.checked)}
+                className="rounded"
               />
               Show deleted
             </label>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Channels List */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Tv className="h-5 w-5" />
-            Channels ({channelsData?.channels.length ?? 0})
-          </CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : channelsData?.channels.length === 0 ? (
+          ) : (channelsData?.channels.length ?? 0) === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No managed channels found.
             </div>
@@ -459,15 +471,56 @@ export function Channels() {
                   </TableHead>
                   <TableHead>Channel</TableHead>
                   <TableHead>Event</TableHead>
-                  <TableHead>League</TableHead>
-                  <TableHead>Event Time</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Delete At</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="w-28">Group</TableHead>
+                  <TableHead className="w-20">League</TableHead>
+                  <TableHead className="w-20">Status</TableHead>
+                  <TableHead className="w-24">Delete At</TableHead>
+                  <TableHead className="w-16 text-right">Actions</TableHead>
+                </TableRow>
+                {/* Filter row */}
+                <TableRow className="border-b-2 border-border">
+                  <TableHead className="py-0.5 pb-1.5"></TableHead>
+                  <TableHead className="py-0.5 pb-1.5"></TableHead>
+                  <TableHead className="py-0.5 pb-1.5"></TableHead>
+                  <TableHead className="py-0.5 pb-1.5">
+                    <FilterSelect
+                      value={groupFilter}
+                      onChange={setGroupFilter}
+                      options={[
+                        { value: "", label: "All" },
+                        ...(groups?.groups?.map((g) => ({
+                          value: g.id.toString(),
+                          label: g.name,
+                        })) ?? []),
+                      ]}
+                    />
+                  </TableHead>
+                  <TableHead className="py-0.5 pb-1.5">
+                    <FilterSelect
+                      value={leagueFilter}
+                      onChange={setLeagueFilter}
+                      options={[
+                        { value: "", label: "All" },
+                        ...leagues.map((l) => ({ value: l, label: l })),
+                      ]}
+                    />
+                  </TableHead>
+                  <TableHead className="py-0.5 pb-1.5">
+                    <FilterSelect
+                      value={statusFilter}
+                      onChange={setStatusFilter}
+                      options={[
+                        { value: "", label: "All" },
+                        ...statuses.map((s) => ({ value: s, label: s })),
+                      ]}
+                    />
+                  </TableHead>
+                  <TableHead className="py-0.5 pb-1.5"></TableHead>
+                  <TableHead className="py-0.5 pb-1.5"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {channelsData?.channels.map((channel) => (
+                {filteredChannels.map((channel) => (
                   <TableRow key={channel.id}>
                     <TableCell>
                       <Checkbox
@@ -494,17 +547,15 @@ export function Channels() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="max-w-xs">
-                        <div className="truncate">
-                          {channel.away_team} @ {channel.home_team}
-                        </div>
+                      <div className="max-w-xs truncate text-sm">
+                        {channel.away_team} @ {channel.home_team}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{channel.league ?? "-"}</Badge>
+                    <TableCell className="text-sm truncate">
+                      {groupLookup.get(channel.event_epg_group_id) ?? "-"}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDateTime(channel.event_date)}
+                    <TableCell>
+                      <Badge variant="secondary" className="text-xs">{channel.league ?? "-"}</Badge>
                     </TableCell>
                     <TableCell>{getSyncStatusBadge(channel.sync_status)}</TableCell>
                     <TableCell className="text-muted-foreground">
@@ -619,6 +670,7 @@ export function Channels() {
                   {orphanChannels.length > 1 ? "s" : ""}. These exist in Dispatcharr but
                   aren't tracked by Teamarr.
                 </p>
+                <div className="max-h-[50vh] overflow-y-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -660,6 +712,7 @@ export function Channels() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               </div>
             )}
           </div>
@@ -676,6 +729,101 @@ export function Channels() {
               <RefreshCw className={`h-4 w-4 mr-1 ${reconciliationLoading ? "animate-spin" : ""}`} />
               Refresh
             </Button>
+            {orphanChannels.length > 0 && (
+              <Button
+                variant="destructive"
+                onClick={handleDeleteAllOrphans}
+                disabled={deletingAllOrphans}
+              >
+                {deletingAllOrphans ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                ) : (
+                  <Trash2 className="h-4 w-4 mr-1" />
+                )}
+                Delete All ({orphanChannels.length})
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset All Modal */}
+      <Dialog open={resetModalOpen} onOpenChange={setResetModalOpen}>
+        <DialogContent onClose={() => setResetModalOpen(false)} className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Reset All Teamarr Channels
+            </DialogTitle>
+            <DialogDescription>
+              This will delete ALL Teamarr-created channels from Dispatcharr
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            {resetLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : resetChannels.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No Teamarr channels found in Dispatcharr.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+                  <p className="text-sm font-medium text-destructive">
+                    ⚠️ Warning: Destructive Action
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    This will permanently delete {resetChannels.length} channel
+                    {resetChannels.length > 1 ? "s" : ""} from Dispatcharr that have{" "}
+                    <code className="text-xs bg-muted px-1 py-0.5 rounded">teamarr-event-*</code>{" "}
+                    tvg_id.
+                  </p>
+                </div>
+                <div className="max-h-[40vh] overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Channel Name</TableHead>
+                        <TableHead>Channel #</TableHead>
+                        <TableHead>Streams</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {resetChannels.map((ch) => (
+                        <TableRow key={ch.dispatcharr_channel_id}>
+                          <TableCell className="font-medium">{ch.channel_name}</TableCell>
+                          <TableCell>{ch.channel_number ?? "-"}</TableCell>
+                          <TableCell>{ch.stream_count}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetModalOpen(false)}>
+              Cancel
+            </Button>
+            {resetChannels.length > 0 && (
+              <Button
+                variant="destructive"
+                onClick={handleExecuteReset}
+                disabled={resetExecuting}
+              >
+                {resetExecuting ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                ) : (
+                  <Trash2 className="h-4 w-4 mr-1" />
+                )}
+                Delete All ({resetChannels.length})
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

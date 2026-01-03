@@ -135,3 +135,34 @@ export async function getPendingDeletions(): Promise<PendingDeletionsResponse> {
 export async function deleteDispatcharrChannel(channelId: number): Promise<DeleteResponse> {
   return api.delete(`/channels/dispatcharr/${channelId}`)
 }
+
+// Reset All - preview and delete all Teamarr channels from Dispatcharr
+export interface ResetChannelInfo {
+  dispatcharr_channel_id: number
+  uuid: string | null
+  tvg_id: string
+  channel_name: string
+  channel_number: string | null
+  stream_count: number
+}
+
+export interface ResetPreviewResponse {
+  success: boolean
+  channel_count: number
+  channels: ResetChannelInfo[]
+}
+
+export interface ResetExecuteResponse {
+  success: boolean
+  deleted_count: number
+  error_count: number
+  errors: string[]
+}
+
+export async function previewResetChannels(): Promise<ResetPreviewResponse> {
+  return api.get("/channels/reset")
+}
+
+export async function executeResetChannels(): Promise<ResetExecuteResponse> {
+  return api.post("/channels/reset", {})
+}

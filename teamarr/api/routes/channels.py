@@ -575,3 +575,149 @@ def delete_dispatcharr_channel(channel_id: int):
             success=False,
             message=f"Failed to delete channel: {result.error}",
         )
+
+
+# =============================================================================
+# RESET ALL TEAMARR CHANNELS
+# =============================================================================
+
+
+class ResetChannelInfo(BaseModel):
+    """Info about a Teamarr channel in Dispatcharr."""
+
+    dispatcharr_channel_id: int
+    uuid: str | None = None
+    tvg_id: str
+    channel_name: str
+    channel_number: str | None = None
+    stream_count: int = 0
+
+
+class ResetPreviewResponse(BaseModel):
+    """Response for reset preview."""
+
+    success: bool
+    channel_count: int
+    channels: list[ResetChannelInfo]
+
+
+class ResetExecuteResponse(BaseModel):
+    """Response for reset execution."""
+
+    success: bool
+    deleted_count: int
+    error_count: int
+    errors: list[str] = Field(default_factory=list)
+
+
+@router.get("/reset", response_model=ResetPreviewResponse)
+def preview_reset_channels():
+    """Preview all Teamarr-created channels that would be deleted by reset.
+
+    Returns all channels in Dispatcharr with teamarr-event-* tvg_id,
+    regardless of whether they're tracked in managed_channels.
+    """
+    from teamarr.database.settings import get_settings
+    from teamarr.dispatcharr import ChannelManager, create_dispatcharr_client
+
+    with get_db() as conn:
+        settings = get_settings(conn)
+
+    if not settings or not settings.dispatcharr_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dispatcharr not configured",
+        )
+
+    client = create_dispatcharr_client(settings)
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dispatcharr connection not available",
+        )
+
+    manager = ChannelManager(client)
+    all_channels = manager.get_channels()
+
+    # Find ALL teamarr-event channels
+    teamarr_channels = []
+    for ch in all_channels:
+        tvg_id = ch.tvg_id or ""
+        if tvg_id.startswith("teamarr-event-"):
+            teamarr_channels.append(
+                ResetChannelInfo(
+                    dispatcharr_channel_id=ch.id,
+                    uuid=ch.uuid,
+                    tvg_id=tvg_id,
+                    channel_name=ch.name,
+                    channel_number=ch.channel_number,
+                    stream_count=len(ch.streams) if ch.streams else 0,
+                )
+            )
+
+    return ResetPreviewResponse(
+        success=True,
+        channel_count=len(teamarr_channels),
+        channels=teamarr_channels,
+    )
+
+
+@router.post("/reset", response_model=ResetExecuteResponse)
+def execute_reset_channels():
+    """Delete ALL Teamarr-created channels from Dispatcharr.
+
+    This is a destructive operation that removes all channels with
+    teamarr-event-* tvg_id. Also marks all managed_channels as deleted.
+    """
+    from teamarr.database.settings import get_settings
+    from teamarr.dispatcharr import ChannelManager, create_dispatcharr_client
+
+    with get_db() as conn:
+        settings = get_settings(conn)
+
+    if not settings or not settings.dispatcharr_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dispatcharr not configured",
+        )
+
+    client = create_dispatcharr_client(settings)
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dispatcharr connection not available",
+        )
+
+    manager = ChannelManager(client)
+    all_channels = manager.get_channels()
+
+    deleted_count = 0
+    errors: list[str] = []
+
+    # Find and delete ALL teamarr-event channels
+    for ch in all_channels:
+        tvg_id = ch.tvg_id or ""
+        if not tvg_id.startswith("teamarr-event-"):
+            continue
+
+        result = manager.delete_channel(ch.id)
+        if result.success:
+            deleted_count += 1
+        else:
+            errors.append(f"Failed to delete {ch.name}: {result.error}")
+
+    # Mark all managed_channels as deleted
+    with get_db() as conn:
+        conn.execute(
+            """UPDATE managed_channels
+               SET deleted_at = CURRENT_TIMESTAMP
+               WHERE deleted_at IS NULL"""
+        )
+        conn.commit()
+
+    return ResetExecuteResponse(
+        success=len(errors) == 0,
+        deleted_count=deleted_count,
+        error_count=len(errors),
+        errors=errors,
+    )

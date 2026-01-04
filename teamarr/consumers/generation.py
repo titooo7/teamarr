@@ -142,6 +142,13 @@ def run_full_generation(
         result.run_id = stats_run.id
 
     try:
+        # Increment generation counter ONCE at start of full EPG run
+        # This ensures all groups in this run share the same generation
+        from teamarr.consumers.stream_match_cache import increment_generation_counter
+
+        current_generation = increment_generation_counter(db_factory)
+        logger.info(f"EPG generation starting with cache generation {current_generation}")
+
         # Get settings
         with db_factory() as conn:
             settings = get_epg_settings(conn)
@@ -155,10 +162,21 @@ def run_full_generation(
         # Step 2: Process all teams (5-50%) - 45% budget
         update_progress("teams", 5, "Processing teams...")
 
+        teams_start_time = time.time()
+
         def team_progress(current: int, total: int, name: str):
             # Maps 0-100% within teams to 5-50% overall
             pct = 5 + int((current / total) * 45) if total > 0 else 5
-            msg = f"Processing {name} ({current}/{total})"
+            elapsed = time.time() - teams_start_time
+            remaining = total - current
+
+            # Messages from team_processor already include context
+            # (Processing X..., Finished X, still processing: Y, Z)
+            # Just add timing and counts
+            if remaining > 0:
+                msg = f"{name} ({current}/{total}) - {remaining} remaining [{elapsed:.1f}s]"
+            else:
+                msg = f"{name} ({current}/{total}) [{elapsed:.1f}s]"
             update_progress("teams", pct, msg, current, total, name)
 
         team_result = process_all_teams(db_factory=db_factory, progress_callback=team_progress)
@@ -168,16 +186,32 @@ def run_full_generation(
         # Step 3: Process all event groups (50-95%) - 45% budget
         update_progress("groups", 50, "Processing event groups...")
 
+        groups_start_time = time.time()
+
         def group_progress(current: int, total: int, name: str):
             # Maps 0-100% within groups to 50-95% overall
             pct = 50 + int((current / total) * 45) if total > 0 else 50
-            msg = f"Processing {name} ({current}/{total})"
-            update_progress("groups", pct, msg, current, total, name)
+            elapsed = time.time() - groups_start_time
+
+            # Check if this is a stream-level progress update (contains ✓ or ✗)
+            if "✓" in name or "✗" in name:
+                # Stream-level progress - name contains "GroupName: StreamName ✓/✗ (x/y)"
+                # Pass the full message as item_name for display in toast
+                update_progress("groups", pct, name, current, total, name)
+            else:
+                # Group completion - add context
+                remaining = total - current
+                if remaining > 0:
+                    msg = f"Finished {name} ({current}/{total}) - {remaining} remaining [{elapsed:.1f}s]"
+                else:
+                    msg = f"Finished {name} ({current}/{total}) [{elapsed:.1f}s]"
+                update_progress("groups", pct, msg, current, total, name)
 
         group_result = process_all_event_groups(
             db_factory=db_factory,
             dispatcharr_client=dispatcharr_client,
             progress_callback=group_progress,
+            generation=current_generation,  # Share generation across all groups
         )
         result.groups_processed = group_result.groups_processed
         result.groups_programmes = group_result.total_programmes

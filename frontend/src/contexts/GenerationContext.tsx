@@ -39,6 +39,9 @@ function ProgressDescription({ status }: { status: GenerationStatus | null }) {
   const current = status?.current ?? 0
   const total = status?.total ?? 0
 
+  // Check if this is stream-level progress (contains ✓ or ✗)
+  const isStreamProgress = itemName && (itemName.includes("✓") || itemName.includes("✗"))
+
   return (
     <div className="space-y-2 mt-1 w-72">
       {/* Progress bar - fixed width */}
@@ -48,10 +51,16 @@ function ProgressDescription({ status }: { status: GenerationStatus | null }) {
           style={{ width: `${percent}%` }}
         />
       </div>
-      {/* Current item */}
+      {/* Current item - stream-level progress already has counts in itemName */}
       {itemName && (
         <div className="text-xs text-muted-foreground truncate">
-          {itemName}{total > 0 && ` (${current}/${total})`} — {percent}%
+          {isStreamProgress ? (
+            // Stream-level: itemName already has format "Group: Stream ✓ (x/y)"
+            <>{itemName} — {percent}%</>
+          ) : (
+            // Group/team level: add counts
+            <>{itemName}{total > 0 && ` (${current}/${total})`} — {percent}%</>
+          )}
         </div>
       )}
     </div>

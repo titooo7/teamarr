@@ -476,6 +476,7 @@ class EventGroupProcessor:
         target_date: date | None = None,
         run_enforcement: bool = True,
         progress_callback: Callable[[int, int, str], None] | None = None,
+        generation: int | None = None,
     ) -> BatchProcessingResult:
         """Process all active event groups.
 
@@ -490,12 +491,14 @@ class EventGroupProcessor:
             target_date: Target date (defaults to today)
             run_enforcement: Whether to run post-processing enforcement
             progress_callback: Optional callback(current, total, group_name)
+            generation: Cache generation counter (shared across all groups)
 
         Returns:
             BatchProcessingResult with all group results and combined XMLTV
         """
         target_date = target_date or date.today()
         batch_result = BatchProcessingResult()
+        self._generation = generation  # Store for use in _do_matching
 
         with self._db_factory() as conn:
             groups = get_all_groups(conn, include_disabled=False)
@@ -510,30 +513,72 @@ class EventGroupProcessor:
 
             # Phase 1: Process parent groups (create channels, generate EPG)
             for group in parent_groups:
-                result = self._process_group_internal(conn, group, target_date)
+                # Create stream progress callback that reports during matching
+                stream_cb = None
+                if progress_callback:
+                    def make_stream_cb(grp_name: str, grp_idx: int):
+                        def cb(current: int, total: int, stream_name: str, matched: bool):
+                            icon = "✓" if matched else "✗"
+                            msg = f"{grp_name}: {stream_name} {icon} ({current}/{total})"
+                            progress_callback(grp_idx, total_groups, msg)
+                        return cb
+                    stream_cb = make_stream_cb(group.name, processed_count + 1)
+
+                result = self._process_group_internal(
+                    conn, group, target_date, stream_progress_callback=stream_cb
+                )
                 batch_result.results.append(result)
                 processed_group_ids.append(group.id)
                 processed_count += 1
                 if progress_callback:
-                    progress_callback(processed_count, total_groups, group.name)
+                    # Include stream stats in progress: "Group Name (5/8 streams matched)"
+                    stats = f"({result.streams_matched}/{result.streams_fetched} matched)"
+                    progress_callback(processed_count, total_groups, f"{group.name} {stats}")
 
             # Phase 2: Process child groups (add streams to parent channels)
             for group in child_groups:
-                result = self._process_child_group_internal(conn, group, target_date)
+                # Child groups use same stream progress pattern
+                stream_cb = None
+                if progress_callback:
+                    def make_stream_cb(grp_name: str, grp_idx: int):
+                        def cb(current: int, total: int, stream_name: str, matched: bool):
+                            icon = "✓" if matched else "✗"
+                            msg = f"{grp_name}: {stream_name} {icon} ({current}/{total})"
+                            progress_callback(grp_idx, total_groups, msg)
+                        return cb
+                    stream_cb = make_stream_cb(group.name, processed_count + 1)
+
+                result = self._process_child_group_internal(
+                    conn, group, target_date, stream_progress_callback=stream_cb
+                )
                 batch_result.results.append(result)
                 # Child groups don't generate their own XMLTV
                 processed_count += 1
                 if progress_callback:
-                    progress_callback(processed_count, total_groups, group.name)
+                    stats = f"({result.streams_matched}/{result.streams_fetched} matched)"
+                    progress_callback(processed_count, total_groups, f"{group.name} {stats}")
 
             # Phase 3: Process multi-league groups
             for group in multi_league_groups:
-                result = self._process_group_internal(conn, group, target_date)
+                stream_cb = None
+                if progress_callback:
+                    def make_stream_cb(grp_name: str, grp_idx: int):
+                        def cb(current: int, total: int, stream_name: str, matched: bool):
+                            icon = "✓" if matched else "✗"
+                            msg = f"{grp_name}: {stream_name} {icon} ({current}/{total})"
+                            progress_callback(grp_idx, total_groups, msg)
+                        return cb
+                    stream_cb = make_stream_cb(group.name, processed_count + 1)
+
+                result = self._process_group_internal(
+                    conn, group, target_date, stream_progress_callback=stream_cb
+                )
                 batch_result.results.append(result)
                 processed_group_ids.append(group.id)
                 processed_count += 1
                 if progress_callback:
-                    progress_callback(processed_count, total_groups, group.name)
+                    stats = f"({result.streams_matched}/{result.streams_fetched} matched)"
+                    progress_callback(processed_count, total_groups, f"{group.name} {stats}")
 
             # Phase 4: Run enforcement (keyword placement + cross-group consolidation)
             if run_enforcement:
@@ -595,6 +640,7 @@ class EventGroupProcessor:
         conn: Connection,
         group: EventEPGGroup,
         target_date: date,
+        stream_progress_callback: Callable | None = None,
     ) -> ProcessingResult:
         """Process a child group - adds streams to parent's channels.
 
@@ -605,6 +651,7 @@ class EventGroupProcessor:
             conn: Database connection
             group: Child group to process
             target_date: Target date
+            stream_progress_callback: Optional callback(current, total, stream_name, matched)
 
         Returns:
             ProcessingResult with stream add details
@@ -688,7 +735,10 @@ class EventGroupProcessor:
                 return result
 
             # Step 3: Match streams to events
-            match_result = self._match_streams(streams, leagues, target_date, group.id)
+            match_result = self._match_streams(
+                streams, leagues, target_date, group.id,
+                stream_progress_callback=stream_progress_callback,
+            )
             result.streams_matched = match_result.matched_count
             result.streams_unmatched = match_result.unmatched_count
             stats_run.streams_matched = match_result.matched_count
@@ -811,8 +861,16 @@ class EventGroupProcessor:
         conn: Connection,
         group: EventEPGGroup,
         target_date: date,
+        stream_progress_callback: Callable | None = None,
     ) -> ProcessingResult:
-        """Internal processing for a single group."""
+        """Internal processing for a single group.
+
+        Args:
+            conn: Database connection
+            group: Event group to process
+            target_date: Target date for matching
+            stream_progress_callback: Optional callback(current, total, stream_name, matched)
+        """
         result = ProcessingResult(group_id=group.id, group_name=group.name)
 
         # Create stats run for tracking
@@ -882,7 +940,10 @@ class EventGroupProcessor:
                 return result
 
             # Step 3: Match streams to events (uses fingerprint cache)
-            match_result = self._match_streams(streams, group.leagues, target_date, group.id)
+            match_result = self._match_streams(
+                streams, group.leagues, target_date, group.id,
+                stream_progress_callback=stream_progress_callback,
+            )
             result.streams_matched = match_result.matched_count
             result.streams_unmatched = match_result.unmatched_count
             stats_run.streams_matched = match_result.matched_count
@@ -1135,6 +1196,7 @@ class EventGroupProcessor:
         leagues: list[str],
         target_date: date,
         group_id: int,
+        stream_progress_callback: Callable | None = None,
     ) -> BatchMatchResult:
         """Match streams to events using StreamMatcher.
 
@@ -1144,6 +1206,13 @@ class EventGroupProcessor:
         Important: We search ALL enabled leagues to find matches, but only
         include events from the group's configured leagues. This allows
         multi-sport groups to match any event while filtering output.
+
+        Args:
+            streams: List of stream dicts
+            leagues: Leagues to include in results
+            target_date: Date to match events for
+            group_id: Event group ID
+            stream_progress_callback: Optional callback(current, total, stream_name, matched)
         """
         # Get all enabled leagues to search (not just the group's configured leagues)
         all_leagues = self._get_all_enabled_leagues()
@@ -1163,9 +1232,10 @@ class EventGroupProcessor:
             include_leagues=leagues,  # Filter to group's configured leagues
             include_final_events=include_final_events,
             sport_durations=sport_durations,
+            generation=getattr(self, "_generation", None),  # Use shared generation if set
         )
 
-        result = matcher.match_all(streams, target_date)
+        result = matcher.match_all(streams, target_date, progress_callback=stream_progress_callback)
 
         # Purge stale cache entries at end of match
         matcher.purge_stale()
@@ -1256,6 +1326,7 @@ class EventGroupProcessor:
                         from_cache=getattr(result, "from_cache", False),
                         match_method=match_method,
                         confidence=confidence,
+                        origin_match_method=getattr(result, "origin_match_method", None),
                     )
                 )
             elif result.matched and not result.included:
@@ -1765,6 +1836,7 @@ def process_all_event_groups(
     dispatcharr_client: Any = None,
     target_date: date | None = None,
     progress_callback: Callable[[int, int, str], None] | None = None,
+    generation: int | None = None,
 ) -> BatchProcessingResult:
     """Process all active event groups.
 
@@ -1775,6 +1847,7 @@ def process_all_event_groups(
         dispatcharr_client: Optional DispatcharrClient
         target_date: Target date (defaults to today)
         progress_callback: Optional callback(current, total, group_name)
+        generation: Cache generation counter (shared across all groups in run)
 
     Returns:
         BatchProcessingResult
@@ -1783,7 +1856,9 @@ def process_all_event_groups(
         db_factory=db_factory,
         dispatcharr_client=dispatcharr_client,
     )
-    return processor.process_all_groups(target_date, progress_callback=progress_callback)
+    return processor.process_all_groups(
+        target_date, progress_callback=progress_callback, generation=generation
+    )
 
 
 def preview_event_group(

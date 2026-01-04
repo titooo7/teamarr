@@ -8,6 +8,7 @@ Two-phase data flow:
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
@@ -181,21 +182,33 @@ class TeamEPGGenerator:
         if additional_leagues:
             leagues_to_fetch.extend(lg for lg in additional_leagues if lg != league)
 
-        # Fetch team schedule from all leagues
+        # Fetch team schedule from all leagues (parallel for multi-league teams)
         all_events: list[Event] = []
         seen_event_ids: set = set()
 
-        for lg in leagues_to_fetch:
-            events = self._service.get_team_schedule(
+        def fetch_league(lg: str) -> list[Event]:
+            return self._service.get_team_schedule(
                 team_id=team_id,
                 league=lg,
                 days_ahead=options.schedule_days_ahead,
             )
-            # Dedupe by event ID across leagues
-            for event in events:
-                if event.id not in seen_event_ids:
-                    seen_event_ids.add(event.id)
-                    all_events.append(event)
+
+        # Single league: fetch directly (no thread overhead)
+        # Multi-league: fetch in parallel (e.g., soccer teams in 6+ competitions)
+        if len(leagues_to_fetch) == 1:
+            events = fetch_league(leagues_to_fetch[0])
+            all_events.extend(events)
+            seen_event_ids.update(e.id for e in events)
+        else:
+            with ThreadPoolExecutor(max_workers=len(leagues_to_fetch)) as executor:
+                futures = {executor.submit(fetch_league, lg): lg for lg in leagues_to_fetch}
+                for future in as_completed(futures):
+                    events = future.result()
+                    # Dedupe by event ID across leagues
+                    for event in events:
+                        if event.id not in seen_event_ids:
+                            seen_event_ids.add(event.id)
+                            all_events.append(event)
 
         # Enrich all events for rich data (odds, etc.)
         # Only ESPN events benefit - TSDB enrichment adds no value
@@ -355,19 +368,30 @@ class TeamEPGGenerator:
         Only enriches ESPN events - TSDB's lookupevent returns identical
         data to eventsday, so enrichment wastes API quota.
         """
-        enriched = []
-        for event in events:
-            # Only enrich ESPN events (TSDB enrichment adds no value)
-            if event.provider == "espn":
-                fresh = self._service.get_event(event.id, event.league)
-                if fresh:
-                    enriched.append(fresh)
-                else:
-                    enriched.append(event)  # Fallback to discovery data
-            else:
-                enriched.append(event)
+        # Split ESPN events (need enrichment) from others (pass through)
+        espn_events = [e for e in events if e.provider == "espn"]
+        other_events = [e for e in events if e.provider != "espn"]
 
-        return enriched
+        # No ESPN events? Return as-is
+        if not espn_events:
+            return events
+
+        def enrich_single(event: Event) -> Event:
+            fresh = self._service.get_event(event.id, event.league)
+            return fresh if fresh else event
+
+        # Single event: fetch directly (no thread overhead)
+        # Multiple events: fetch in parallel (e.g., 30+ events over 30 days)
+        enriched_espn = []
+        if len(espn_events) == 1:
+            enriched_espn.append(enrich_single(espn_events[0]))
+        else:
+            with ThreadPoolExecutor(max_workers=min(len(espn_events), 20)) as executor:
+                futures = {executor.submit(enrich_single, e): e for e in espn_events}
+                for future in as_completed(futures):
+                    enriched_espn.append(future.result())
+
+        return enriched_espn + other_events
 
     def _generate_fillers(
         self,

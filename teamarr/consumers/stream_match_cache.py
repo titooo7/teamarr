@@ -131,6 +131,7 @@ class StreamMatchCache:
             row = cursor.fetchone()
 
             if row:
+                logger.debug(f"Cache hit for fingerprint={fingerprint} event_id={row['event_id']}")
                 # Skip failed matches unless explicitly requested
                 if row["event_id"] == FAILED_MATCH_EVENT_ID and not include_failed:
                     self._stats["misses"] += 1
@@ -442,10 +443,8 @@ class StreamMatchCache:
     def purge_stale(self, current_generation: int) -> int:
         """Remove stale entries not seen recently.
 
-        Rules:
-        - User-corrected entries are NEVER purged (pinned)
-        - Failed match entries are purged after PURGE_FAILED_AFTER_GENERATIONS
-        - Successful matches are purged after PURGE_AFTER_GENERATIONS
+        All entries (including user-corrected) are purged if not seen recently.
+        Failed matches have a shorter TTL than successful matches.
 
         Args:
             current_generation: Current EPG generation counter
@@ -465,7 +464,6 @@ class StreamMatchCache:
                         DELETE FROM stream_match_cache
                         WHERE last_seen_generation < ?
                           AND event_id = ?
-                          AND user_corrected = 0
                         """,
                         (failed_threshold, FAILED_MATCH_EVENT_ID),
                     )
@@ -482,7 +480,6 @@ class StreamMatchCache:
                         DELETE FROM stream_match_cache
                         WHERE last_seen_generation < ?
                           AND event_id != ?
-                          AND user_corrected = 0
                         """,
                         (success_threshold, FAILED_MATCH_EVENT_ID),
                     )

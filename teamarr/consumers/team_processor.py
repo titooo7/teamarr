@@ -10,6 +10,7 @@ This is the main entry point for team-based EPG generation from the scheduler.
 """
 
 import logging
+import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -228,9 +229,30 @@ class TeamProcessor:
                 f"Processing {len(espn_teams)} ESPN teams with {num_workers} parallel workers"
             )
 
+            # Track in-progress teams for accurate progress display
+            in_progress: set[str] = set()
+            in_progress_lock = threading.Lock()
+
+            def process_with_tracking(team: TeamConfig) -> TeamProcessingResult:
+                """Wrapper to track in-progress state."""
+                with in_progress_lock:
+                    in_progress.add(team.team_name)
+                    # Report which team is now being processed
+                    if progress_callback:
+                        progress_callback(
+                            processed_count,
+                            total_teams,
+                            f"Processing {team.team_name}...",
+                        )
+                try:
+                    return self._process_team_parallel(team)
+                finally:
+                    with in_progress_lock:
+                        in_progress.discard(team.team_name)
+
             with ThreadPoolExecutor(max_workers=num_workers) as executor:
                 future_to_team = {
-                    executor.submit(self._process_team_parallel, team): team for team in espn_teams
+                    executor.submit(process_with_tracking, team): team for team in espn_teams
                 }
 
                 for future in as_completed(future_to_team):
@@ -259,9 +281,17 @@ class TeamProcessor:
                         error_result.completed_at = datetime.now()
                         batch_result.results.append(error_result)
 
-                    # Report progress
+                    # Report progress with remaining in-progress teams
                     if progress_callback:
-                        progress_callback(processed_count, total_teams, team.team_name)
+                        with in_progress_lock:
+                            still_processing = list(in_progress)
+                        if still_processing:
+                            msg = f"Finished {team.team_name}, still processing: {', '.join(still_processing[:3])}"
+                            if len(still_processing) > 3:
+                                msg += f" (+{len(still_processing) - 3} more)"
+                        else:
+                            msg = f"Finished {team.team_name}"
+                        progress_callback(processed_count, total_teams, msg)
 
         # Process TSDB teams sequentially (rate limited API)
         if tsdb_teams:

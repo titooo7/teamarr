@@ -21,6 +21,7 @@ Usage:
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from zoneinfo import ZoneInfo
@@ -71,6 +72,7 @@ class MatchedStreamResult:
     match_method: MatchMethod | None = None
     confidence: float = 0.0
     from_cache: bool = False
+    origin_match_method: str | None = None  # For cache hits: original method (fuzzy, alias, etc.)
 
     # Classification info
     category: StreamCategory | None = None
@@ -143,6 +145,7 @@ class StreamMatcher:
         include_final_events: bool = False,
         sport_durations: dict[str, float] | None = None,
         user_tz: ZoneInfo | None = None,
+        generation: int | None = None,
     ):
         """Initialize the matcher.
 
@@ -155,6 +158,7 @@ class StreamMatcher:
             include_final_events: Include completed events
             sport_durations: Sport duration settings
             user_tz: User timezone for date calculations
+            generation: Cache generation counter (if None, will be fetched/incremented)
         """
         self._service = service
         self._db_factory = db_factory
@@ -167,7 +171,9 @@ class StreamMatcher:
 
         # Initialize cache
         self._cache = StreamMatchCache(db_factory)
-        self._generation = get_generation_counter(db_factory)
+        # Use provided generation or fetch current
+        self._generation = generation or get_generation_counter(db_factory)
+        self._generation_provided = generation is not None
 
         # Initialize sub-matchers
         self._team_matcher = TeamMatcher(service, self._cache)
@@ -180,18 +186,22 @@ class StreamMatcher:
         self,
         streams: list[dict],
         target_date: date,
+        progress_callback: Callable | None = None,
     ) -> BatchMatchResult:
         """Match all streams to events.
 
         Args:
             streams: List of dicts with 'id' and 'name' keys
             target_date: Date to match events for
+            progress_callback: Optional callback(current, total, stream_name, matched)
 
         Returns:
             BatchMatchResult with all results
         """
-        # Increment generation at start of run
-        self._generation = increment_generation_counter(self._db_factory)
+        # Only increment generation if not provided from parent run
+        # (When called as part of full EPG generation, generation is shared across groups)
+        if not self._generation_provided:
+            self._generation = increment_generation_counter(self._db_factory)
 
         # Load league event types
         self._load_league_event_types()
@@ -202,7 +212,8 @@ class StreamMatcher:
             include_leagues=list(self._include_leagues),
         )
 
-        for stream in streams:
+        total_streams = len(streams)
+        for idx, stream in enumerate(streams, 1):
             stream_id = stream.get("id", 0)
             stream_name = stream.get("name", "")
 
@@ -219,6 +230,10 @@ class StreamMatcher:
                 result.cache_misses += 1
 
             result.results.append(match_result)
+
+            # Report per-stream progress
+            if progress_callback:
+                progress_callback(idx, total_streams, stream_name, match_result.matched)
 
         return result
 
@@ -384,6 +399,7 @@ class StreamMatcher:
             match_method=outcome.match_method,
             confidence=outcome.confidence,
             from_cache=outcome.match_method == MatchMethod.CACHE if outcome.match_method else False,
+            origin_match_method=outcome.origin_match_method,  # For cache hits
             category=classified.category,
             parsed_team1=classified.team1,
             parsed_team2=classified.team2,

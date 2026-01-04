@@ -537,47 +537,66 @@ class ChannelLifecycleService:
                             dispatcharr_channel_id,
                         )
 
-        # Create in DB
-        managed_channel_id = create_managed_channel(
-            conn=conn,
-            event_epg_group_id=group_id,
-            event_id=event_id,
-            event_provider=event_provider,
-            tvg_id=tvg_id,
-            channel_name=channel_name,
-            channel_number=channel_number,
-            logo_url=logo_url,
-            dispatcharr_channel_id=dispatcharr_channel_id,
-            dispatcharr_uuid=dispatcharr_uuid,
-            dispatcharr_logo_id=dispatcharr_logo_id,
-            channel_group_id=channel_group_id,
-            stream_profile_id=stream_profile_id,
-            channel_profile_ids=channel_profile_ids,
-            primary_stream_id=stream_id,
-            exception_keyword=matched_keyword,
-            home_team=event.home_team.name if event.home_team else None,
-            away_team=event.away_team.name if event.away_team else None,
-            event_date=event.start_time.isoformat() if event.start_time else None,
-            event_name=event.name,
-            league=event.league,
-            sport=event.sport,
-            scheduled_delete_at=delete_time.isoformat() if delete_time else None,
-            sync_status="in_sync" if dispatcharr_channel_id else "pending",
-        )
+        # Create in DB - with rollback protection for Dispatcharr orphans
+        try:
+            managed_channel_id = create_managed_channel(
+                conn=conn,
+                event_epg_group_id=group_id,
+                event_id=event_id,
+                event_provider=event_provider,
+                tvg_id=tvg_id,
+                channel_name=channel_name,
+                channel_number=channel_number,
+                logo_url=logo_url,
+                dispatcharr_channel_id=dispatcharr_channel_id,
+                dispatcharr_uuid=dispatcharr_uuid,
+                dispatcharr_logo_id=dispatcharr_logo_id,
+                channel_group_id=channel_group_id,
+                stream_profile_id=stream_profile_id,
+                channel_profile_ids=channel_profile_ids,
+                primary_stream_id=stream_id,
+                exception_keyword=matched_keyword,
+                home_team=event.home_team.name if event.home_team else None,
+                away_team=event.away_team.name if event.away_team else None,
+                event_date=event.start_time.isoformat() if event.start_time else None,
+                event_name=event.name,
+                league=event.league,
+                sport=event.sport,
+                scheduled_delete_at=delete_time.isoformat() if delete_time else None,
+                sync_status="in_sync" if dispatcharr_channel_id else "pending",
+            )
 
-        # Add stream to managed_channel_streams
-        add_stream_to_channel(
-            conn=conn,
-            managed_channel_id=managed_channel_id,
-            dispatcharr_stream_id=stream_id,
-            stream_name=stream_name,
-            priority=0,
-            exception_keyword=matched_keyword,
-            m3u_account_id=stream.get("m3u_account_id"),
-        )
+            # Add stream to managed_channel_streams
+            add_stream_to_channel(
+                conn=conn,
+                managed_channel_id=managed_channel_id,
+                dispatcharr_stream_id=stream_id,
+                stream_name=stream_name,
+                priority=0,
+                exception_keyword=matched_keyword,
+                m3u_account_id=stream.get("m3u_account_id"),
+            )
 
-        # Commit immediately so next channel number query sees this channel
-        conn.commit()
+            # Commit immediately so next channel number query sees this channel
+            conn.commit()
+
+        except Exception as e:
+            # DB insert failed - clean up the Dispatcharr channel to prevent orphans
+            logger.error(f"DB insert failed for channel '{channel_name}': {e}")
+            if dispatcharr_channel_id and self._channel_manager:
+                try:
+                    with self._dispatcharr_lock:
+                        self._channel_manager.delete_channel(dispatcharr_channel_id)
+                    logger.info(
+                        f"Cleaned up Dispatcharr channel {dispatcharr_channel_id} after DB failure"
+                    )
+                except Exception as cleanup_err:
+                    logger.warning(f"Failed to cleanup Dispatcharr channel: {cleanup_err}")
+
+            return ChannelCreationResult(
+                success=False,
+                error=f"DB insert failed: {e}",
+            )
 
         return ChannelCreationResult(
             success=True,

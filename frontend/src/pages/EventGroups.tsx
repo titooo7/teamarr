@@ -669,75 +669,14 @@ export function EventGroups() {
               )}
             </div>
 
-            {/* Failed */}
-            <div className="group relative">
-              <div className="bg-secondary rounded px-3 py-2 cursor-help">
-                <div className={`text-xl font-bold ${stats.failedCount > 0 ? 'text-red-500' : ''}`}>{stats.failedCount}</div>
-                <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wider">Failed</div>
-              </div>
-              {stats.failedCount > 0 && (
-                <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block">
-                  <Card className="p-3 shadow-lg border min-w-[220px]">
-                    <div className="text-xs font-medium text-muted-foreground mb-2">Failure Reasons</div>
-                    <div className="space-y-1 text-sm">
-                      <div className="flex justify-between">
-                        <span>No events</span>
-                        <span className="text-muted-foreground">No games scheduled</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>No team match</span>
-                        <span className="text-muted-foreground">Teams not found</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Low confidence</span>
-                        <span className="text-muted-foreground">Fuzzy match failed</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Date mismatch</span>
-                        <span className="text-muted-foreground">Wrong date</span>
-                      </div>
-                      <div className="pt-1 border-t text-xs text-muted-foreground">
-                        Total: {stats.failedCount} couldn't match
-                      </div>
-                    </div>
-                  </Card>
-                </div>
-              )}
-            </div>
-
-            {/* Matched */}
-            <div className="group relative">
-              <div className="bg-secondary rounded px-3 py-2 cursor-help">
-                <div className="text-xl font-bold text-green-500">{stats.matched}</div>
-                <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wider">
-                  Matched ({stats.matchRate}%)
-                </div>
-              </div>
-              {stats.matchedByGroup.length > 0 && (
-                <div className="absolute right-0 top-full mt-1 z-50 hidden group-hover:block">
-                  <Card className="p-3 shadow-lg border min-w-[220px]">
-                    <div className="text-xs font-medium text-muted-foreground mb-2">Match Rate by Group</div>
-                    <div className="space-y-1 max-h-48 overflow-y-auto">
-                      {stats.matchedByGroup.slice(0, 10).map((g, i) => (
-                        <div key={i} className="flex justify-between text-sm">
-                          <span className="truncate max-w-[120px]">{g.name}</span>
-                          <span className="font-medium ml-2">{g.count} ({g.rate}%)</span>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-                </div>
-              )}
-            </div>
-
             {/* Excluded */}
-            {stats.streamsExcluded > 0 && (
-              <div className="group relative">
-                <div className="bg-secondary rounded px-3 py-2 cursor-help">
-                  <div className="text-xl font-bold text-yellow-500">{stats.streamsExcluded}</div>
-                  <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wider">Excluded</div>
-                </div>
-                <div className="absolute right-0 top-full mt-1 z-50 hidden group-hover:block">
+            <div className="group relative">
+              <div className="bg-secondary rounded px-3 py-2 cursor-help">
+                <div className={`text-xl font-bold ${stats.streamsExcluded > 0 ? 'text-yellow-500' : ''}`}>{stats.streamsExcluded}</div>
+                <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wider">Excluded</div>
+              </div>
+              {stats.streamsExcluded > 0 && (
+                <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block">
                   <Card className="p-3 shadow-lg border min-w-[220px]">
                     <div className="text-xs font-medium text-muted-foreground mb-2">Exclusion Reasons</div>
                     <div className="space-y-1 text-sm">
@@ -763,8 +702,54 @@ export function EventGroups() {
                     </div>
                   </Card>
                 </div>
+              )}
+            </div>
+
+            {/* Matched */}
+            <div className="group relative">
+              <div className="bg-secondary rounded px-3 py-2 cursor-help">
+                <div className="text-xl font-bold text-green-500">
+                  {stats.matched}/{stats.matched + stats.failedCount}
+                </div>
+                <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wider">
+                  Matched ({stats.matchRate}%)
+                </div>
               </div>
-            )}
+              {(stats.matched > 0 || stats.failedCount > 0) && (
+                <div className="absolute right-0 top-full mt-1 z-50 hidden group-hover:block">
+                  <Card className="p-3 shadow-lg border min-w-[220px]">
+                    <div className="text-xs font-medium text-muted-foreground mb-2">Match Results</div>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-500">Matched</span>
+                        <span className="font-medium">{stats.matched}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-red-500">Failed</span>
+                        <span className="font-medium">{stats.failedCount}</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-medium pt-1 border-t">
+                        <span>Total attempted</span>
+                        <span>{stats.matched + stats.failedCount}</span>
+                      </div>
+                    </div>
+                    {stats.matchedByGroup.length > 0 && (
+                      <>
+                        <div className="text-xs font-medium text-muted-foreground mt-3 mb-2">By Group</div>
+                        <div className="space-y-1 max-h-32 overflow-y-auto">
+                          {stats.matchedByGroup.slice(0, 8).map((g, i) => (
+                            <div key={i} className="flex justify-between text-sm">
+                              <span className="truncate max-w-[120px]">{g.name}</span>
+                              <span className="font-medium ml-2">{g.count} ({g.rate}%)</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </Card>
+                </div>
+              )}
+            </div>
         </div>
       )}
 

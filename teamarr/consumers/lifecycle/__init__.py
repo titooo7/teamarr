@@ -111,10 +111,18 @@ def create_lifecycle_service(
 
     if dispatcharr_client and settings.get("enabled"):
         from teamarr.dispatcharr import ChannelManager, EPGManager, LogoManager
+        from teamarr.dispatcharr.factory import DispatcharrConnection
 
-        channel_manager = ChannelManager(dispatcharr_client)
-        logo_manager = LogoManager(dispatcharr_client)
-        epg_manager = EPGManager(dispatcharr_client)
+        # Extract raw client if we received a DispatcharrConnection
+        raw_client = (
+            dispatcharr_client.client
+            if isinstance(dispatcharr_client, DispatcharrConnection)
+            else dispatcharr_client
+        )
+
+        channel_manager = ChannelManager(raw_client)
+        logo_manager = LogoManager(raw_client)
+        epg_manager = EPGManager(raw_client)
 
     return ChannelLifecycleService(
         db_factory=db_factory,

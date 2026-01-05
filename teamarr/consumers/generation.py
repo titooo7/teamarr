@@ -249,7 +249,14 @@ def run_full_generation(
         # Step 5: Dispatcharr EPG refresh + channel association (96-98%)
         if dispatcharr_client and dispatcharr_settings.epg_id:
             update_progress("dispatcharr", 96, "Refreshing Dispatcharr EPG...")
-            epg_manager = EPGManager(dispatcharr_client)
+            from teamarr.dispatcharr.factory import DispatcharrConnection
+
+            raw_client = (
+                dispatcharr_client.client
+                if isinstance(dispatcharr_client, DispatcharrConnection)
+                else dispatcharr_client
+            )
+            epg_manager = EPGManager(raw_client)
             # Increased timeout from 60s to 120s for large EPGs
             refresh_result = epg_manager.wait_for_refresh(dispatcharr_settings.epg_id, timeout=120)
             result.epg_refresh = {
@@ -390,7 +397,14 @@ def _refresh_m3u_accounts(db_factory: Callable[[], Any], dispatcharr_client: Any
     result["account_ids"] = list(account_ids)
 
     # Refresh all accounts in parallel
-    m3u_manager = M3UManager(dispatcharr_client)
+    from teamarr.dispatcharr.factory import DispatcharrConnection
+
+    raw_client = (
+        dispatcharr_client.client
+        if isinstance(dispatcharr_client, DispatcharrConnection)
+        else dispatcharr_client
+    )
+    m3u_manager = M3UManager(raw_client)
     batch_result = m3u_manager.refresh_multiple(
         list(account_ids),
         timeout=120,

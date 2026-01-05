@@ -744,8 +744,15 @@ def create_reconciler(
 
     if dispatcharr_client and dispatcharr_settings.get("enabled"):
         from teamarr.dispatcharr import ChannelManager
+        from teamarr.dispatcharr.factory import DispatcharrConnection
 
-        channel_manager = ChannelManager(dispatcharr_client)
+        # Extract raw client if we received a DispatcharrConnection
+        raw_client = (
+            dispatcharr_client.client
+            if isinstance(dispatcharr_client, DispatcharrConnection)
+            else dispatcharr_client
+        )
+        channel_manager = ChannelManager(raw_client)
 
     return ChannelReconciler(
         db_factory=db_factory,

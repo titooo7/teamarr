@@ -351,15 +351,13 @@ export function EventGroups() {
       totalFiltered: 0,
       filteredIncludeRegex: 0,
       filteredExcludeRegex: 0,
-      filteredNoMatch: 0,
       filteredNotEvent: 0,
+      failedCount: 0,
       streamsExcluded: 0,
-      eligible: 0,
       matched: 0,
       matchRate: 0,
       // Per-group breakdowns for tooltips
       streamsByGroup: [] as { name: string; count: number }[],
-      eligibleByGroup: [] as { name: string; count: number }[],
       matchedByGroup: [] as { name: string; count: number; rate: number }[],
     }
 
@@ -370,7 +368,7 @@ export function EventGroups() {
     const filteredExcludeRegex = groups.reduce((sum, g) => sum + (g.filtered_exclude_regex || 0), 0)
     const filteredNotEvent = groups.reduce((sum, g) => sum + (g.filtered_not_event || 0), 0)
     const streamsExcluded = groups.reduce((sum, g) => sum + (g.streams_excluded || 0), 0)
-    // Note: filtered_no_match is NOT a filter reason - it's a match failure (streams passed filters but no event match)
+    // Note: failed_count tracks FAILED outcomes - streams that passed filters but couldn't match to an event
     const totalFiltered = filteredIncludeRegex + filteredExcludeRegex + filteredNotEvent
     const eligible = groups.reduce((sum, g) => sum + (g.stream_count || 0), 0)
     const matched = groups.reduce((sum, g) => sum + (g.matched_count || 0), 0)
@@ -381,10 +379,6 @@ export function EventGroups() {
       .filter(g => (g.total_stream_count || 0) > 0)
       .map(g => ({ name: getDisplayName(g), count: g.total_stream_count || 0 }))
       .sort((a, b) => b.count - a.count)
-    const eligibleByGroup = groups
-      .filter(g => (g.stream_count || 0) > 0)
-      .map(g => ({ name: getDisplayName(g), count: g.stream_count || 0 }))
-      .sort((a, b) => b.count - a.count)
     const matchedByGroup = groups
       .filter(g => (g.stream_count || 0) > 0)
       .map(g => ({
@@ -394,18 +388,20 @@ export function EventGroups() {
       }))
       .sort((a, b) => b.count - a.count)
 
+    // FAILED: Streams that passed filters but couldn't match to an event
+    const failedCount = groups.reduce((sum, g) => sum + (g.failed_count || 0), 0)
+
     return {
       totalStreams,
       totalFiltered,
       filteredIncludeRegex,
       filteredExcludeRegex,
       filteredNotEvent,
+      failedCount,
       streamsExcluded,
-      eligible,
       matched,
       matchRate,
       streamsByGroup,
-      eligibleByGroup,
       matchedByGroup,
     }
   }, [data?.groups])
@@ -673,23 +669,36 @@ export function EventGroups() {
               )}
             </div>
 
-            {/* Eligible */}
+            {/* Failed */}
             <div className="group relative">
               <div className="bg-secondary rounded px-3 py-2 cursor-help">
-                <div className="text-xl font-bold">{stats.eligible}</div>
-                <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wider">Eligible</div>
+                <div className={`text-xl font-bold ${stats.failedCount > 0 ? 'text-red-500' : ''}`}>{stats.failedCount}</div>
+                <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wider">Failed</div>
               </div>
-              {stats.eligibleByGroup.length > 0 && (
+              {stats.failedCount > 0 && (
                 <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block">
-                  <Card className="p-3 shadow-lg border min-w-[200px]">
-                    <div className="text-xs font-medium text-muted-foreground mb-2">By Event Group</div>
-                    <div className="space-y-1 max-h-48 overflow-y-auto">
-                      {stats.eligibleByGroup.slice(0, 10).map((g, i) => (
-                        <div key={i} className="flex justify-between text-sm">
-                          <span className="truncate max-w-[140px]">{g.name}</span>
-                          <span className="font-medium ml-2">{g.count}</span>
-                        </div>
-                      ))}
+                  <Card className="p-3 shadow-lg border min-w-[220px]">
+                    <div className="text-xs font-medium text-muted-foreground mb-2">Failure Reasons</div>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span>No events</span>
+                        <span className="text-muted-foreground">No games scheduled</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>No team match</span>
+                        <span className="text-muted-foreground">Teams not found</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Low confidence</span>
+                        <span className="text-muted-foreground">Fuzzy match failed</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Date mismatch</span>
+                        <span className="text-muted-foreground">Wrong date</span>
+                      </div>
+                      <div className="pt-1 border-t text-xs text-muted-foreground">
+                        Total: {stats.failedCount} couldn't match
+                      </div>
                     </div>
                   </Card>
                 </div>
@@ -729,10 +738,28 @@ export function EventGroups() {
                   <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wider">Excluded</div>
                 </div>
                 <div className="absolute right-0 top-full mt-1 z-50 hidden group-hover:block">
-                  <Card className="p-3 shadow-lg border min-w-[200px]">
-                    <div className="text-xs font-medium text-muted-foreground mb-2">Matched but Excluded</div>
-                    <div className="text-sm text-muted-foreground">
-                      Streams that matched an event but were excluded due to timing (event already ended, final, or before create window).
+                  <Card className="p-3 shadow-lg border min-w-[220px]">
+                    <div className="text-xs font-medium text-muted-foreground mb-2">Exclusion Reasons</div>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span>Event final</span>
+                        <span className="text-muted-foreground">Game ended</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Event past</span>
+                        <span className="text-muted-foreground">Already over</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Before window</span>
+                        <span className="text-muted-foreground">Too early</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>League excluded</span>
+                        <span className="text-muted-foreground">Not in group</span>
+                      </div>
+                      <div className="pt-1 border-t text-xs text-muted-foreground">
+                        Total: {stats.streamsExcluded} matched but excluded
+                      </div>
                     </div>
                   </Card>
                 </div>

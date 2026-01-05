@@ -35,12 +35,13 @@ export interface EventGroup {
   last_refresh: string | null
   stream_count: number
   matched_count: number
-  // Filtering stats
+  // Filtering stats (pre-match)
   filtered_include_regex: number
   filtered_exclude_regex: number
-  filtered_no_match: number
   filtered_not_event: number
-  streams_excluded: number  // Matched but excluded by timing (past/final/early)
+  // Matching stats
+  failed_count: number  // FAILED: Match attempted but couldn't find event
+  streams_excluded: number  // EXCLUDED: Matched but excluded by timing (past/final/early)
   // Multi-sport enhancements (Phase 3)
   channel_sort_order: string
   overlap_handling: string

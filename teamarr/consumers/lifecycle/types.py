@@ -19,17 +19,16 @@ CreateTiming = Literal[
     "2_days_before",
     "3_days_before",
     "1_week_before",
-    "manual",
 ]
 
 DeleteTiming = Literal[
     "stream_removed",
+    "6_hours_after",
     "same_day",
     "day_after",
     "2_days_after",
     "3_days_after",
     "1_week_after",
-    "manual",
 ]
 
 DuplicateMode = Literal["consolidate", "separate", "ignore"]

@@ -73,9 +73,6 @@ class ChannelLifecycleManager:
         Returns:
             LifecycleDecision with should_act and reason
         """
-        if self.create_timing == "manual":
-            return LifecycleDecision(False, "Manual creation only")
-
         if self.create_timing == "stream_available":
             if stream_exists:
                 return LifecycleDecision(True, "Stream available")
@@ -121,9 +118,6 @@ class ChannelLifecycleManager:
         Returns:
             LifecycleDecision with should_act and reason
         """
-        if self.delete_timing == "manual":
-            return LifecycleDecision(False, "Manual deletion only")
-
         if self.delete_timing == "stream_removed":
             if not stream_exists:
                 return LifecycleDecision(True, "Stream removed")
@@ -188,6 +182,7 @@ class ChannelLifecycleManager:
         ).replace(tzinfo=event_end.tzinfo)
 
         timing_map = {
+            "6_hours_after": event_end + timedelta(hours=6),
             "same_day": day_end,
             "day_after": day_end + timedelta(days=1),
             "2_days_after": day_end + timedelta(days=2),

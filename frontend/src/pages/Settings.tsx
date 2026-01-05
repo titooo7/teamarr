@@ -614,6 +614,7 @@ export function Settings() {
                 }
               >
                 <option value="stream_removed">When stream removed</option>
+                <option value="6_hours_after">6 hours after end of event</option>
                 <option value="same_day">Same day</option>
                 <option value="day_after">Day after</option>
                 <option value="2_days_after">2 days after</option>

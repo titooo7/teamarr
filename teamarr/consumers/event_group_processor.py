@@ -514,6 +514,14 @@ class EventGroupProcessor:
 
             # Phase 1: Process parent groups (create channels, generate EPG)
             for group in parent_groups:
+                # Send "Loading..." message before expensive fetch operations
+                if progress_callback:
+                    leagues_count = len(group.leagues) if group.leagues else 0
+                    progress_callback(
+                        processed_count, total_groups,
+                        f"Loading {group.name}... ({leagues_count} leagues)"
+                    )
+
                 # Create stream progress callback that reports during matching
                 stream_cb = None
                 if progress_callback:
@@ -538,6 +546,13 @@ class EventGroupProcessor:
 
             # Phase 2: Process child groups (add streams to parent channels)
             for group in child_groups:
+                # Send "Loading..." message before expensive fetch operations
+                if progress_callback:
+                    progress_callback(
+                        processed_count, total_groups,
+                        f"Loading {group.name}... (child group)"
+                    )
+
                 # Child groups use same stream progress pattern
                 stream_cb = None
                 if progress_callback:
@@ -561,6 +576,14 @@ class EventGroupProcessor:
 
             # Phase 3: Process multi-league groups
             for group in multi_league_groups:
+                # Send "Loading..." message before expensive fetch operations
+                if progress_callback:
+                    leagues_count = len(group.leagues) if group.leagues else 0
+                    progress_callback(
+                        processed_count, total_groups,
+                        f"Loading {group.name}... ({leagues_count} leagues)"
+                    )
+
                 stream_cb = None
                 if progress_callback:
                     def make_stream_cb(grp_name: str, grp_idx: int):

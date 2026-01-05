@@ -38,6 +38,8 @@ import {
   useReconciliationStatus,
 } from "@/hooks/useChannels"
 import { useGroups } from "@/hooks/useGroups"
+import { useQuery } from "@tanstack/react-query"
+import { getLeagues } from "@/api/teams"
 import {
   deleteDispatcharrChannel,
   deleteManagedChannel,
@@ -114,6 +116,11 @@ export function Channels() {
   const queryClient = useQueryClient()
 
   const { data: groups } = useGroups()
+  const { data: leaguesData } = useQuery({
+    queryKey: ["leagues"],
+    queryFn: () => getLeagues(),
+    staleTime: 1000 * 60 * 60, // 1 hour
+  })
   const selectedGroupId = groupFilter ? parseInt(groupFilter) : undefined
   const {
     data: channelsData,
@@ -179,6 +186,19 @@ export function Channels() {
     }
     return map
   }, [groups])
+
+  // League slug -> display name lookup (uses {league} variable resolution: alias first, then name)
+  const getLeagueDisplay = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const league of leaguesData?.leagues ?? []) {
+      // {league} variable uses league_alias if available, otherwise display_name (name field)
+      map.set(league.slug, league.league_alias || league.name)
+    }
+    return (slug: string | null | undefined) => {
+      if (!slug) return "-"
+      return map.get(slug) ?? slug.toUpperCase()
+    }
+  }, [leaguesData])
 
   // Apply client-side filters
   const filteredChannels = useMemo(() => {
@@ -580,7 +600,7 @@ export function Channels() {
                       {groupLookup.get(channel.event_epg_group_id) ?? "-"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary" className="text-xs">{channel.league ?? "-"}</Badge>
+                      <Badge variant="secondary" className="text-xs">{getLeagueDisplay(channel.league)}</Badge>
                     </TableCell>
                     <TableCell>{getSyncStatusBadge(channel.sync_status)}</TableCell>
                     <TableCell className="text-muted-foreground">
@@ -653,7 +673,7 @@ export function Channels() {
                       {groupLookup.get(channel.event_epg_group_id) ?? "-"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary" className="text-xs">{channel.league ?? "-"}</Badge>
+                      <Badge variant="secondary" className="text-xs">{getLeagueDisplay(channel.league)}</Badge>
                     </TableCell>
                     <TableCell className="text-sm">
                       {channel.deleted_at

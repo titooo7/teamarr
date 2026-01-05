@@ -5,7 +5,7 @@ Pure fetch + normalize - no caching (caching is in service layer).
 """
 
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from teamarr.core import (
     Event,
@@ -113,56 +113,31 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
         league: str,
         days_ahead: int = 14,
     ) -> list[Event]:
-        """Fetch team schedule.
+        """Fetch team schedule by scanning scoreboard for upcoming days.
 
-        NOTE: ESPN's schedule endpoint returns only PAST games for soccer leagues.
-        For soccer, we scan the scoreboard endpoint for upcoming days and filter
-        by team ID to find their games.
+        ESPN's schedule endpoint has limitations that make scoreboard scanning
+        more reliable:
+        - Soccer: schedule endpoint only returns past games
+        - US sports: schedule endpoint only returns regular season (no playoffs)
+
+        Scoreboard scanning works consistently for all sports and game types.
         """
-        # Get sport/league from database config
         sport_league = self._get_sport_league_from_db(league)
-        sport = sport_league[0] if sport_league else self._get_sport(league)
+        return self._scan_scoreboard_for_team(team_id, league, days_ahead, sport_league)
 
-        now = datetime.now(UTC)
-        cutoff = now.replace(hour=0, minute=0, second=0, microsecond=0)
-
-        # For soccer, the schedule endpoint only returns past games.
-        # Use scoreboard scanning instead.
-        if sport == "soccer":
-            return self._get_soccer_team_schedule(team_id, league, days_ahead, sport_league)
-
-        # Standard behavior for US sports
-        # ESPN schedule endpoint returns full season - filter by days_ahead
-        data = self._client.get_team_schedule(league, team_id, sport_league)
-        if not data:
-            return []
-
-        max_date = now + timedelta(days=days_ahead)
-
-        events = []
-        for event_data in data.get("events", []):
-            event = self._parse_event(event_data, league)
-            if event and cutoff <= event.start_time <= max_date:
-                events.append(event)
-
-        events.sort(key=lambda e: e.start_time)
-        return events
-
-    def _get_soccer_team_schedule(
+    def _scan_scoreboard_for_team(
         self,
         team_id: str,
         league: str,
         days_ahead: int,
         sport_league: tuple[str, str] | None = None,
     ) -> list[Event]:
-        """Get soccer team schedule by scanning scoreboard.
+        """Get team schedule by scanning scoreboard for upcoming days.
 
-        ESPN's schedule endpoint for soccer only returns past games.
-        We scan the scoreboard for the next N days and filter for games
-        involving the specified team.
+        Scans the scoreboard for the next N days and filters for games
+        involving the specified team. This approach works for all sports
+        and captures both regular season and playoff games.
         """
-        from datetime import timedelta
-
         events = []
         today = date.today()
 

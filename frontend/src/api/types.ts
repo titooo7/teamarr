@@ -42,6 +42,11 @@ export interface EventGroup {
   // Matching stats
   failed_count: number  // FAILED: Match attempted but couldn't find event
   streams_excluded: number  // EXCLUDED: Matched but excluded by timing (past/final/early)
+  // Excluded breakdown by reason
+  excluded_event_final: number
+  excluded_event_past: number
+  excluded_before_window: number
+  excluded_league_not_included: number
   // Multi-sport enhancements (Phase 3)
   channel_sort_order: string
   overlap_handling: string

@@ -354,6 +354,10 @@ export function EventGroups() {
       filteredNotEvent: 0,
       failedCount: 0,
       streamsExcluded: 0,
+      excludedEventFinal: 0,
+      excludedEventPast: 0,
+      excludedBeforeWindow: 0,
+      excludedLeagueNotIncluded: 0,
       matched: 0,
       matchRate: 0,
       // Per-group breakdowns for tooltips
@@ -367,6 +371,10 @@ export function EventGroups() {
     const filteredExcludeRegex = groups.reduce((sum, g) => sum + (g.filtered_exclude_regex || 0), 0)
     const filteredNotEvent = groups.reduce((sum, g) => sum + (g.filtered_not_event || 0), 0)
     const streamsExcluded = groups.reduce((sum, g) => sum + (g.streams_excluded || 0), 0)
+    const excludedEventFinal = groups.reduce((sum, g) => sum + (g.excluded_event_final || 0), 0)
+    const excludedEventPast = groups.reduce((sum, g) => sum + (g.excluded_event_past || 0), 0)
+    const excludedBeforeWindow = groups.reduce((sum, g) => sum + (g.excluded_before_window || 0), 0)
+    const excludedLeagueNotIncluded = groups.reduce((sum, g) => sum + (g.excluded_league_not_included || 0), 0)
     const totalFiltered = filteredIncludeRegex + filteredExcludeRegex + filteredNotEvent
     const matched = groups.reduce((sum, g) => sum + (g.matched_count || 0), 0)
     const failedCount = groups.reduce((sum, g) => sum + (g.failed_count || 0), 0)
@@ -388,6 +396,10 @@ export function EventGroups() {
       filteredNotEvent,
       failedCount,
       streamsExcluded,
+      excludedEventFinal,
+      excludedEventPast,
+      excludedBeforeWindow,
+      excludedLeagueNotIncluded,
       matched,
       matchRate,
       streamsByGroup,
@@ -679,9 +691,36 @@ export function EventGroups() {
               {stats.streamsExcluded > 0 && (
                 <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block">
                   <Card className="p-3 shadow-lg border min-w-[200px]">
-                    <div className="text-xs font-medium text-muted-foreground mb-2">Matched but Excluded</div>
-                    <div className="text-sm text-muted-foreground">
-                      {stats.streamsExcluded} stream{stats.streamsExcluded !== 1 ? 's' : ''} matched an event but excluded due to timing (event final, past, or before create window).
+                    <div className="text-xs font-medium text-muted-foreground mb-2">Exclusion Breakdown</div>
+                    <div className="space-y-1">
+                      {stats.excludedLeagueNotIncluded > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span>League not in group</span>
+                          <span className="font-medium">{stats.excludedLeagueNotIncluded}</span>
+                        </div>
+                      )}
+                      {stats.excludedEventFinal > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span>Event final</span>
+                          <span className="font-medium">{stats.excludedEventFinal}</span>
+                        </div>
+                      )}
+                      {stats.excludedEventPast > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span>Event past</span>
+                          <span className="font-medium">{stats.excludedEventPast}</span>
+                        </div>
+                      )}
+                      {stats.excludedBeforeWindow > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span>Before create window</span>
+                          <span className="font-medium">{stats.excludedBeforeWindow}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-sm font-medium pt-1 border-t">
+                        <span>Total</span>
+                        <span>{stats.streamsExcluded}</span>
+                      </div>
                     </div>
                   </Card>
                 </div>

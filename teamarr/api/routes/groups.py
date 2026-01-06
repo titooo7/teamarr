@@ -156,7 +156,12 @@ class GroupResponse(BaseModel):
     filtered_exclude_regex: int = 0  # FILTERED: Matched exclude regex
     filtered_not_event: int = 0  # FILTERED: Stream doesn't look like event
     failed_count: int = 0  # FAILED: Match attempted but couldn't find event
-    streams_excluded: int = 0  # EXCLUDED: Matched but excluded (timing/config)
+    streams_excluded: int = 0  # EXCLUDED: Matched but excluded (aggregate)
+    # EXCLUDED breakdown by reason
+    excluded_event_final: int = 0
+    excluded_event_past: int = 0
+    excluded_before_window: int = 0
+    excluded_league_not_included: int = 0
     # Multi-sport enhancements (Phase 3)
     channel_sort_order: str = "time"
     overlap_handling: str = "add_stream"
@@ -297,6 +302,10 @@ def list_groups(
                 failed_count=g.failed_count,
                 filtered_not_event=g.filtered_not_event,
                 streams_excluded=g.streams_excluded,
+                excluded_event_final=g.excluded_event_final,
+                excluded_event_past=g.excluded_event_past,
+                excluded_before_window=g.excluded_before_window,
+                excluded_league_not_included=g.excluded_league_not_included,
                 channel_sort_order=g.channel_sort_order,
                 overlap_handling=g.overlap_handling,
                 enabled=g.enabled,
@@ -406,6 +415,10 @@ def create_group(request: GroupCreate):
         failed_count=group.failed_count,
         filtered_not_event=group.filtered_not_event,
         streams_excluded=group.streams_excluded,
+        excluded_event_final=group.excluded_event_final,
+        excluded_event_past=group.excluded_event_past,
+        excluded_before_window=group.excluded_before_window,
+        excluded_league_not_included=group.excluded_league_not_included,
         channel_sort_order=group.channel_sort_order,
         overlap_handling=group.overlap_handling,
         enabled=group.enabled,
@@ -467,6 +480,10 @@ def get_group_by_id(group_id: int):
         failed_count=group.failed_count,
         filtered_not_event=group.filtered_not_event,
         streams_excluded=group.streams_excluded,
+        excluded_event_final=group.excluded_event_final,
+        excluded_event_past=group.excluded_event_past,
+        excluded_before_window=group.excluded_before_window,
+        excluded_league_not_included=group.excluded_league_not_included,
         channel_sort_order=group.channel_sort_order,
         overlap_handling=group.overlap_handling,
         enabled=group.enabled,
@@ -603,6 +620,10 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
         failed_count=group.failed_count,
         filtered_not_event=group.filtered_not_event,
         streams_excluded=group.streams_excluded,
+        excluded_event_final=group.excluded_event_final,
+        excluded_event_past=group.excluded_event_past,
+        excluded_before_window=group.excluded_before_window,
+        excluded_league_not_included=group.excluded_league_not_included,
         channel_sort_order=group.channel_sort_order,
         overlap_handling=group.overlap_handling,
         enabled=group.enabled,

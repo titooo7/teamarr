@@ -328,7 +328,12 @@ CREATE TABLE IF NOT EXISTS event_epg_groups (
     filtered_exclude_regex INTEGER DEFAULT 0,   -- FILTERED: Matched exclude regex
     filtered_not_event INTEGER DEFAULT 0,       -- FILTERED: Stream doesn't look like event (placeholder)
     failed_count INTEGER DEFAULT 0,             -- FAILED: Match attempted but couldn't find event
-    streams_excluded INTEGER DEFAULT 0,         -- EXCLUDED: Matched but excluded (timing/config)
+    streams_excluded INTEGER DEFAULT 0,         -- EXCLUDED: Matched but excluded (aggregate)
+    -- EXCLUDED breakdown by reason
+    excluded_event_final INTEGER DEFAULT 0,         -- Event status is final
+    excluded_event_past INTEGER DEFAULT 0,          -- Event already ended
+    excluded_before_window INTEGER DEFAULT 0,       -- Too early to create channel
+    excluded_league_not_included INTEGER DEFAULT 0, -- League not in group's leagues[]
 
     -- Multi-Sport Enhancements (Phase 3)
     channel_sort_order TEXT DEFAULT 'time'

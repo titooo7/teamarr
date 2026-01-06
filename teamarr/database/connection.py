@@ -590,6 +590,25 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("Schema upgraded to version 15 (filtered_no_match -> failed_count)")
         current_version = 15
 
+    # Version 16: Add excluded reason breakdown columns
+    # Tracks individual exclusion reasons for UI breakdown display
+    if current_version < 16:
+        _add_column_if_not_exists(
+            conn, "event_epg_groups", "excluded_event_final", "INTEGER DEFAULT 0"
+        )
+        _add_column_if_not_exists(
+            conn, "event_epg_groups", "excluded_event_past", "INTEGER DEFAULT 0"
+        )
+        _add_column_if_not_exists(
+            conn, "event_epg_groups", "excluded_before_window", "INTEGER DEFAULT 0"
+        )
+        _add_column_if_not_exists(
+            conn, "event_epg_groups", "excluded_league_not_included", "INTEGER DEFAULT 0"
+        )
+        conn.execute("UPDATE settings SET schema_version = 16 WHERE id = 1")
+        logger.info("Schema upgraded to version 16 (excluded breakdown columns)")
+        current_version = 16
+
 
 def _rename_filtered_no_match_to_failed_count(conn: sqlite3.Connection) -> None:
     """Rename filtered_no_match column to failed_count.

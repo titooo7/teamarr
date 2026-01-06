@@ -52,7 +52,12 @@ class EventEPGGroup:
     filtered_exclude_regex: int = 0  # FILTERED: Matched exclude regex
     filtered_not_event: int = 0  # FILTERED: Stream doesn't look like event (placeholder)
     failed_count: int = 0  # FAILED: Match attempted but couldn't find event
-    streams_excluded: int = 0  # EXCLUDED: Matched but excluded (timing/config)
+    streams_excluded: int = 0  # EXCLUDED: Matched but excluded (aggregate)
+    # EXCLUDED breakdown by reason
+    excluded_event_final: int = 0
+    excluded_event_past: int = 0
+    excluded_before_window: int = 0
+    excluded_league_not_included: int = 0
     # Multi-sport enhancements (Phase 3)
     channel_sort_order: str = "time"
     overlap_handling: str = "add_stream"
@@ -142,6 +147,11 @@ def _row_to_group(row) -> EventEPGGroup:
         )
         or 0,
         streams_excluded=row["streams_excluded"] if "streams_excluded" in row.keys() else 0,
+        # EXCLUDED breakdown by reason
+        excluded_event_final=row["excluded_event_final"] if "excluded_event_final" in row.keys() else 0,
+        excluded_event_past=row["excluded_event_past"] if "excluded_event_past" in row.keys() else 0,
+        excluded_before_window=row["excluded_before_window"] if "excluded_before_window" in row.keys() else 0,
+        excluded_league_not_included=row["excluded_league_not_included"] if "excluded_league_not_included" in row.keys() else 0,
         # Multi-sport enhancements
         channel_sort_order=row["channel_sort_order"] or "time",
         overlap_handling=row["overlap_handling"] or "add_stream",
@@ -627,6 +637,11 @@ def update_group_stats(
     failed_count: int = 0,
     streams_excluded: int = 0,
     total_stream_count: int | None = None,
+    # EXCLUDED breakdown
+    excluded_event_final: int = 0,
+    excluded_event_past: int = 0,
+    excluded_before_window: int = 0,
+    excluded_league_not_included: int = 0,
 ) -> bool:
     """Update processing stats for a group after EPG generation.
 
@@ -644,8 +659,12 @@ def update_group_stats(
         filtered_exclude_regex: FILTERED - Matched exclude regex
         filtered_not_event: FILTERED - Stream doesn't look like event
         failed_count: FAILED - Match attempted but couldn't find event
-        streams_excluded: EXCLUDED - Matched but excluded (timing/config)
+        streams_excluded: EXCLUDED - Matched but excluded (aggregate)
         total_stream_count: Total streams fetched (before filtering)
+        excluded_event_final: EXCLUDED - Event status is final
+        excluded_event_past: EXCLUDED - Event already ended
+        excluded_before_window: EXCLUDED - Too early to create channel
+        excluded_league_not_included: EXCLUDED - League not in group
 
     Returns:
         True if updated
@@ -661,6 +680,10 @@ def update_group_stats(
                    filtered_not_event = ?,
                    failed_count = ?,
                    streams_excluded = ?,
+                   excluded_event_final = ?,
+                   excluded_event_past = ?,
+                   excluded_before_window = ?,
+                   excluded_league_not_included = ?,
                    total_stream_count = ?
                WHERE id = ?""",
             (
@@ -671,6 +694,10 @@ def update_group_stats(
                 filtered_not_event,
                 failed_count,
                 streams_excluded,
+                excluded_event_final,
+                excluded_event_past,
+                excluded_before_window,
+                excluded_league_not_included,
                 total_stream_count,
                 group_id,
             ),
@@ -685,7 +712,11 @@ def update_group_stats(
                    filtered_exclude_regex = ?,
                    filtered_not_event = ?,
                    failed_count = ?,
-                   streams_excluded = ?
+                   streams_excluded = ?,
+                   excluded_event_final = ?,
+                   excluded_event_past = ?,
+                   excluded_before_window = ?,
+                   excluded_league_not_included = ?
                WHERE id = ?""",
             (
                 stream_count,
@@ -695,6 +726,10 @@ def update_group_stats(
                 filtered_not_event,
                 failed_count,
                 streams_excluded,
+                excluded_event_final,
+                excluded_event_past,
+                excluded_before_window,
+                excluded_league_not_included,
                 group_id,
             ),
         )

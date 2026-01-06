@@ -85,6 +85,12 @@ class ProcessingResult:
     streams_unmatched: int = 0
     streams_excluded: int = 0  # Matched but excluded by timing (past/final/early)
 
+    # Excluded breakdown by reason
+    excluded_event_final: int = 0
+    excluded_event_past: int = 0
+    excluded_before_window: int = 0
+    excluded_league_not_included: int = 0
+
     # Channel lifecycle
     channels_created: int = 0
     channels_existing: int = 0
@@ -838,6 +844,10 @@ class EventGroupProcessor:
                 filtered_not_event=result.filtered_not_event,
                 streams_excluded=result.streams_excluded,
                 total_stream_count=result.streams_fetched,  # V1 parity
+                excluded_event_final=result.excluded_event_final,
+                excluded_event_past=result.excluded_event_past,
+                excluded_before_window=result.excluded_before_window,
+                excluded_league_not_included=result.excluded_league_not_included,
             )
 
         except Exception as e:
@@ -1029,6 +1039,15 @@ class EventGroupProcessor:
             stats_run.streams_unmatched = match_result.unmatched_count
             stats_run.streams_cached = match_result.cache_hits
 
+            # Count matcher-level exclusions (matched but excluded by league/event_final)
+            for r in match_result.results:
+                if r.matched and not r.included and r.exclusion_reason:
+                    result.streams_excluded += 1
+                    if r.exclusion_reason == "event_final":
+                        result.excluded_event_final += 1
+                    elif r.exclusion_reason.startswith("league_not_included"):
+                        result.excluded_league_not_included += 1
+
             # Save detailed match results for analysis
             self._save_match_details(
                 conn=conn,
@@ -1057,7 +1076,20 @@ class EventGroupProcessor:
                 result.channels_skipped = len(lifecycle_result.skipped)
                 result.channels_deleted = len(lifecycle_result.deleted)
                 result.channel_errors = len(lifecycle_result.errors)
-                result.streams_excluded = len(lifecycle_result.excluded)
+                # Add lifecycle exclusions to total
+                result.streams_excluded += len(lifecycle_result.excluded)
+
+                # Compute excluded breakdown by reason (lifecycle exclusions)
+                for excl in lifecycle_result.excluded:
+                    reason = excl.get("reason", "")
+                    if reason == "event_final":
+                        result.excluded_event_final += 1
+                    elif reason == "event_past":
+                        result.excluded_event_past += 1
+                    elif reason == "before_window":
+                        result.excluded_before_window += 1
+                    elif reason == "league_not_included":
+                        result.excluded_league_not_included += 1
 
                 stats_run.channels_created = len(lifecycle_result.created)
                 stats_run.channels_updated = len(lifecycle_result.existing)
@@ -1107,6 +1139,10 @@ class EventGroupProcessor:
                 filtered_not_event=result.filtered_not_event,
                 streams_excluded=result.streams_excluded,
                 total_stream_count=result.streams_fetched,  # V1 parity
+                excluded_event_final=result.excluded_event_final,
+                excluded_event_past=result.excluded_event_past,
+                excluded_before_window=result.excluded_before_window,
+                excluded_league_not_included=result.excluded_league_not_included,
             )
 
         except Exception as e:

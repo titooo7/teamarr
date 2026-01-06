@@ -488,6 +488,8 @@ def template_to_filler_config(template: Template) -> FillerConfig:
         idle_conditional=idle_conditional,
         idle_offseason=idle_offseason,
         category=category,
+        xmltv_categories=categories,
+        categories_apply_to=template.categories_apply_to or "events",
     )
 
 
@@ -518,6 +520,10 @@ def template_to_programme_config(template: Template) -> TemplateConfig:
         # V1 Parity: Duration override support
         game_duration_mode=template.game_duration_mode or "sport",
         game_duration_override=template.game_duration_override,
+        # XMLTV metadata
+        xmltv_flags=template.xmltv_flags or {"new": True, "live": False, "date": False},
+        xmltv_categories=categories,
+        categories_apply_to=template.categories_apply_to or "events",
     )
 
 

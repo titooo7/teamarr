@@ -198,6 +198,14 @@ class EventEPGGenerator:
         if not icon:
             icon = event.home_team.logo_url if event.home_team else None
 
+        # Resolve categories (may contain {sport} variable)
+        resolved_categories = []
+        for cat in options.template.xmltv_categories:
+            if "{" in cat:
+                resolved_categories.append(self._resolver.resolve(cat, context))
+            else:
+                resolved_categories.append(cat)
+
         return Programme(
             channel_id=channel_id,
             title=title,
@@ -207,6 +215,8 @@ class EventEPGGenerator:
             subtitle=subtitle,
             category=options.template.category,
             icon=icon,
+            categories=resolved_categories,
+            xmltv_flags=options.template.xmltv_flags,
         )
 
     # Keywords for detecting UFC prelim streams

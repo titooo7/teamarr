@@ -460,6 +460,17 @@ class FillerGenerator:
                 if "{" not in resolved_art:
                     icon = resolved_art
 
+            # Only include categories if categories_apply_to == "all"
+            # Filler never gets xmltv_flags (new/live/date are for live events only)
+            filler_categories = []
+            if config.categories_apply_to == "all":
+                # Resolve any {sport} variables in categories
+                for cat in config.xmltv_categories:
+                    if "{" in cat:
+                        filler_categories.append(self._resolver.resolve(cat, context))
+                    else:
+                        filler_categories.append(cat)
+
             programme = Programme(
                 channel_id=channel_id,
                 title=title,
@@ -470,6 +481,8 @@ class FillerGenerator:
                 category=config.category,
                 icon=icon,
                 filler_type=filler_type.value,  # 'pregame', 'postgame', or 'idle'
+                categories=filler_categories,
+                # No xmltv_flags for filler - new/live/date are for live events only
             )
             programmes.append(programme)
 

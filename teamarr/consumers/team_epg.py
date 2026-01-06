@@ -367,6 +367,14 @@ class TeamEPGGenerator:
         if not icon:
             icon = logo_url or (event.home_team.logo_url if event.home_team else None)
 
+        # Resolve categories (may contain {sport} variable)
+        resolved_categories = []
+        for cat in options.template.xmltv_categories:
+            if "{" in cat:
+                resolved_categories.append(self._resolver.resolve(cat, context))
+            else:
+                resolved_categories.append(cat)
+
         return Programme(
             channel_id=channel_id,
             title=title,
@@ -376,6 +384,8 @@ class TeamEPGGenerator:
             subtitle=subtitle,
             category=options.template.category,
             icon=icon,
+            categories=resolved_categories,
+            xmltv_flags=options.template.xmltv_flags,
         )
 
     def _enrich_events(self, events: list[Event]) -> list[Event]:

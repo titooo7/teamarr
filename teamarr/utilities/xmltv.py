@@ -84,7 +84,19 @@ def _add_programme(root: Element, programme: Programme) -> None:
         desc_elem.set("lang", "en")
         desc_elem.text = programme.description
 
-    if programme.category:
+    # Add date tag if enabled (YYYYMMDD format)
+    flags = programme.xmltv_flags or {}
+    if flags.get("date"):
+        date_elem = SubElement(prog_elem, "date")
+        date_elem.text = programme.start.strftime("%Y%m%d")
+
+    # Add categories (prefer list, fall back to single category)
+    if programme.categories:
+        for cat in programme.categories:
+            cat_elem = SubElement(prog_elem, "category")
+            cat_elem.set("lang", "en")
+            cat_elem.text = cat
+    elif programme.category:
         cat_elem = SubElement(prog_elem, "category")
         cat_elem.set("lang", "en")
         cat_elem.text = programme.category
@@ -92,6 +104,14 @@ def _add_programme(root: Element, programme: Programme) -> None:
     if programme.icon:
         icon_elem = SubElement(prog_elem, "icon")
         icon_elem.set("src", programme.icon)
+
+    # Add new tag if enabled (only for non-filler programmes)
+    if flags.get("new") and not programme.filler_type:
+        SubElement(prog_elem, "new")
+
+    # Add live tag if enabled (only for non-filler programmes)
+    if flags.get("live") and not programme.filler_type:
+        SubElement(prog_elem, "live")
 
 
 def _prettify(xml_str: str) -> str:

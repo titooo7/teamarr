@@ -53,6 +53,11 @@ class EventFillerConfig:
     # Category for filler content
     category: str = "Sports"
 
+    # XMLTV categories (list for multiple categories)
+    xmltv_categories: list[str] = field(default_factory=lambda: ["Sports"])
+    # Whether categories apply to filler ('all') or just events ('events')
+    categories_apply_to: str = "events"
+
 
 @dataclass
 class EventFillerOptions:
@@ -209,7 +214,7 @@ class EventFillerGenerator:
                 template=config.pregame_template,
                 context=context,
                 channel_id=channel_id,
-                category=config.category,
+                config=config,
                 logo_url=event.home_team.logo_url,
                 filler_type="pregame",
             )
@@ -226,7 +231,7 @@ class EventFillerGenerator:
                 template=postgame_template,
                 context=context,
                 channel_id=channel_id,
-                category=config.category,
+                config=config,
                 logo_url=event.home_team.logo_url,
                 filler_type="postgame",
             )
@@ -242,7 +247,7 @@ class EventFillerGenerator:
         template: FillerTemplate,
         context: TemplateContext,
         channel_id: str,
-        category: str,
+        config: EventFillerConfig,
         logo_url: str | None,
         filler_type: str,
     ) -> list[Programme]:
@@ -275,6 +280,17 @@ class EventFillerGenerator:
                 if "{" not in resolved_art:
                     icon = resolved_art
 
+            # Only include categories if categories_apply_to == "all"
+            # Filler never gets xmltv_flags (new/live/date are for live events only)
+            filler_categories = []
+            if config.categories_apply_to == "all":
+                # Resolve any {sport} variables in categories
+                for cat in config.xmltv_categories:
+                    if "{" in cat:
+                        filler_categories.append(self._resolver.resolve(cat, context))
+                    else:
+                        filler_categories.append(cat)
+
             programme = Programme(
                 channel_id=channel_id,
                 title=title,
@@ -282,9 +298,11 @@ class EventFillerGenerator:
                 stop=chunk_end,
                 description=description,
                 subtitle=subtitle,
-                category=category,
+                category=config.category,
                 icon=icon,
                 filler_type=filler_type,
+                categories=filler_categories,
+                # No xmltv_flags for filler - new/live/date are for live events only
             )
             programmes.append(programme)
 
@@ -399,4 +417,6 @@ def template_to_event_filler_config(template) -> EventFillerConfig:
         postgame_template=postgame_template,
         postgame_conditional=postgame_conditional,
         category=category,
+        xmltv_categories=categories,
+        categories_apply_to=getattr(template, "categories_apply_to", "events"),
     )

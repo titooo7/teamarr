@@ -88,6 +88,11 @@ class FillerConfig:
     # Category for filler content
     category: str = "Sports"
 
+    # XMLTV categories (list for multiple categories)
+    xmltv_categories: list[str] = field(default_factory=lambda: ["Sports"])
+    # Whether categories apply to filler ('all') or just events ('events')
+    categories_apply_to: str = "events"
+
 
 @dataclass
 class FillerOptions:

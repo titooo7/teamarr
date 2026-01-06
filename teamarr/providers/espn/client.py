@@ -22,7 +22,7 @@ ESPN_UFC_ATHLETE_URL = "https://sports.core.api.espn.com/v2/sports/mma/leagues/u
 COLLEGE_SCOREBOARD_GROUPS = {
     "mens-college-basketball": "50",
     "womens-college-basketball": "50",
-    "college-football": "80",
+    # Note: college-football omitted to return both FBS + FCS games
     # Note: mens-college-hockey does NOT need groups param
 }
 

@@ -358,7 +358,6 @@ export function EventGroups() {
       matchRate: 0,
       // Per-group breakdowns for tooltips
       streamsByGroup: [] as { name: string; count: number }[],
-      matchedByGroup: [] as { name: string; count: number; rate: number }[],
     }
 
     // Sum all groups (parents + children) - each has distinct streams from different M3U accounts
@@ -380,16 +379,6 @@ export function EventGroups() {
       .filter(g => (g.total_stream_count || 0) > 0)
       .map(g => ({ name: getDisplayName(g), count: g.total_stream_count || 0 }))
       .sort((a, b) => b.count - a.count)
-    const matchedByGroup = groups
-      .filter(g => (g.stream_count || 0) > 0)
-      .map(g => ({
-        name: getDisplayName(g),
-        count: g.matched_count || 0,
-        rate: (g.matched_count || 0) + (g.failed_count || 0) > 0
-          ? Math.round(((g.matched_count || 0) / ((g.matched_count || 0) + (g.failed_count || 0))) * 100)
-          : 0,
-      }))
-      .sort((a, b) => b.count - a.count)
 
     return {
       totalStreams,
@@ -402,7 +391,6 @@ export function EventGroups() {
       matched,
       matchRate,
       streamsByGroup,
-      matchedByGroup,
     }
   }, [data?.groups])
 
@@ -687,32 +675,18 @@ export function EventGroups() {
               )}
             </div>
 
-            {/* Matched */}
-            <div className="group relative">
-              <div className="bg-secondary rounded px-3 py-2 cursor-help">
-                <div className="text-xl font-bold text-green-500">
-                  {stats.matched}/{stats.matched + stats.failedCount}
-                </div>
-                <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wider">
-                  Matched ({stats.matchRate}%)
-                </div>
+            {/* Matched - color based on match rate */}
+            <div className="bg-secondary rounded px-3 py-2">
+              <div className={`text-xl font-bold ${
+                stats.matchRate >= 85 ? 'text-green-500' :
+                stats.matchRate >= 60 ? 'text-orange-500' :
+                stats.matchRate > 0 ? 'text-red-500' : ''
+              }`}>
+                {stats.matched}/{stats.matched + stats.failedCount}
               </div>
-              {(stats.matched > 0 || stats.failedCount > 0) && (
-                <div className="absolute right-0 top-full mt-1 z-50 hidden group-hover:block">
-                  <Card className="p-3 shadow-lg border min-w-[180px]">
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-green-500">Matched</span>
-                        <span className="font-medium">{stats.matched}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-red-500">Failed</span>
-                        <span className="font-medium">{stats.failedCount}</span>
-                      </div>
-                    </div>
-                  </Card>
-                </div>
-              )}
+              <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wider">
+                Matched ({stats.matchRate}%)
+              </div>
             </div>
         </div>
       )}

@@ -131,16 +131,35 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
         league: str,
         days_ahead: int,
         sport_league: tuple[str, str] | None = None,
+        days_back: int = 7,
     ) -> list[Event]:
-        """Get team schedule by scanning scoreboard for upcoming days.
+        """Get team schedule by scanning scoreboard for past and upcoming days.
 
-        Scans the scoreboard for the next N days and filters for games
-        involving the specified team. This approach works for all sports
+        Scans the scoreboard for the past N days and next M days, filtering for
+        games involving the specified team. This approach works for all sports
         and captures both regular season and playoff games.
+
+        Past games are needed for .last template variable resolution.
         """
         events = []
         today = date.today()
 
+        # Scan past days (for .last variable resolution)
+        for day_offset in range(days_back, 0, -1):
+            target_date = today - timedelta(days=day_offset)
+            date_str = target_date.strftime("%Y%m%d")
+
+            data = self._client.get_scoreboard(league, date_str, sport_league)
+            if not data:
+                continue
+
+            for event_data in data.get("events", []):
+                if self._team_in_event(team_id, event_data):
+                    event = self._parse_event(event_data, league)
+                    if event:
+                        events.append(event)
+
+        # Scan future days (existing behavior)
         for day_offset in range(days_ahead):
             target_date = today + timedelta(days=day_offset)
             date_str = target_date.strftime("%Y%m%d")

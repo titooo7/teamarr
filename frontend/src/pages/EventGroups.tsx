@@ -50,8 +50,8 @@ import {
 import { useTemplates } from "@/hooks/useTemplates"
 import type { EventGroup, PreviewGroupResponse } from "@/api/types"
 
-// Fetch leagues for logo lookup and sport mapping
-async function fetchLeagues(): Promise<{ slug: string; name: string; logo_url: string | null; sport: string | null }[]> {
+// Fetch leagues for logo lookup, sport mapping, and display alias
+async function fetchLeagues(): Promise<{ slug: string; name: string; logo_url: string | null; sport: string | null; league_alias: string | null }[]> {
   const response = await fetch("/api/v1/cache/leagues")
   if (!response.ok) return []
   const data = await response.json()
@@ -393,6 +393,19 @@ export function EventGroups() {
       streamsByGroup,
     }
   }, [data?.groups])
+
+  // League slug -> display name lookup (uses {league} variable resolution: alias first, then name)
+  const getLeagueDisplay = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const league of cachedLeagues ?? []) {
+      // {league} variable uses league_alias if available, otherwise name
+      map.set(league.slug, league.league_alias || league.name)
+    }
+    return (slug: string | null | undefined) => {
+      if (!slug) return "-"
+      return map.get(slug) ?? slug.toUpperCase()
+    }
+  }, [cachedLeagues])
 
   const handleDelete = async () => {
     if (!deleteConfirm) return
@@ -1358,7 +1371,7 @@ export function EventGroups() {
                         </TableCell>
                         <TableCell>
                           {stream.league ? (
-                            <Badge variant="secondary">{stream.league.toUpperCase()}</Badge>
+                            <Badge variant="secondary">{getLeagueDisplay(stream.league)}</Badge>
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}

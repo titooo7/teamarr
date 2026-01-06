@@ -111,15 +111,23 @@ class BatchMatchResult:
 
     @property
     def matched_count(self) -> int:
+        """Count of streams that matched to an event (includes excluded)."""
         return sum(1 for r in self.results if r.matched)
 
     @property
     def included_count(self) -> int:
+        """Count of streams that will be included in output (matched AND not excluded)."""
         return sum(1 for r in self.results if r.included)
 
     @property
     def unmatched_count(self) -> int:
+        """Count of streams that failed to match."""
         return sum(1 for r in self.results if not r.matched and not r.is_exception)
+
+    @property
+    def excluded_count(self) -> int:
+        """Count of streams that matched but were excluded."""
+        return sum(1 for r in self.results if r.matched and not r.included)
 
     @property
     def cache_hit_rate(self) -> float:

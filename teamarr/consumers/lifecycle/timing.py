@@ -220,6 +220,12 @@ class ChannelLifecycleManager:
         falls outside the lifecycle window. Returns None if the event is
         eligible for channel creation.
 
+        V1 Parity Rules:
+        1. Exclude if before create timing
+        2. Exclude if after delete timing
+        3. Past day final events → ALWAYS exclude (regardless of setting)
+        4. Today's final events → honor include_final_events setting
+
         Args:
             event: The matched event to categorize
 
@@ -227,23 +233,38 @@ class ChannelLifecycleManager:
             ExcludedReason if event should be excluded, None if eligible
         """
         now = now_user()
+        today = now.date()
 
-        # Check if event status is final
+        # Get event date in user timezone for day comparison
+        event_start_user = to_user_tz(event.start_time)
+        event_day = event_start_user.date()
+
+        # Determine if event is final (status-based or time-based fallback)
+        is_final = False
+
+        # Status-based check
         if event.status:
             status_state = event.status.state.lower() if event.status.state else ""
             status_detail = event.status.detail.lower() if event.status.detail else ""
             is_final = status_state in ("final", "post", "completed") or "final" in status_detail
-            if is_final and not self.include_final_events:
-                return ExcludedReason.EVENT_FINAL
 
-        # Time-based fallback: if event end time + buffer is in the past, treat as final
+        # Time-based fallback: if event end + 2hr buffer is in past, treat as final
         # This catches stale cached events that still show old status
-        # Buffer is 2 hours after estimated end time to be safe
-        if not self.include_final_events:
+        if not is_final:
             event_end = self.get_event_end_time(event)
             event_end_with_buffer = event_end + timedelta(hours=2)
             if now > event_end_with_buffer:
+                is_final = True
+
+        # V1 Parity: Handle final events based on date
+        if is_final:
+            # Past day final events → ALWAYS exclude (regardless of include_final_events)
+            if event_day < today:
                 return ExcludedReason.EVENT_FINAL
+            # Today's final events → honor the include_final_events setting
+            elif event_day == today and not self.include_final_events:
+                return ExcludedReason.EVENT_FINAL
+            # Today's final with include_final_events=True → allow (don't exclude here)
 
         # Check if we're past delete threshold (event is over)
         delete_threshold = self._calculate_delete_threshold(event)

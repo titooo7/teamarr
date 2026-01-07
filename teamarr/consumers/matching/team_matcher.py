@@ -203,6 +203,7 @@ class TeamMatcher:
         user_tz: ZoneInfo,
         sport_durations: dict[str, float] | None = None,
         days_back: int = 2,
+        prefetched_events: dict[str, list["Event"]] | None = None,
     ) -> MatchOutcome:
         """Multi-league matching with league hint detection.
 
@@ -226,6 +227,7 @@ class TeamMatcher:
             user_tz: User timezone for date validation
             sport_durations: Sport duration settings for ongoing event detection
             days_back: Days back for event matching (for weekly sports like NFL)
+            prefetched_events: Optional pre-fetched events by league (for performance)
 
         Returns:
             MatchOutcome with result
@@ -274,20 +276,27 @@ class TeamMatcher:
             # No hint, search all enabled leagues
             leagues_to_search = enabled_leagues
 
-        # Fetch events with two-tier strategy:
-        # - Recent dates (within days_back): fetch from API if not cached (ESPN only)
-        # - Older dates (up to MATCH_WINDOW_DAYS): cache-only, no API calls
-        # - TSDB leagues: always cache-only (let cache build organically)
-        MATCH_WINDOW_DAYS = 14  # Look back 14 days in cache for matches
+        # Use prefetched events if available (much faster for multi-stream matching)
+        # Otherwise, fetch events with two-tier strategy
         all_events: list[tuple[str, Event]] = []
-        for league in leagues_to_search:
-            is_tsdb = self._service.get_provider_name(league) == "tsdb"
-            for offset in range(-MATCH_WINDOW_DAYS, 1):
-                fetch_date = target_date + timedelta(days=offset)
-                # TSDB: always cache-only; ESPN: fetch recent, cache-only for older
-                cache_only = is_tsdb or offset < -days_back
-                for event in self._service.get_events(league, fetch_date, cache_only=cache_only):
+
+        if prefetched_events:
+            # Use pre-fetched events (already fetched once for all streams)
+            for league in leagues_to_search:
+                for event in prefetched_events.get(league, []):
                     all_events.append((league, event))
+        else:
+            # Fallback: fetch events per-stream (slower, used when no prefetch)
+            MATCH_WINDOW_DAYS = 14  # Look back 14 days in cache for matches
+            for league in leagues_to_search:
+                is_tsdb = self._service.get_provider_name(league) == "tsdb"
+                for offset in range(-MATCH_WINDOW_DAYS, 1):
+                    fetch_date = target_date + timedelta(days=offset)
+                    # TSDB: always cache-only; ESPN: fetch recent, cache-only for older
+                    cache_only = is_tsdb or offset < -days_back
+                    events = self._service.get_events(league, fetch_date, cache_only=cache_only)
+                    for event in events:
+                        all_events.append((league, event))
 
         if not all_events:
             return MatchOutcome.failed(

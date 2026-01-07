@@ -23,7 +23,7 @@ Usage:
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
 from teamarr.config import get_user_timezone
@@ -204,6 +204,9 @@ class StreamMatcher:
         # League event types cache
         self._league_event_types: dict[str, str] = {}
 
+        # Prefetched events (populated in match_all for multi-league matching)
+        self._prefetched_events: dict[str, list[Event]] | None = None
+
     def match_all(
         self,
         streams: list[dict],
@@ -228,8 +231,12 @@ class StreamMatcher:
         # Load league event types
         self._load_league_event_types()
 
-        # Matching uses service cache directly (180-day TTL for past events)
-        # No prefetch needed - cache hits are fast SQLite lookups
+        # Prefetch events for multi-league matching (significant performance boost)
+        # This fetches events ONCE for all streams instead of per-stream
+        if len(self._search_leagues) > 1:
+            self._prefetch_events(target_date)
+        else:
+            self._prefetched_events = None
 
         result = BatchMatchResult(
             target_date=target_date,
@@ -261,6 +268,43 @@ class StreamMatcher:
                 progress_callback(idx, total_streams, stream_name, match_result.matched)
 
         return result
+
+    def _prefetch_events(self, target_date: date) -> None:
+        """Prefetch all events for multi-league matching.
+
+        For groups with many leagues (e.g., 278 leagues), fetching events
+        per-stream is extremely slow (278 leagues × 15 days × 400 streams).
+        Instead, fetch all events ONCE and reuse for all streams.
+
+        Uses the same two-tier strategy as TeamMatcher:
+        - Recent dates (within days_back): fetch from API if not cached (ESPN only)
+        - Older dates (up to 14 days): cache-only
+        - TSDB leagues: always cache-only
+        """
+        MATCH_WINDOW_DAYS = 14  # Match window for weekly sports like NFL
+
+        self._prefetched_events = {}
+        total_events = 0
+
+        for league in self._search_leagues:
+            league_events: list[Event] = []
+            is_tsdb = self._service.get_provider_name(league) == "tsdb"
+
+            for offset in range(-MATCH_WINDOW_DAYS, 1):
+                fetch_date = target_date + timedelta(days=offset)
+                # TSDB: always cache-only; ESPN: fetch recent, cache-only for older
+                cache_only = is_tsdb or offset < -self._days_back
+                events = self._service.get_events(league, fetch_date, cache_only=cache_only)
+                league_events.extend(events)
+
+            if league_events:
+                self._prefetched_events[league] = league_events
+                total_events += len(league_events)
+
+        logger.debug(
+            f"Prefetched {total_events} events from {len(self._prefetched_events)} leagues "
+            f"(window: -{MATCH_WINDOW_DAYS} to 0 days)"
+        )
 
     def _match_single(
         self,
@@ -340,6 +384,7 @@ class StreamMatcher:
                 user_tz=self._user_tz,
                 sport_durations=self._sport_durations,
                 days_back=self._days_back,
+                prefetched_events=self._prefetched_events,
             )
 
     def _match_event_card(

@@ -240,7 +240,7 @@ class SportsDataService:
     def refresh_event_status(self, event: Event) -> Event:
         """Refresh event with fresh status from provider.
 
-        Fetches fresh data from summary endpoint to get accurate final status.
+        Invalidates cache first, then fetches fresh data from summary endpoint.
         Used by filler generation for conditional descriptions (final vs not final).
 
         Args:
@@ -252,7 +252,11 @@ class SportsDataService:
         if not event:
             return event
 
-        # Fetch fresh event data (bypasses schedule cache, uses 30min single event cache)
+        # Invalidate cache to force fresh fetch from provider
+        cache_key = make_cache_key("event", event.league, event.id)
+        self._cache.delete(cache_key)
+
+        # Fetch fresh event data from provider
         fresh_event = self.get_event(event.id, event.league)
         if fresh_event:
             logger.debug(

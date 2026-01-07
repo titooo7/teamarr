@@ -1064,6 +1064,10 @@ class EventGroupProcessor:
             # Sort channels based on group's channel_sort_order setting
             matched_streams = self._sort_matched_streams(matched_streams, group.channel_sort_order)
 
+            # Enrich ALL matched events with fresh status from provider
+            # This ensures lifecycle filtering uses current final status
+            matched_streams = self._enrich_matched_events(matched_streams)
+
             # Extract all stream IDs for cleanup (V1 parity: cleanup missing streams)
             all_stream_ids = [s.get("id") for s in streams if s.get("id")]
 
@@ -1416,6 +1420,38 @@ class EventGroupProcessor:
                     )
 
         return matched
+
+    def _enrich_matched_events(self, matched_streams: list[dict]) -> list[dict]:
+        """Enrich all matched events with fresh status from provider.
+
+        Fetches fresh event data from summary endpoint for each matched event.
+        This ensures lifecycle filtering uses current final status, not stale
+        cached status from scoreboard/schedule.
+
+        Args:
+            matched_streams: List of {'stream': ..., 'event': ...} dicts
+
+        Returns:
+            Same list with events replaced by enriched versions
+        """
+        if not matched_streams:
+            return matched_streams
+
+        enriched = []
+        for match in matched_streams:
+            event = match.get("event")
+            if event:
+                # Refresh event status from provider (invalidates cache, fetches fresh)
+                refreshed = self._service.refresh_event_status(event)
+                enriched.append({
+                    "stream": match.get("stream"),
+                    "event": refreshed,
+                })
+            else:
+                enriched.append(match)
+
+        logger.debug(f"Enriched {len(enriched)} matched events with fresh status")
+        return enriched
 
     def _sort_matched_streams(
         self,

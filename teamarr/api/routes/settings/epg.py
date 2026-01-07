@@ -20,6 +20,7 @@ def get_epg_settings():
     return EPGSettingsModel(
         team_schedule_days_ahead=settings.team_schedule_days_ahead,
         event_match_days_ahead=settings.event_match_days_ahead,
+        event_match_days_back=settings.event_match_days_back,
         epg_output_days_ahead=settings.epg_output_days_ahead,
         epg_lookback_hours=settings.epg_lookback_hours,
         epg_timezone=settings.epg_timezone,
@@ -41,6 +42,7 @@ def update_epg_settings(update: EPGSettingsModel):
             conn,
             team_schedule_days_ahead=update.team_schedule_days_ahead,
             event_match_days_ahead=update.event_match_days_ahead,
+            event_match_days_back=update.event_match_days_back,
             epg_output_days_ahead=update.epg_output_days_ahead,
             epg_lookback_hours=update.epg_lookback_hours,
             epg_timezone=update.epg_timezone,
@@ -59,6 +61,7 @@ def update_epg_settings(update: EPGSettingsModel):
     return EPGSettingsModel(
         team_schedule_days_ahead=settings.team_schedule_days_ahead,
         event_match_days_ahead=settings.event_match_days_ahead,
+        event_match_days_back=settings.event_match_days_back,
         epg_output_days_ahead=settings.epg_output_days_ahead,
         epg_lookback_hours=settings.epg_lookback_hours,
         epg_timezone=settings.epg_timezone,

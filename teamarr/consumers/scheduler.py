@@ -257,14 +257,57 @@ class CronScheduler:
         Returns:
             Dict with generation stats
         """
+        from teamarr.api.generation_status import (
+            complete_generation,
+            fail_generation,
+            start_generation,
+            update_status,
+        )
         from teamarr.consumers.generation import run_full_generation
 
-        # Run the unified generation (includes all lifecycle tasks)
+        # Mark generation as started (enables UI polling)
+        if not start_generation():
+            logger.warning("Generation already in progress, skipping scheduled run")
+            return {"success": False, "error": "Generation already in progress"}
+
+        def progress_callback(
+            phase: str,
+            percent: int,
+            message: str,
+            current: int,
+            total: int,
+            item_name: str,
+        ):
+            """Update global status for UI polling."""
+            update_status(
+                status="progress",
+                phase=phase,
+                percent=percent,
+                message=message,
+                current=current,
+                total=total,
+                item_name=item_name,
+            )
+
+        # Run the unified generation with progress tracking
         result = run_full_generation(
             db_factory=self._db_factory,
             dispatcharr_client=self._dispatcharr_client,
-            progress_callback=None,  # No streaming for background scheduler
+            progress_callback=progress_callback,
         )
+
+        # Update global status on completion
+        if result.success:
+            complete_generation({
+                "success": True,
+                "programmes_count": result.programmes_total,
+                "teams_processed": result.teams_processed,
+                "groups_processed": result.groups_processed,
+                "duration_seconds": result.duration_seconds,
+                "run_id": result.run_id,
+            })
+        else:
+            fail_generation(result.error or "Unknown error")
 
         # Convert to dict format for backward compatibility
         return {

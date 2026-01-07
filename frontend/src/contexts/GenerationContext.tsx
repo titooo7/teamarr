@@ -94,29 +94,7 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
   const eventSourceRef = useRef<EventSource | null>(null)
   const onCompleteRef = useRef<((result: GenerationStatus["result"]) => void) | null>(null)
   const pollIntervalRef = useRef<number | null>(null)
-
-  // Check for in-progress generation on mount
-  useEffect(() => {
-    fetch("/api/v1/epg/generate/status")
-      .then((res) => res.json())
-      .then((data: GenerationStatus) => {
-        if (data.in_progress) {
-          // Generation is in progress, reconnect
-          setIsGenerating(true)
-          reconnectToGeneration()
-        }
-      })
-      .catch(console.error)
-
-    return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close()
-      }
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
-      }
-    }
-  }, [])
+  const backgroundPollRef = useRef<number | null>(null)
 
   const updateToast = useCallback((status: GenerationStatus | null, isStarting: boolean = false) => {
     const phase = isStarting ? "Starting EPG generation..." : getPhaseLabel(status)
@@ -223,6 +201,41 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
       reconnectToGeneration()
     }
   }, [isGenerating, updateToast, handleComplete, reconnectToGeneration])
+
+  // Check for in-progress generation on mount and periodically
+  // This detects scheduled runs that start while the UI is open
+  useEffect(() => {
+    const checkStatus = () => {
+      fetch("/api/v1/epg/generate/status")
+        .then((res) => res.json())
+        .then((data: GenerationStatus) => {
+          if (data.in_progress && !isGenerating) {
+            // Generation started (likely scheduled run), connect to it
+            setIsGenerating(true)
+            reconnectToGeneration()
+          }
+        })
+        .catch(console.error)
+    }
+
+    // Check immediately on mount
+    checkStatus()
+
+    // Poll every 5 seconds to detect scheduled runs
+    backgroundPollRef.current = window.setInterval(checkStatus, 5000)
+
+    return () => {
+      if (backgroundPollRef.current) {
+        clearInterval(backgroundPollRef.current)
+      }
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close()
+      }
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
+      }
+    }
+  }, [isGenerating, reconnectToGeneration])
 
   return (
     <GenerationContext.Provider value={{ startGeneration, isGenerating }}>

@@ -620,7 +620,7 @@ class ChannelLifecycleService:
                     return None
 
         if effective_mode == "ignore":
-            # Skip - don't add stream
+            # Skip - don't add stream, but still sync settings
             result.existing.append(
                 {
                     "stream": stream_name,
@@ -629,6 +629,16 @@ class ChannelLifecycleService:
                     "action": "ignored",
                 }
             )
+            # Still sync channel settings even for ignored duplicates
+            settings_result = self._sync_channel_settings(
+                conn=conn,
+                existing=existing,
+                stream=stream,
+                event=event,
+                group_config=group_config,
+                template=template,
+            )
+            result.merge(settings_result)
             return result
 
         if effective_mode == "consolidate":
@@ -1049,26 +1059,38 @@ class ChannelLifecycleService:
                 db_updates["channel_name"] = expected_name
                 changes_made.append(f"name: {current_channel.name} → {expected_name}")
 
-            # 2. Check channel number (range validation/reassign) - V1 parity
+            # 2. Check channel number - enforce on every generation
+            # Assign if missing, reassign if out of range
             current_number = (
                 int(current_channel.channel_number) if current_channel.channel_number else None
             )
-            if current_number and group_id:
-                if not validate_channel_in_range(conn, group_id, current_number):
+            if group_id:
+                needs_number = False
+                reason = ""
+
+                if not current_number:
+                    # No number assigned - assign one
+                    needs_number = True
+                    reason = "no number assigned"
+                elif not validate_channel_in_range(conn, group_id, current_number):
                     # Channel is out of range - reassign
+                    needs_number = True
+                    reason = "out of range"
+
+                if needs_number:
                     new_number = get_next_channel_number(conn, group_id, auto_assign=False)
                     if new_number:
                         update_data["channel_number"] = new_number
                         db_updates["channel_number"] = new_number
                         changes_made.append(
-                            f"number: {current_number} → {new_number} (range reassign)"
+                            f"number: {current_number} → {new_number} ({reason})"
                         )
 
-                        # Log range reassignment
+                        # Log assignment
                         range_start, range_end = get_group_channel_range(conn, group_id)
                         logger.info(
-                            f"Channel '{existing.channel_name}' reassigned: "
-                            f"{current_number} → {new_number} (range {range_start}-{range_end})"
+                            f"Channel '{existing.channel_name}' number assigned: "
+                            f"{current_number} → {new_number} (range {range_start}-{range_end}, {reason})"
                         )
 
             # 3. Check channel_group_id

@@ -23,6 +23,7 @@ def _parse_json_fields(row: dict) -> dict:
     result = dict(row)
     json_fields = [
         "xmltv_flags",
+        "xmltv_video",
         "xmltv_categories",
         "pregame_periods",
         "pregame_fallback",
@@ -157,6 +158,7 @@ def _serialize_for_db(key: str, value):
     """Serialize value for database storage."""
     json_fields = {
         "xmltv_flags",
+        "xmltv_video",
         "xmltv_categories",
         "pregame_periods",
         "pregame_fallback",

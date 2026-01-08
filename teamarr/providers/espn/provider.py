@@ -53,33 +53,44 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
         return False
 
     def _get_sport_league_from_db(self, league: str) -> tuple[str, str] | None:
-        """Get sport/league pair from database config.
+        """Get sport/league pair from database config for API URL construction.
 
         Returns (sport, espn_league) tuple from provider_league_id (e.g., "basketball/nba").
+        Sport is lowercase for ESPN API paths.
         Returns None if not found in database.
         """
         if not self._league_mapping_source:
             return None
         mapping = self._league_mapping_source.get_mapping(league, "espn")
         if mapping and mapping.provider_league_id:
-            # provider_league_id is "sport/league" format
+            # provider_league_id is "sport/league" format (lowercase for API)
             parts = mapping.provider_league_id.split("/", 1)
             if len(parts) == 2:
                 return (parts[0], parts[1])
         return None
 
-    def _get_sport(self, league: str) -> str:
-        """Get sport name for a league.
+    def _get_display_sport(self, league: str) -> str:
+        """Get display sport name (title case) for a league.
 
-        Uses database config as source of truth, falls back to client mapping.
+        Uses mapping.sport from database for consistent title case display.
+        Falls back to title-casing the API sport if no mapping found.
         """
-        # Try database first
+        if self._league_mapping_source:
+            mapping = self._league_mapping_source.get_mapping(league, "espn")
+            if mapping and mapping.sport:
+                return mapping.sport
+        # Fallback: title case the API sport
         db_result = self._get_sport_league_from_db(league)
         if db_result:
-            return db_result[0]
-        # Fallback to client mapping
-        sport, _ = self._client.get_sport_league(league)
-        return sport
+            return db_result[0].title()
+        return "Unknown"
+
+    def _get_sport(self, league: str) -> str:
+        """Get display sport name for a league (title case).
+
+        Uses _get_display_sport for consistent title case display.
+        """
+        return self._get_display_sport(league)
 
     def get_events(self, league: str, target_date: date) -> list[Event]:
         # UFC uses different API and parsing
@@ -90,7 +101,7 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
         sport_league = self._get_sport_league_from_db(league)
 
         # Check if this is a tournament sport
-        sport = sport_league[0] if sport_league else self._get_sport(league)
+        sport = self._get_display_sport(league)
         if sport in TOURNAMENT_SPORTS:
             return self._get_tournament_events(league, target_date, sport)
 
@@ -254,7 +265,7 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
             return None
 
         logo_url = self._extract_logo(team_data)
-        sport = sport_league[0] if sport_league else self._get_sport(league)
+        sport = self._get_display_sport(league)
 
         return Team(
             id=team_data.get("id", team_id),
@@ -582,7 +593,7 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
         if not data:
             return []
 
-        sport = sport_league[0] if sport_league else self._get_sport(league)
+        sport = self._get_display_sport(league)
         teams = []
 
         # ESPN teams endpoint returns {"sports": [{"leagues": [{"teams": [...]}]}]}

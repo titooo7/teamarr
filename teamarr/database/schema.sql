@@ -571,6 +571,21 @@ INSERT OR REPLACE INTO leagues (league_code, provider, provider_league_id, provi
     ('fra.1', 'espn', 'soccer/fra.1', NULL, 'Ligue 1', 'Soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/9.png', NULL, 1, NULL, 'ligue1', 'team_vs_team', 'Ligue 1 Soccer', NULL, NULL),
     ('uefa.champions', 'espn', 'soccer/uefa.champions', NULL, 'UEFA Champions League', 'Soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/2.png', NULL, 1, 'UCL', 'ucl', 'team_vs_team', 'UEFA Champions League Soccer', NULL, NULL),
     ('ksa.1', 'espn', 'soccer/ksa.1', NULL, 'Saudi Pro League', 'Soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/2488.png', NULL, 1, 'SPL', 'spl', 'team_vs_team', 'Saudi Pro League Soccer', NULL, NULL),
+    -- Additional European Leagues
+    ('ned.1', 'espn', 'soccer/ned.1', NULL, 'Eredivisie', 'Soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/35.png', NULL, 1, NULL, 'eredivisie', 'team_vs_team', 'Eredivisie Soccer', NULL, NULL),
+    ('por.1', 'espn', 'soccer/por.1', NULL, 'Primeira Liga', 'Soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/14.png', NULL, 1, NULL, 'primeira', 'team_vs_team', 'Primeira Liga Soccer', NULL, NULL),
+    ('bel.1', 'espn', 'soccer/bel.1', NULL, 'Belgian Pro League', 'Soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/144.png', NULL, 1, NULL, 'jupiler', 'team_vs_team', 'Belgian Pro League Soccer', NULL, NULL),
+    ('sco.1', 'espn', 'soccer/sco.1', NULL, 'Scottish Premiership', 'Soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/29.png', NULL, 1, 'SPFL', 'spfl', 'team_vs_team', 'Scottish Premiership Soccer', NULL, NULL),
+    ('uefa.europa', 'espn', 'soccer/uefa.europa', NULL, 'UEFA Europa League', 'Soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/2310.png', NULL, 1, 'UEL', 'uel', 'team_vs_team', 'UEFA Europa League Soccer', NULL, NULL),
+    ('uefa.europa.conf', 'espn', 'soccer/uefa.europa.conf', NULL, 'UEFA Europa Conference League', 'Soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/2954.png', NULL, 1, 'UECL', 'uecl', 'team_vs_team', 'UEFA Europa Conference League Soccer', NULL, NULL),
+    -- Americas Leagues
+    ('mex.1', 'espn', 'soccer/mex.1', NULL, 'Liga MX', 'Soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/22.png', NULL, 1, NULL, 'ligamx', 'team_vs_team', 'Liga MX Soccer', NULL, NULL),
+    ('arg.1', 'espn', 'soccer/arg.1', NULL, 'Argentine Liga Profesional', 'Soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/1.png', NULL, 1, 'LPA', 'lpa', 'team_vs_team', 'Argentine Liga Profesional Soccer', NULL, NULL),
+    ('bra.1', 'espn', 'soccer/bra.1', NULL, 'Brazilian Serie A', 'Soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/85.png', NULL, 1, 'Brasileirao', 'brasileirao', 'team_vs_team', 'Brazilian Serie A Soccer', NULL, NULL),
+    ('col.1', 'espn', 'soccer/col.1', NULL, 'Colombian Primera A', 'Soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/1543.png', NULL, 1, NULL, 'dimayor', 'team_vs_team', 'Colombian Primera A Soccer', NULL, NULL),
+    -- Asia/Pacific Leagues
+    ('jpn.1', 'espn', 'soccer/jpn.1', NULL, 'J1 League', 'Soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/1842.png', NULL, 1, 'J-League', 'jleague', 'team_vs_team', 'J1 League Soccer', NULL, NULL),
+    ('aus.1', 'espn', 'soccer/aus.1', NULL, 'A-League Men', 'Soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/114.png', NULL, 1, 'A-League', 'aleague', 'team_vs_team', 'A-League Men Soccer', NULL, NULL),
 
     -- MMA (ESPN) - Combat sport with event cards
     ('ufc', 'espn', 'mma/ufc', NULL, 'UFC', 'MMA', 'https://a.espncdn.com/i/teamlogos/leagues/500/ufc.png', NULL, 0, NULL, 'ufc', 'event_card', NULL, NULL, NULL),

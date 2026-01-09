@@ -3,10 +3,13 @@
 Simple SQLite connection handling with schema initialization.
 """
 
+import logging
 import sqlite3
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Default database path
 DEFAULT_DB_PATH = Path(__file__).parent.parent.parent / "data" / "teamarr.db"
@@ -76,9 +79,6 @@ def init_db(db_path: Path | str | None = None) -> None:
     Raises:
         RuntimeError: If database file exists but is not a valid V2 database
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
     path = Path(db_path) if db_path else DEFAULT_DB_PATH
     schema_sql = SCHEMA_PATH.read_text()
 
@@ -153,10 +153,6 @@ def _verify_database_integrity(conn: sqlite3.Connection, path: Path) -> None:
         RuntimeError: If database is a V1 database
         sqlite3.DatabaseError: If database file is corrupt
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     # Force an actual read from the file to detect corruption early
     # PRAGMA integrity_check would be thorough but slow; just query sqlite_master
     try:
@@ -200,10 +196,6 @@ def _rename_league_id_column_if_needed(conn: sqlite3.Connection) -> None:
     This MUST run before schema.sql because schema.sql INSERT OR REPLACE
     statements reference the new column name.
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     # Check if leagues table exists
     cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='leagues'")
     if not cursor.fetchone():
@@ -224,10 +216,6 @@ def _add_league_alias_column_if_needed(conn: sqlite3.Connection) -> None:
     This MUST run before schema.sql because schema.sql INSERT OR REPLACE
     statements reference the league_alias column.
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     # Check if leagues table exists
     cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='leagues'")
     if not cursor.fetchone():
@@ -248,10 +236,6 @@ def _add_gracenote_category_column_if_needed(conn: sqlite3.Connection) -> None:
     This MUST run before schema.sql because schema.sql INSERT OR REPLACE
     statements reference the gracenote_category column.
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     # Check if leagues table exists
     cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='leagues'")
     if not cursor.fetchone():
@@ -272,10 +256,6 @@ def _add_logo_url_dark_column_if_needed(conn: sqlite3.Connection) -> None:
     This MUST run before schema.sql because schema.sql INSERT OR REPLACE
     statements reference the logo_url_dark column.
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     # Check if leagues table exists
     cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='leagues'")
     if not cursor.fetchone():
@@ -296,10 +276,6 @@ def _add_series_slug_pattern_column_if_needed(conn: sqlite3.Connection) -> None:
     This is needed for Cricbuzz auto-discovery of current season series IDs.
     MUST run before schema.sql because UPDATE statements reference this column.
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     # Check if leagues table exists
     cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='leagues'")
     if not cursor.fetchone():
@@ -321,10 +297,6 @@ def _add_fallback_columns_if_needed(conn: sqlite3.Connection) -> None:
     may have limited availability (e.g., TSDB premium vs free tier for cricket).
     MUST run before schema.sql because INSERT OR REPLACE references these columns.
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     # Check if leagues table exists
     cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='leagues'")
     if not cursor.fetchone():
@@ -349,9 +321,6 @@ def _seed_tsdb_cache_if_needed(conn: sqlite3.Connection) -> None:
 
     result = seed_if_needed(conn)
     if result and result.get("seeded"):
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.info(
             f"Seeded TSDB cache: {result.get('teams_added', 0)} teams, "
             f"{result.get('leagues_added', 0)} leagues"
@@ -380,10 +349,6 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     - 14: Added streams_excluded to event_epg_groups
     - 15: Renamed filtered_no_match -> failed_count (clearer stat categories)
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     # Get current schema version
     try:
         row = conn.execute("SELECT schema_version FROM settings WHERE id = 1").fetchone()
@@ -707,10 +672,6 @@ def _rename_filtered_no_match_to_failed_count(conn: sqlite3.Connection) -> None:
     - FAILED: Match attempted but couldn't find event (this column)
     - EXCLUDED: Matched but excluded (timing/config)
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     # Check if the old column exists
     cursor = conn.execute("PRAGMA table_info(event_epg_groups)")
     columns = {row["name"] for row in cursor.fetchall()}
@@ -747,10 +708,6 @@ def _remove_tvg_id_unique_constraint(conn: sqlite3.Connection) -> None:
     This allows soft-deleted records to coexist with new active records
     having the same tvg_id (V1 parity).
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     # Check if unique constraint exists on tvg_id
     cursor = conn.execute("""
         SELECT sql FROM sqlite_master
@@ -887,9 +844,6 @@ def _migrate_teams_to_leagues_array(conn: sqlite3.Connection) -> bool:
         True if migration was performed, False if already migrated
     """
     import json
-    import logging
-
-    logger = logging.getLogger(__name__)
 
     # Check if table has old 'league' column
     cursor = conn.execute("PRAGMA table_info(teams)")
@@ -1026,10 +980,6 @@ def _recreate_managed_channels_without_unique_constraint(
     The partial unique index (idx_mc_unique_event) handles uniqueness for
     active (non-deleted) rows only.
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     # Check if table exists
     cursor = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='managed_channels'"
@@ -1132,10 +1082,6 @@ def _update_channel_timing_constraints(conn: sqlite3.Connection) -> None:
     that for existing databases to avoid data loss. The constraint is relaxed
     by schema.sql for fresh databases.
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     # Fix any existing 'manual' values to safe defaults
     # This is the critical migration - convert unsupported values
     conn.execute("""
@@ -1220,10 +1166,6 @@ def _remove_group_timing_columns(conn: sqlite3.Connection) -> None:
     These columns are no longer used - all groups now use global settings
     from the Settings table.
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     # Check if columns exist
     cursor = conn.execute("PRAGMA table_info(event_epg_groups)")
     columns = {row[1] for row in cursor.fetchall()}
@@ -1252,10 +1194,6 @@ def _remove_group_timing_columns_via_recreation(
     conn: sqlite3.Connection, columns_to_remove: set[str]
 ) -> None:
     """Fallback for SQLite < 3.35.0: recreate table without timing columns."""
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     # Get current columns
     cursor = conn.execute("PRAGMA table_info(event_epg_groups)")
     all_columns = [row[1] for row in cursor.fetchall()]

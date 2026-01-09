@@ -69,8 +69,8 @@ def _cleanup_orphaned_xmltv(conn) -> None:
         if cursor.rowcount > 0:
             logger.info(f"Cleaned up {cursor.rowcount} orphaned group XMLTV entries")
     except Exception as e:
-        # Tables may not exist on fresh database - ignore
-        logger.debug(f"XMLTV cleanup skipped: {e}")
+        # Log actual error for diagnosis, but don't crash startup
+        logger.warning(f"XMLTV cleanup failed: {e}")
 
 
 def _run_startup_tasks():

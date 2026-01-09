@@ -1152,8 +1152,8 @@ class EventGroupProcessor:
                 stats_run.xmltv_size_bytes = result.xmltv_size
 
                 # Step 6: Store XMLTV for this group (in database)
-                if xmltv_content:
-                    self._store_group_xmltv(conn, group.id, xmltv_content)
+                # Always store, even if empty - this clears stale XMLTV when no events match
+                self._store_group_xmltv(conn, group.id, xmltv_content or "")
 
                 # Step 7: Trigger Dispatcharr refresh if configured
                 if xmltv_content and self._dispatcharr_client:

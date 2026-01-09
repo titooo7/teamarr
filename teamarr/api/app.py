@@ -37,36 +37,40 @@ def _cleanup_orphaned_xmltv(conn) -> None:
 
     Called on startup to ensure no stale XMLTV data persists.
     """
-    # Delete XMLTV for disabled teams
-    cursor = conn.execute("""
-        DELETE FROM team_epg_xmltv
-        WHERE team_id IN (SELECT id FROM teams WHERE enabled = 0)
-    """)
-    if cursor.rowcount > 0:
-        logger.info(f"Cleaned up XMLTV for {cursor.rowcount} disabled teams")
+    try:
+        # Delete XMLTV for disabled teams
+        cursor = conn.execute("""
+            DELETE FROM team_epg_xmltv
+            WHERE team_id IN (SELECT id FROM teams WHERE enabled = 0)
+        """)
+        if cursor.rowcount > 0:
+            logger.info(f"Cleaned up XMLTV for {cursor.rowcount} disabled teams")
 
-    # Delete XMLTV for disabled groups
-    cursor = conn.execute("""
-        DELETE FROM event_epg_xmltv
-        WHERE group_id IN (SELECT id FROM event_epg_groups WHERE enabled = 0)
-    """)
-    if cursor.rowcount > 0:
-        logger.info(f"Cleaned up XMLTV for {cursor.rowcount} disabled groups")
+        # Delete XMLTV for disabled groups
+        cursor = conn.execute("""
+            DELETE FROM event_epg_xmltv
+            WHERE group_id IN (SELECT id FROM event_epg_groups WHERE enabled = 0)
+        """)
+        if cursor.rowcount > 0:
+            logger.info(f"Cleaned up XMLTV for {cursor.rowcount} disabled groups")
 
-    # Delete orphaned XMLTV (team/group no longer exists)
-    cursor = conn.execute("""
-        DELETE FROM team_epg_xmltv
-        WHERE team_id NOT IN (SELECT id FROM teams)
-    """)
-    if cursor.rowcount > 0:
-        logger.info(f"Cleaned up {cursor.rowcount} orphaned team XMLTV entries")
+        # Delete orphaned XMLTV (team/group no longer exists)
+        cursor = conn.execute("""
+            DELETE FROM team_epg_xmltv
+            WHERE team_id NOT IN (SELECT id FROM teams)
+        """)
+        if cursor.rowcount > 0:
+            logger.info(f"Cleaned up {cursor.rowcount} orphaned team XMLTV entries")
 
-    cursor = conn.execute("""
-        DELETE FROM event_epg_xmltv
-        WHERE group_id NOT IN (SELECT id FROM event_epg_groups)
-    """)
-    if cursor.rowcount > 0:
-        logger.info(f"Cleaned up {cursor.rowcount} orphaned group XMLTV entries")
+        cursor = conn.execute("""
+            DELETE FROM event_epg_xmltv
+            WHERE group_id NOT IN (SELECT id FROM event_epg_groups)
+        """)
+        if cursor.rowcount > 0:
+            logger.info(f"Cleaned up {cursor.rowcount} orphaned group XMLTV entries")
+    except Exception as e:
+        # Tables may not exist on fresh database - ignore
+        logger.debug(f"XMLTV cleanup skipped: {e}")
 
 
 def _run_startup_tasks():

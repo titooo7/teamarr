@@ -1269,10 +1269,17 @@ export function Settings() {
             )}
             {cacheStatus?.refresh_in_progress ? "Refreshing..." : "Refresh Cache"}
           </Button>
+        </CardContent>
+      </Card>
 
-          {/* TSDB API Key */}
-          <div className="space-y-2 pt-4 border-t">
-            <Label htmlFor="tsdb-api-key">TheSportsDB API Key (Optional)</Label>
+      <Card>
+        <CardHeader>
+          <CardTitle>TheSportsDB API Key</CardTitle>
+          <CardDescription>Optional premium API key for higher rate limits</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="tsdb-api-key">API Key</Label>
             <Input
               id="tsdb-api-key"
               type="password"
@@ -1292,7 +1299,7 @@ export function Settings() {
             ) : (
               <Save className="h-4 w-4 mr-1" />
             )}
-            Save API Key
+            Save
           </Button>
         </CardContent>
       </Card>

@@ -4,9 +4,12 @@ Team aliases map user-defined stream names to provider team IDs
 for edge cases where automatic matching fails.
 """
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from sqlite3 import Connection, Row
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -253,7 +256,8 @@ def bulk_create_aliases(
                 provider=a.get("provider", "espn"),
             )
             created += 1
-        except Exception:
+        except Exception as e:
+            logger.debug("Skipped alias '%s': %s", a.get("alias"), e)
             skipped += 1
 
     return created, skipped

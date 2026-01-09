@@ -375,7 +375,8 @@ class CricbuzzClient:
 
             return None
 
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to parse match info for %s: %s", match_id, e)
             return None
 
     def get_live_matches(self) -> list[dict]:

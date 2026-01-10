@@ -217,11 +217,13 @@ class ChannelManager:
         channel_group_id: int | None = None,
         logo_id: int | None = None,
         stream_profile_id: int | None = None,
+        channel_profile_ids: list[int] | None = None,
     ) -> OperationResult:
         """Create a new channel in Dispatcharr.
 
-        Note: Channel profiles must be assigned separately via add_to_profile().
-        The regular /api/channels/channels/ endpoint does not support profile_ids.
+        Note: channel_profile_ids works for non-empty lists. Empty list []
+        is treated as "add to all" by Dispatcharr, so caller must handle
+        the "no profiles" case separately via remove_from_profile().
 
         Args:
             name: Channel name (e.g., "Giants @ Cowboys")
@@ -231,6 +233,9 @@ class ChannelManager:
             channel_group_id: Optional group to assign channel to
             logo_id: Optional logo ID
             stream_profile_id: Optional stream profile ID
+            channel_profile_ids: List of profile IDs to add channel to.
+                If None, defaults to all profiles. If empty [], also defaults
+                to all (Dispatcharr behavior) - caller must remove if needed.
 
         Returns:
             OperationResult with success status and created channel data
@@ -249,6 +254,8 @@ class ChannelManager:
             payload["logo_id"] = logo_id
         if stream_profile_id:
             payload["stream_profile_id"] = stream_profile_id
+        if channel_profile_ids is not None:
+            payload["channel_profile_ids"] = channel_profile_ids
 
         logger.debug(f"Creating channel with payload: {payload}")
         response = self._client.post("/api/channels/channels/", payload)

@@ -242,10 +242,43 @@ def _clean_team_name(name: str) -> str:
     # Remove HD, SD, etc.
     name = re.sub(r"\s+\b(HD|SD|FHD|4K|UHD)\b\s*$", "", name, flags=re.IGNORECASE)
 
+    # Strip leading channel numbers like "02 :", "15 :", "142 :" (from ESPN+ XX :)
+    name = re.sub(r"^\d+\s*:\s*", "", name)
+
     # Strip numbered channel prefixes like "NFL Game Pass 03:", "ESPN+ 45:", "Sportsnet+ 04:"
     # Pattern: Words (may include +) followed by optional number, then colon
     # This handles "Name Number:" and "Name+ Number:" patterns at the start
     name = re.sub(r"^[A-Za-z][A-Za-z\s+]*\d*:\s*", "", name)
+
+    # Strip round/competition indicators at end of team names
+    # Common patterns in cup competitions, playoffs, etc.
+    # - (Round 3), (Rd 3), (R3), (Rnd 3), (3rd Round), (Third Round)
+    # - (Group A), (Grp A), (Group Stage)
+    # - (Matchday 5), (MD 5), (MD5), (Week 10)
+    # - (Leg 1), (1st Leg), (2nd Leg), (Leg One)
+    # - (Final), (Semi-Final), (Quarter-Final), (QF), (SF), (Semi)
+    # - (Playoffs), (Playoff), (Play-off)
+    # - (Qualifying), (Qual), (Q1), (Q2)
+    round_pattern = r"""
+        \s*\(
+        (?:
+            (?:Round|Rd|Rnd|R)\s*\d+\w*  |  # Round 3, Rd 3, R3
+            \d+(?:st|nd|rd|th)?\s*(?:Round|Rd|Leg)  |  # 3rd Round, 1st Leg
+            (?:First|Second|Third|Fourth|Fifth)\s*(?:Round|Leg)  |  # Third Round
+            (?:Group|Grp|Gr)\s*\w*  |  # Group A, Group Stage
+            (?:Matchday|MD|Week|Wk)\s*\d*  |  # Matchday 5, MD5, Week 10
+            (?:Leg|Game)\s*(?:One|Two|\d+)  |  # Leg 1, Leg One
+            (?:Quarter|Semi|Half)?-?(?:Final|Finals)  |  # Final, Semi-Final
+            (?:QF|SF|F)  |  # QF, SF, F
+            (?:Play-?off|Play-?offs)  |  # Playoff, Play-off
+            (?:Qualifying|Qual|Q)\d*  |  # Qualifying, Q1
+            (?:Prelim|Preliminary)  |  # Preliminary
+            (?:1H|2H|OT|ET)  |  # 1st half, overtime, extra time markers
+            (?:Live|LIVE|Replay|Encore)  # Broadcast markers
+        )
+        \s*\)
+    """
+    name = re.sub(round_pattern, "", name, flags=re.IGNORECASE | re.VERBOSE)
 
     # Handle "|" separator - often used for show description before team names
     # "Manningcast | MNF with Peyton & Eli: Seahawks" → take part after last "|"

@@ -1089,12 +1089,12 @@ class EventGroupProcessor:
             )
             result.filtered_team = filtered_team_count
 
-            # Extract all stream IDs for cleanup (V1 parity: cleanup missing streams)
-            all_stream_ids = [s.get("id") for s in streams if s.get("id")]
+            # Build stream dict for cleanup (fingerprint-based content change detection)
+            current_streams = {s.get("id"): s for s in streams if s.get("id")}
 
             if matched_streams:
                 lifecycle_result = self._process_channels(
-                    matched_streams, group, conn, all_stream_ids=all_stream_ids
+                    matched_streams, group, conn, current_streams=current_streams
                 )
                 result.channels_created = len(lifecycle_result.created)
                 result.channels_existing = len(lifecycle_result.existing)
@@ -1797,16 +1797,22 @@ class EventGroupProcessor:
         matched_streams: list[dict],
         group: EventEPGGroup,
         conn: Connection,
-        all_stream_ids: list[int] | None = None,
+        current_streams: dict[int, dict] | None = None,
     ) -> StreamProcessResult:
         """Create/update channels via ChannelLifecycleService.
 
         V1 Parity: Full lifecycle management with every generation:
         1. Process scheduled deletions (expired channels)
-        2. Cleanup deleted streams (missing from M3U)
+        2. Cleanup deleted/changed streams (missing from M3U or content changed)
         3. Create/update channels
         4. Sync existing channel settings
         5. Reassign channel numbers if needed
+
+        Args:
+            matched_streams: List of matched stream dicts with event data
+            group: Event EPG group
+            conn: Database connection
+            current_streams: Dict mapping stream_id -> stream_data for cleanup
         """
         from teamarr.consumers.lifecycle import StreamProcessResult
 
@@ -1860,14 +1866,14 @@ class EventGroupProcessor:
         except Exception as e:
             logger.debug(f"Error processing scheduled deletions: {e}")
 
-        # V1 Parity Step 2: Cleanup deleted/missing streams
-        if all_stream_ids is not None:
+        # V1 Parity Step 2: Cleanup deleted/missing/changed streams
+        if current_streams is not None:
             try:
-                cleanup_result = lifecycle_service.cleanup_deleted_streams(group.id, all_stream_ids)
+                cleanup_result = lifecycle_service.cleanup_deleted_streams(group.id, current_streams)
                 combined_result.merge(cleanup_result)
                 if cleanup_result.deleted:
                     logger.info(
-                        f"Deleted {len(cleanup_result.deleted)} channels with missing streams"
+                        f"Deleted {len(cleanup_result.deleted)} channels with missing/changed streams"
                     )
             except Exception as e:
                 logger.debug(f"Error cleaning up deleted streams: {e}")

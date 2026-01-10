@@ -1582,20 +1582,24 @@ class ChannelLifecycleService:
     def cleanup_deleted_streams(
         self,
         group_id: int,
-        current_stream_ids: list[int],
+        current_streams: dict[int, dict],
     ) -> StreamProcessResult:
-        """Clean up channels for streams that no longer exist in Dispatcharr.
+        """Clean up channels for streams that no longer exist or have changed content.
 
         V1 Parity: Runs regardless of delete_timing because missing streams
         should trigger immediate deletion.
 
+        Also detects content changes via fingerprint comparison - if a stream's
+        name changed (indicating different content), it's removed from the channel.
+
         Args:
             group_id: Event EPG group ID
-            current_stream_ids: List of current stream IDs from Dispatcharr M3U
+            current_streams: Dict mapping stream_id -> stream_data with 'name' field
 
         Returns:
             StreamProcessResult with deleted channels and errors
         """
+        from teamarr.consumers.stream_match_cache import compute_fingerprint
         from teamarr.database.channels import (
             get_channel_streams,
             get_managed_channels_for_group,
@@ -1604,7 +1608,7 @@ class ChannelLifecycleService:
         )
 
         result = StreamProcessResult()
-        current_ids_set = set(current_stream_ids)
+        current_ids_set = set(current_streams.keys())
 
         try:
             with self._db_factory() as conn:
@@ -1635,22 +1639,50 @@ class ChannelLifecycleService:
                                 )
                         continue
 
-                    # Separate into valid and missing streams
+                    # Categorize streams: valid, missing, or content-changed
                     valid_streams = []
                     missing_streams = []
+                    changed_streams = []
+
                     for s in streams:
                         stream_id = getattr(s, "dispatcharr_stream_id", None)
-                        if stream_id and stream_id in current_ids_set:
-                            valid_streams.append(s)
-                        else:
-                            missing_streams.append(s)
+                        stored_name = getattr(s, "stream_name", None)
 
-                    if not valid_streams:
-                        # All streams gone - delete channel
+                        if not stream_id:
+                            continue
+
+                        if stream_id not in current_ids_set:
+                            # Stream no longer in M3U
+                            missing_streams.append(s)
+                        else:
+                            # Stream exists - check if content changed via fingerprint
+                            current_stream = current_streams.get(stream_id, {})
+                            current_name = current_stream.get("name", "")
+
+                            if stored_name and current_name and stored_name != current_name:
+                                # Content changed - fingerprint would differ
+                                stored_fp = compute_fingerprint(group_id, stream_id, stored_name)
+                                current_fp = compute_fingerprint(group_id, stream_id, current_name)
+
+                                if stored_fp != current_fp:
+                                    changed_streams.append({
+                                        "stream": s,
+                                        "old_name": stored_name,
+                                        "new_name": current_name,
+                                    })
+                                    continue
+
+                            valid_streams.append(s)
+
+                    # Combine missing and changed streams for removal
+                    streams_to_remove = missing_streams + [c["stream"] for c in changed_streams]
+
+                    if not valid_streams and streams_to_remove:
+                        # All streams gone or changed - delete channel
                         success = self.delete_managed_channel(
                             conn,
                             channel.id,
-                            reason="all streams removed",
+                            reason="all streams removed or changed",
                         )
                         if success:
                             result.deleted.append(
@@ -1658,7 +1690,7 @@ class ChannelLifecycleService:
                                     "channel_id": channel.dispatcharr_channel_id,
                                     "channel_number": channel.channel_number,
                                     "channel_name": channel.channel_name,
-                                    "reason": "all streams no longer exist",
+                                    "reason": "all streams no longer exist or content changed",
                                 }
                             )
                         else:
@@ -1669,34 +1701,52 @@ class ChannelLifecycleService:
                                 }
                             )
 
-                    elif missing_streams:
-                        # Some streams gone - remove them from channel
-                        for missing in missing_streams:
-                            stream_id = getattr(missing, "dispatcharr_stream_id", None)
+                    elif streams_to_remove:
+                        # Some streams gone/changed - remove them from channel
+                        for s in missing_streams:
+                            stream_id = getattr(s, "dispatcharr_stream_id", None)
                             if stream_id:
-                                # Remove from DB
                                 remove_stream_from_channel(conn, channel.id, stream_id)
-
-                                # Remove from Dispatcharr
                                 self._remove_stream_from_dispatcharr_channel(
                                     channel.dispatcharr_channel_id,
                                     stream_id,
                                 )
-
-                                # Log history
                                 log_channel_history(
                                     conn=conn,
                                     managed_channel_id=channel.id,
                                     change_type="stream_removed",
                                     change_source="lifecycle",
-                                    notes=f"Stream {stream_id} no longer exists",
+                                    notes=f"Stream {stream_id} no longer exists in M3U",
+                                )
+
+                        for changed in changed_streams:
+                            s = changed["stream"]
+                            stream_id = getattr(s, "dispatcharr_stream_id", None)
+                            if stream_id:
+                                remove_stream_from_channel(conn, channel.id, stream_id)
+                                self._remove_stream_from_dispatcharr_channel(
+                                    channel.dispatcharr_channel_id,
+                                    stream_id,
+                                )
+                                log_channel_history(
+                                    conn=conn,
+                                    managed_channel_id=channel.id,
+                                    change_type="stream_removed",
+                                    change_source="lifecycle",
+                                    notes=f"Stream {stream_id} content changed: '{changed['old_name']}' -> '{changed['new_name']}'",
+                                )
+                                logger.debug(
+                                    f"Removed stream {stream_id} from channel "
+                                    f"'{channel.channel_name}': content changed"
                                 )
 
                         result.streams_removed.append(
                             {
                                 "channel_id": channel.dispatcharr_channel_id,
                                 "channel_name": channel.channel_name,
-                                "streams_removed": len(missing_streams),
+                                "streams_removed": len(streams_to_remove),
+                                "missing": len(missing_streams),
+                                "content_changed": len(changed_streams),
                             }
                         )
 
@@ -1705,7 +1755,7 @@ class ChannelLifecycleService:
             result.errors.append({"error": str(e)})
 
         if result.deleted:
-            logger.info(f"Deleted {len(result.deleted)} channels with missing streams")
+            logger.info(f"Deleted {len(result.deleted)} channels with missing/changed streams")
 
         return result
 

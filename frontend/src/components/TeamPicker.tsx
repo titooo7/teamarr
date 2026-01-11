@@ -12,6 +12,7 @@ interface TeamPickerProps {
   selectedTeams: TeamFilterEntry[]
   onSelectionChange: (teams: TeamFilterEntry[]) => void
   placeholder?: string
+  singleSelect?: boolean
 }
 
 interface LeagueTeams {
@@ -25,6 +26,7 @@ export function TeamPicker({
   selectedTeams,
   onSelectionChange,
   placeholder = "Search teams...",
+  singleSelect = false,
 }: TeamPickerProps) {
   const [search, setSearch] = useState("")
   const [expandedLeagues, setExpandedLeagues] = useState<Set<string>>(new Set())
@@ -96,23 +98,39 @@ export function TeamPicker({
 
   // Toggle team selection
   const toggleTeam = (team: CachedTeam) => {
-    const isSelected = isTeamSelected(team)
-    if (isSelected) {
-      onSelectionChange(
-        selectedTeams.filter(
-          (t) => !(t.provider === team.provider && t.team_id === team.provider_team_id && t.league === team.league)
-        )
-      )
-    } else {
-      onSelectionChange([
-        ...selectedTeams,
-        {
+    if (singleSelect) {
+      // Single select: replace selection with this team
+      const isSelected = isTeamSelected(team)
+      if (isSelected) {
+        onSelectionChange([])
+      } else {
+        onSelectionChange([{
           provider: team.provider,
           team_id: team.provider_team_id,
           league: team.league,
           name: team.team_name,
-        },
-      ])
+        }])
+      }
+    } else {
+      // Multi-select: toggle team in selection
+      const isSelected = isTeamSelected(team)
+      if (isSelected) {
+        onSelectionChange(
+          selectedTeams.filter(
+            (t) => !(t.provider === team.provider && t.team_id === team.provider_team_id && t.league === team.league)
+          )
+        )
+      } else {
+        onSelectionChange([
+          ...selectedTeams,
+          {
+            provider: team.provider,
+            team_id: team.provider_team_id,
+            league: team.league,
+            name: team.team_name,
+          },
+        ])
+      }
     }
   }
 
@@ -218,20 +236,22 @@ export function TeamPicker({
                   ({countSelectedInLeague(lg.league)} selected)
                 </span>
               </div>
-              <div className="flex gap-2 text-xs" onClick={(e) => e.stopPropagation()}>
-                <button
-                  onClick={() => selectAllInLeague(lg.teams)}
-                  className="text-primary hover:underline"
-                >
-                  Select All
-                </button>
-                <button
-                  onClick={() => clearLeague(lg.league)}
-                  className="text-muted-foreground hover:underline"
-                >
-                  Clear
-                </button>
-              </div>
+              {!singleSelect && (
+                <div className="flex gap-2 text-xs" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => selectAllInLeague(lg.teams)}
+                    className="text-primary hover:underline"
+                  >
+                    Select All
+                  </button>
+                  <button
+                    onClick={() => clearLeague(lg.league)}
+                    className="text-muted-foreground hover:underline"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
             </button>
 
             {/* Teams list */}

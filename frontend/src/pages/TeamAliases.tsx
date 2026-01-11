@@ -30,9 +30,10 @@ import {
   exportAliases,
   useImportAliases,
 } from "@/api/aliases"
-import { getLeagues, getLeagueTeams } from "@/api/teams"
-import type { TeamAliasCreate } from "@/api/types"
+import { getLeagues } from "@/api/teams"
+import type { TeamAliasCreate, TeamFilterEntry } from "@/api/types"
 import type { CachedLeague } from "@/api/teams"
+import { TeamPicker } from "@/components/TeamPicker"
 
 export function TeamAliases() {
   const [leagueFilter, setLeagueFilter] = useState<string>("")
@@ -42,8 +43,7 @@ export function TeamAliases() {
   // Form state for create dialog
   const [aliasText, setAliasText] = useState("")
   const [selectedLeague, setSelectedLeague] = useState("")
-  const [selectedTeamId, setSelectedTeamId] = useState("")
-  const [teamSearchQuery, setTeamSearchQuery] = useState("")
+  const [selectedTeams, setSelectedTeams] = useState<TeamFilterEntry[]>([])
 
   const { data, isLoading } = useAliases(leagueFilter || undefined)
   const createMutation = useCreateAlias()
@@ -55,14 +55,6 @@ export function TeamAliases() {
     queryKey: ["cache", "leagues"],
     queryFn: () => getLeagues(false),
     staleTime: 5 * 60 * 1000, // 5 minutes
-  })
-
-  // Fetch teams for selected league
-  const { data: teamsData, isLoading: teamsLoading } = useQuery({
-    queryKey: ["cache", "leagues", selectedLeague, "teams"],
-    queryFn: () => getLeagueTeams(selectedLeague),
-    enabled: !!selectedLeague,
-    staleTime: 5 * 60 * 1000,
   })
 
   // Sort leagues by sport then name
@@ -85,24 +77,8 @@ export function TeamAliases() {
     return grouped
   }, [sortedLeagues])
 
-  // Filter teams by search query
-  const filteredTeams = useMemo(() => {
-    if (!teamsData) return []
-    if (!teamSearchQuery) return teamsData
-    const query = teamSearchQuery.toLowerCase()
-    return teamsData.filter(
-      (t) =>
-        t.team_name.toLowerCase().includes(query) ||
-        t.team_abbrev?.toLowerCase().includes(query) ||
-        t.team_short_name?.toLowerCase().includes(query)
-    )
-  }, [teamsData, teamSearchQuery])
-
-  // Get selected team object
-  const selectedTeam = useMemo(() => {
-    if (!selectedTeamId || !teamsData) return null
-    return teamsData.find((t) => t.provider_team_id === selectedTeamId) || null
-  }, [selectedTeamId, teamsData])
+  // Get selected team from TeamPicker selection
+  const selectedTeam = selectedTeams[0] || null
 
   // Get unique leagues for filter dropdown (from existing aliases)
   const existingLeagues = [...new Set(data?.aliases.map((a) => a.league) || [])]
@@ -122,15 +98,13 @@ export function TeamAliases() {
     if (!isCreateOpen) {
       setAliasText("")
       setSelectedLeague("")
-      setSelectedTeamId("")
-      setTeamSearchQuery("")
+      setSelectedTeams([])
     }
   }, [isCreateOpen])
 
   // Clear team selection when league changes
   useEffect(() => {
-    setSelectedTeamId("")
-    setTeamSearchQuery("")
+    setSelectedTeams([])
   }, [selectedLeague])
 
   const handleCreate = async () => {
@@ -139,8 +113,8 @@ export function TeamAliases() {
     const newAlias: TeamAliasCreate = {
       alias: aliasText.toLowerCase().trim(),
       league: selectedLeague,
-      team_id: selectedTeam.provider_team_id,
-      team_name: selectedTeam.team_name,
+      team_id: selectedTeam.team_id,
+      team_name: selectedTeam.name,
       provider: selectedTeam.provider,
     }
 
@@ -262,74 +236,23 @@ export function TeamAliases() {
               )}
             </div>
 
-            {/* Team Dropdown */}
+            {/* Team Selection */}
             <div className="space-y-2">
-              <Label htmlFor="team">Team *</Label>
+              <Label>Team *</Label>
               {!selectedLeague ? (
                 <p className="text-sm text-muted-foreground py-2">
                   Select a league first
                 </p>
-              ) : teamsLoading ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading teams...
-                </div>
               ) : (
-                <>
-                  {/* Team search filter */}
-                  <div className="relative mb-2">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search teams..."
-                      className="pl-10"
-                      value={teamSearchQuery}
-                      onChange={(e) => setTeamSearchQuery(e.target.value)}
-                    />
-                  </div>
-                  <Select
-                    id="team"
-                    value={selectedTeamId}
-                    onChange={(e) => setSelectedTeamId(e.target.value)}
-                    className="max-h-60"
-                  >
-                    <option value="">Select a team...</option>
-                    {filteredTeams.map((team) => (
-                      <option key={team.provider_team_id} value={team.provider_team_id}>
-                        {team.team_name}
-                        {team.team_abbrev ? ` (${team.team_abbrev})` : ""}
-                      </option>
-                    ))}
-                  </Select>
-                  {filteredTeams.length === 0 && teamSearchQuery && (
-                    <p className="text-xs text-muted-foreground">
-                      No teams match "{teamSearchQuery}"
-                    </p>
-                  )}
-                </>
+                <TeamPicker
+                  leagues={[selectedLeague]}
+                  selectedTeams={selectedTeams}
+                  onSelectionChange={setSelectedTeams}
+                  placeholder="Search teams..."
+                  singleSelect
+                />
               )}
             </div>
-
-            {/* Selected team preview */}
-            {selectedTeam && (
-              <div className="bg-muted p-3 rounded-md space-y-1">
-                <p className="text-sm font-medium">Selected Team</p>
-                <div className="flex items-center gap-3">
-                  {selectedTeam.logo_url && (
-                    <img
-                      src={selectedTeam.logo_url}
-                      alt=""
-                      className="h-8 w-8 object-contain"
-                    />
-                  )}
-                  <div className="text-sm">
-                    <p className="font-medium">{selectedTeam.team_name}</p>
-                    <p className="text-muted-foreground">
-                      {selectedTeam.provider.toUpperCase()} ID: {selectedTeam.provider_team_id}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
@@ -340,7 +263,7 @@ export function TeamAliases() {
               disabled={
                 !aliasText.trim() ||
                 !selectedLeague ||
-                !selectedTeamId ||
+                !selectedTeam ||
                 createMutation.isPending
               }
             >

@@ -137,7 +137,25 @@ def run_full_generation(
             progress_callback(phase, percent, message, current, total, item_name)
 
     # Create stats run for tracking
+    # Use database-level check to prevent race conditions across processes
     with db_factory() as conn:
+        # Check if there's an in-progress full_epg run started in the last 5 minutes
+        recent_running = conn.execute("""
+            SELECT id FROM processing_runs
+            WHERE run_type = 'full_epg'
+              AND status = 'running'
+              AND started_at > datetime('now', '-5 minutes')
+            LIMIT 1
+        """).fetchone()
+        if recent_running:
+            _generation_running = False
+            _generation_lock.release()
+            logger.warning(f"EPG generation already in progress (run {recent_running['id']}), skipping")
+            result = GenerationResult()
+            result.success = False
+            result.error = "Generation already in progress"
+            return result
+
         stats_run = create_run(conn, run_type="full_epg")
         result.run_id = stats_run.id
 

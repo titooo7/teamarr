@@ -228,10 +228,33 @@ export function EventGroups() {
   })
   const [showAliasModal, setShowAliasModal] = useState(false)
   const [aliasForm, setAliasForm] = useState({ alias: "", league: "", team_id: "", team_name: "" })
+  const [aliasSport, setAliasSport] = useState("")
   const [aliasLeagueTeams, setAliasLeagueTeams] = useState<CachedTeam[]>([])
   const [aliasLoading, setAliasLoading] = useState(false)
   const [aliasSubmitting, setAliasSubmitting] = useState(false)
   const [aliasDeleting, setAliasDeleting] = useState<number | null>(null)
+
+  // Get unique sports from cached leagues for alias modal
+  const aliasSports = useMemo(() => {
+    if (!cachedLeagues) return []
+    const sportSet = new Set(cachedLeagues.map((l) => l.sport))
+    return [...sportSet].sort()
+  }, [cachedLeagues])
+
+  // Filter leagues by selected sport for alias modal
+  const aliasFilteredLeagues = useMemo(() => {
+    if (!aliasSport || !cachedLeagues) return []
+    return cachedLeagues
+      .filter((l) => l.sport === aliasSport)
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [cachedLeagues, aliasSport])
+
+  // Handle sport change in alias modal
+  const handleAliasSportChange = (sport: string) => {
+    setAliasSport(sport)
+    setAliasForm({ ...aliasForm, league: "", team_id: "", team_name: "" })
+    setAliasLeagueTeams([])
+  }
 
   // Load teams when alias league changes
   const handleAliasLeagueChange = async (league: string) => {
@@ -274,6 +297,7 @@ export function EventGroups() {
       toast.success(`Alias "${aliasForm.alias}" created`)
       setShowAliasModal(false)
       setAliasForm({ alias: "", league: "", team_id: "", team_name: "" })
+      setAliasSport("")
       setAliasLeagueTeams([])
       refetchAliases()
     } catch (err) {
@@ -1448,7 +1472,14 @@ export function EventGroups() {
       </div>
 
       {/* Add Alias Modal */}
-      <Dialog open={showAliasModal} onOpenChange={setShowAliasModal}>
+      <Dialog open={showAliasModal} onOpenChange={(open) => {
+        setShowAliasModal(open)
+        if (!open) {
+          setAliasForm({ alias: "", league: "", team_id: "", team_name: "" })
+          setAliasSport("")
+          setAliasLeagueTeams([])
+        }
+      }}>
         <DialogContent onClose={() => setShowAliasModal(false)}>
           <DialogHeader>
             <DialogTitle>Add Team Alias</DialogTitle>
@@ -1469,43 +1500,63 @@ export function EventGroups() {
               </p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">League</label>
+              <label className="text-sm font-medium">Sport</label>
               <Select
-                value={aliasForm.league}
-                onChange={(e) => handleAliasLeagueChange(e.target.value)}
+                value={aliasSport}
+                onChange={(e) => handleAliasSportChange(e.target.value)}
               >
-                <option value="">Select league...</option>
-                {cachedLeagues?.map((league) => (
-                  <option key={league.slug} value={league.slug}>
-                    {league.league_alias || league.name}
+                <option value="">Select sport...</option>
+                {aliasSports.map((sport) => (
+                  <option key={sport} value={sport}>
+                    {sport}
                   </option>
                 ))}
               </Select>
             </div>
             <div className="space-y-2">
+              <label className="text-sm font-medium">League</label>
+              {!aliasSport ? (
+                <p className="text-sm text-muted-foreground py-2">Select a sport first</p>
+              ) : (
+                <Select
+                  value={aliasForm.league}
+                  onChange={(e) => handleAliasLeagueChange(e.target.value)}
+                >
+                  <option value="">Select league...</option>
+                  {aliasFilteredLeagues.map((league) => (
+                    <option key={league.slug} value={league.slug}>
+                      {league.league_alias || league.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </div>
+            <div className="space-y-2">
               <label className="text-sm font-medium">Team</label>
-              <Select
-                value={aliasForm.team_id}
-                onChange={(e) => handleAliasTeamChange(e.target.value)}
-                disabled={!aliasForm.league || aliasLoading}
-              >
-                {aliasLoading ? (
-                  <option value="">Loading teams...</option>
-                ) : !aliasForm.league ? (
-                  <option value="">Select league first...</option>
-                ) : aliasLeagueTeams.length === 0 ? (
-                  <option value="">No teams found</option>
-                ) : (
-                  <>
-                    <option value="">Select team...</option>
-                    {aliasLeagueTeams.map((team) => (
-                      <option key={team.id} value={team.id}>
-                        {team.name}
-                      </option>
-                    ))}
-                  </>
-                )}
-              </Select>
+              {!aliasForm.league ? (
+                <p className="text-sm text-muted-foreground py-2">Select a league first</p>
+              ) : (
+                <Select
+                  value={aliasForm.team_id}
+                  onChange={(e) => handleAliasTeamChange(e.target.value)}
+                  disabled={aliasLoading}
+                >
+                  {aliasLoading ? (
+                    <option value="">Loading teams...</option>
+                  ) : aliasLeagueTeams.length === 0 ? (
+                    <option value="">No teams found</option>
+                  ) : (
+                    <>
+                      <option value="">Select team...</option>
+                      {aliasLeagueTeams.map((team) => (
+                        <option key={team.id} value={team.id}>
+                          {team.name}
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </Select>
+              )}
               <p className="text-xs text-muted-foreground">
                 The actual team this alias should map to
               </p>

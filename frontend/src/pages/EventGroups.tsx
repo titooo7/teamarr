@@ -52,6 +52,7 @@ import {
 import { useTemplates } from "@/hooks/useTemplates"
 import type { EventGroup, PreviewGroupResponse, TeamFilterEntry } from "@/api/types"
 import { TeamPicker } from "@/components/TeamPicker"
+import { getUniqueSports, filterLeaguesBySport } from "@/lib/utils"
 
 // Fetch leagues for logo lookup, sport mapping, and display alias
 async function fetchLeagues(): Promise<{ slug: string; name: string; logo_url: string | null; sport: string | null; league_alias: string | null }[]> {
@@ -234,25 +235,16 @@ export function EventGroups() {
   const [aliasSubmitting, setAliasSubmitting] = useState(false)
   const [aliasDeleting, setAliasDeleting] = useState<number | null>(null)
 
-  // Normalize sport name to title case
-  const normalizeSport = (sport: string | null) => {
-    if (!sport) return ""
-    return sport.charAt(0).toUpperCase() + sport.slice(1).toLowerCase()
-  }
-
-  // Get unique sports from cached leagues for alias modal (normalized to title case)
+  // Get unique sports from cached leagues (normalized, sorted)
   const aliasSports = useMemo(() => {
     if (!cachedLeagues) return []
-    const sportSet = new Set(cachedLeagues.map((l) => normalizeSport(l.sport)))
-    return [...sportSet].filter(Boolean).sort()
+    return getUniqueSports(cachedLeagues)
   }, [cachedLeagues])
 
-  // Filter leagues by selected sport for alias modal (case-insensitive)
+  // Filter leagues by selected sport (import_enabled first, then alphabetical)
   const aliasFilteredLeagues = useMemo(() => {
     if (!aliasSport || !cachedLeagues) return []
-    return cachedLeagues
-      .filter((l) => normalizeSport(l.sport) === aliasSport)
-      .sort((a, b) => a.name.localeCompare(b.name))
+    return filterLeaguesBySport(cachedLeagues, aliasSport)
   }, [cachedLeagues, aliasSport])
 
   // Handle sport change in alias modal

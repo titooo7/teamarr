@@ -116,6 +116,7 @@ class FilterResult:
     filtered_include: int = 0  # Didn't match include pattern
     filtered_exclude: int = 0  # Matched exclude pattern
     filtered_not_event: int = 0  # Didn't look like an event stream
+    filtered_stale: int = 0  # Marked as stale in Dispatcharr
     passed_count: int = 0
 
 
@@ -202,9 +203,10 @@ class StreamFilter:
         """Apply filters and return filtered streams with stats.
 
         Filter order:
-        1. Event pattern check (if enabled) - stream must look like an event
-        2. Include filter (if enabled)
-        3. Exclude filter (if enabled)
+        1. Stale filter - skip streams marked as stale in Dispatcharr
+        2. Event pattern check (if enabled) - stream must look like an event
+        3. Include filter (if enabled)
+        4. Exclude filter (if enabled)
 
         Args:
             streams: List of stream dicts with at least 'id' and 'name' keys
@@ -216,6 +218,11 @@ class StreamFilter:
 
         for stream in streams:
             name = stream.get("name", "")
+
+            # Stale filter: skip streams marked as stale in Dispatcharr
+            if stream.get("is_stale", False):
+                result.filtered_stale += 1
+                continue
 
             # Event pattern filter: stream must look like an event (vs, @, date/time)
             if self._event_pattern:

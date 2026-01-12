@@ -56,6 +56,7 @@ class DispatcharrStream:
     tvg_logo: str | None = None
     m3u_account_id: int | None = None
     m3u_account_name: str | None = None
+    is_stale: bool = False  # Stream marked as stale in Dispatcharr
 
     @classmethod
     def from_api(cls, data: dict) -> "DispatcharrStream":
@@ -71,6 +72,7 @@ class DispatcharrStream:
             tvg_logo=data.get("tvg_logo"),
             m3u_account_id=data.get("m3u_account"),
             m3u_account_name=data.get("m3u_account_name"),
+            is_stale=data.get("is_stale", False),
         )
 
 

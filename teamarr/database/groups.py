@@ -52,6 +52,7 @@ class EventEPGGroup:
     exclude_teams: list[dict] | None = None
     team_filter_mode: str = "include"
     # Processing stats by category (FILTERED / FAILED / EXCLUDED)
+    filtered_stale: int = 0  # FILTERED: Stream marked as stale in Dispatcharr
     filtered_include_regex: int = 0  # FILTERED: Didn't match include regex
     filtered_exclude_regex: int = 0  # FILTERED: Matched exclude regex
     filtered_not_event: int = 0  # FILTERED: Stream doesn't look like event (placeholder)
@@ -145,6 +146,7 @@ def _row_to_group(row) -> EventEPGGroup:
         exclude_teams=json.loads(row["exclude_teams"]) if row["exclude_teams"] else None,
         team_filter_mode=row["team_filter_mode"] if "team_filter_mode" in row.keys() else "include",
         # Processing stats by category (FILTERED / FAILED / EXCLUDED)
+        filtered_stale=row["filtered_stale"] if "filtered_stale" in row.keys() else 0,
         filtered_include_regex=row["filtered_include_regex"] or 0,
         filtered_exclude_regex=row["filtered_exclude_regex"] or 0,
         filtered_not_event=row["filtered_not_event"] if "filtered_not_event" in row.keys() else 0,
@@ -682,6 +684,7 @@ def update_group_stats(
     group_id: int,
     stream_count: int,
     matched_count: int,
+    filtered_stale: int = 0,
     filtered_include_regex: int = 0,
     filtered_exclude_regex: int = 0,
     filtered_not_event: int = 0,
@@ -698,7 +701,7 @@ def update_group_stats(
     """Update processing stats for a group after EPG generation.
 
     Stats are organized into three categories:
-    - FILTERED: Pre-match filtering (regex, not_event, team)
+    - FILTERED: Pre-match filtering (stale, regex, not_event, team)
     - FAILED: Match attempted but couldn't find event
     - EXCLUDED: Matched but excluded (timing/config)
 
@@ -707,6 +710,7 @@ def update_group_stats(
         group_id: Group ID
         stream_count: Number of streams after filtering (eligible for matching)
         matched_count: Number of streams successfully matched to events
+        filtered_stale: FILTERED - Stream marked as stale in Dispatcharr
         filtered_include_regex: FILTERED - Didn't match include regex
         filtered_exclude_regex: FILTERED - Matched exclude regex
         filtered_not_event: FILTERED - Stream doesn't look like event
@@ -728,6 +732,7 @@ def update_group_stats(
                SET last_refresh = datetime('now'),
                    stream_count = ?,
                    matched_count = ?,
+                   filtered_stale = ?,
                    filtered_include_regex = ?,
                    filtered_exclude_regex = ?,
                    filtered_not_event = ?,
@@ -743,6 +748,7 @@ def update_group_stats(
             (
                 stream_count,
                 matched_count,
+                filtered_stale,
                 filtered_include_regex,
                 filtered_exclude_regex,
                 filtered_not_event,
@@ -763,6 +769,7 @@ def update_group_stats(
                SET last_refresh = datetime('now'),
                    stream_count = ?,
                    matched_count = ?,
+                   filtered_stale = ?,
                    filtered_include_regex = ?,
                    filtered_exclude_regex = ?,
                    filtered_not_event = ?,
@@ -777,6 +784,7 @@ def update_group_stats(
             (
                 stream_count,
                 matched_count,
+                filtered_stale,
                 filtered_include_regex,
                 filtered_exclude_regex,
                 filtered_not_event,

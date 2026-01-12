@@ -340,6 +340,7 @@ CREATE TABLE IF NOT EXISTS event_epg_groups (
 
     -- Processing Stats (updated by EPG generation)
     -- Three categories: FILTERED (pre-match), FAILED (match attempted), EXCLUDED (matched but excluded)
+    filtered_stale INTEGER DEFAULT 0,           -- FILTERED: Stream marked as stale in Dispatcharr
     filtered_include_regex INTEGER DEFAULT 0,   -- FILTERED: Didn't match include regex
     filtered_exclude_regex INTEGER DEFAULT 0,   -- FILTERED: Matched exclude regex
     filtered_not_event INTEGER DEFAULT 0,       -- FILTERED: Stream doesn't look like event (placeholder)

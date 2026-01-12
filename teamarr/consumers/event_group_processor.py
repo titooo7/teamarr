@@ -76,6 +76,7 @@ class ProcessingResult:
     # Stream fetching and filtering
     streams_fetched: int = 0
     streams_after_filter: int = 0  # After all filtering
+    filtered_stale: int = 0  # Marked as stale in Dispatcharr
     filtered_not_event: int = 0  # Didn't look like an event (no vs/@/at/date)
     filtered_include_regex: int = 0  # Didn't match include pattern
     filtered_exclude_regex: int = 0  # Matched exclude pattern
@@ -119,6 +120,7 @@ class ProcessingResult:
             "streams": {
                 "fetched": self.streams_fetched,
                 "after_filter": self.streams_after_filter,
+                "filtered_stale": self.filtered_stale,
                 "filtered_not_event": self.filtered_not_event,
                 "filtered_include": self.filtered_include_regex,
                 "filtered_exclude": self.filtered_exclude_regex,
@@ -261,6 +263,7 @@ class PreviewResult:
     unmatched_count: int = 0
 
     # Filter breakdown
+    filtered_stale: int = 0
     filtered_not_event: int = 0
     filtered_include_regex: int = 0
     filtered_exclude_regex: int = 0
@@ -283,6 +286,7 @@ class PreviewResult:
             "filtered_count": self.filtered_count,
             "matched_count": self.matched_count,
             "unmatched_count": self.unmatched_count,
+            "filtered_stale": self.filtered_stale,
             "filtered_not_event": self.filtered_not_event,
             "filtered_include_regex": self.filtered_include_regex,
             "filtered_exclude_regex": self.filtered_exclude_regex,
@@ -440,6 +444,7 @@ class EventGroupProcessor:
             # Step 2: Apply stream filtering
             streams, filter_result = self._filter_streams(streams, group)
             result.filtered_count = result.total_streams - filter_result.passed_count
+            result.filtered_stale = filter_result.filtered_stale
             result.filtered_not_event = filter_result.filtered_not_event
             result.filtered_include_regex = filter_result.filtered_include
             result.filtered_exclude_regex = filter_result.filtered_exclude
@@ -761,6 +766,7 @@ class EventGroupProcessor:
             # Step 1.5: Apply stream filtering (include/exclude regex)
             streams, filter_result = self._filter_streams(streams, group)
             result.streams_after_filter = filter_result.passed_count
+            result.filtered_stale = filter_result.filtered_stale
             result.filtered_not_event = filter_result.filtered_not_event
             result.filtered_include_regex = filter_result.filtered_include
             result.filtered_exclude_regex = filter_result.filtered_exclude
@@ -775,6 +781,7 @@ class EventGroupProcessor:
                     group.id,
                     stream_count=0,
                     matched_count=0,
+                    filtered_stale=filter_result.filtered_stale,
                     filtered_include_regex=filter_result.filtered_include,
                     filtered_exclude_regex=filter_result.filtered_exclude,
                     filtered_not_event=filter_result.filtered_not_event,
@@ -805,6 +812,7 @@ class EventGroupProcessor:
                     group.id,
                     stream_count=result.streams_after_filter,  # Eligible streams
                     matched_count=0,
+                    filtered_stale=result.filtered_stale,
                     filtered_include_regex=result.filtered_include_regex,
                     filtered_exclude_regex=result.filtered_exclude_regex,
                     failed_count=result.streams_after_filter,  # All unmatched due to no events
@@ -876,6 +884,7 @@ class EventGroupProcessor:
                 group.id,
                 stream_count=result.streams_after_filter,
                 matched_count=result.streams_matched,
+                filtered_stale=result.filtered_stale,
                 filtered_include_regex=result.filtered_include_regex,
                 filtered_exclude_regex=result.filtered_exclude_regex,
                 failed_count=result.streams_unmatched,
@@ -1022,6 +1031,7 @@ class EventGroupProcessor:
             # Step 1.5: Apply stream filtering (include/exclude regex)
             streams, filter_result = self._filter_streams(streams, group)
             result.streams_after_filter = filter_result.passed_count
+            result.filtered_stale = filter_result.filtered_stale
             result.filtered_not_event = filter_result.filtered_not_event
             result.filtered_include_regex = filter_result.filtered_include
             result.filtered_exclude_regex = filter_result.filtered_exclude
@@ -1037,6 +1047,7 @@ class EventGroupProcessor:
                     group.id,
                     stream_count=0,
                     matched_count=0,
+                    filtered_stale=filter_result.filtered_stale,
                     filtered_include_regex=filter_result.filtered_include,
                     filtered_exclude_regex=filter_result.filtered_exclude,
                     filtered_not_event=filter_result.filtered_not_event,
@@ -1061,6 +1072,7 @@ class EventGroupProcessor:
                     group.id,
                     stream_count=result.streams_after_filter,  # Eligible streams
                     matched_count=0,
+                    filtered_stale=filter_result.filtered_stale,
                     filtered_include_regex=filter_result.filtered_include,
                     filtered_exclude_regex=filter_result.filtered_exclude,
                     failed_count=result.streams_after_filter,  # All unmatched due to no events
@@ -1198,6 +1210,7 @@ class EventGroupProcessor:
                 group.id,
                 stream_count=result.streams_after_filter,
                 matched_count=result.streams_matched,
+                filtered_stale=result.filtered_stale,
                 filtered_include_regex=result.filtered_include_regex,
                 filtered_exclude_regex=result.filtered_exclude_regex,
                 failed_count=result.streams_unmatched,
@@ -1251,6 +1264,7 @@ class EventGroupProcessor:
                     "channel_group": s.channel_group,
                     "channel_group_id": s.channel_group_id,
                     "m3u_account_id": s.m3u_account_id,
+                    "is_stale": s.is_stale,
                 }
                 for s in streams
             ]

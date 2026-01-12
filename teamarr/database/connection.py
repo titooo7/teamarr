@@ -712,6 +712,16 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("Schema upgraded to version 26 (removed stream_profile_id)")
         current_version = 26
 
+    # Version 27: Add filtered_stale column to event_epg_groups
+    # Tracks streams marked as stale in Dispatcharr (no longer in M3U source)
+    if current_version < 27:
+        _add_column_if_not_exists(
+            conn, "event_epg_groups", "filtered_stale", "INTEGER DEFAULT 0"
+        )
+        conn.execute("UPDATE settings SET schema_version = 27 WHERE id = 1")
+        logger.info("Schema upgraded to version 27 (event_epg_groups.filtered_stale)")
+        current_version = 27
+
 
 def _drop_stream_profile_columns(conn: sqlite3.Connection) -> None:
     """Remove stream_profile_id from event_epg_groups and managed_channels.

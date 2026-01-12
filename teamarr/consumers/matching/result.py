@@ -57,6 +57,9 @@ class FilteredReason(Enum):
     # Stream's detected league not in group's search leagues (pre-match)
     LEAGUE_NOT_INCLUDED = "league_not_included"
 
+    # Stream marked as stale in Dispatcharr (no longer in M3U source)
+    STALE = "stale"
+
 
 # =============================================================================
 # FAILED REASONS - Matching attempted but couldn't complete
@@ -376,6 +379,7 @@ FILTERED_DISPLAY: dict[FilteredReason, str] = {
     FilteredReason.INCLUDE_REGEX: "Didn't match include regex",
     FilteredReason.EXCLUDE_REGEX: "Matched exclude regex",
     FilteredReason.LEAGUE_NOT_INCLUDED: "League not in group",
+    FilteredReason.STALE: "Stale stream",
 }
 
 FAILED_DISPLAY: dict[FailedReason, str] = {

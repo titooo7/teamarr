@@ -177,6 +177,7 @@ class GroupResponse(BaseModel):
     stream_count: int = 0
     matched_count: int = 0
     # Processing stats by category (FILTERED / FAILED / EXCLUDED)
+    filtered_stale: int = 0  # FILTERED: Stream marked as stale in Dispatcharr
     filtered_include_regex: int = 0  # FILTERED: Didn't match include regex
     filtered_exclude_regex: int = 0  # FILTERED: Matched exclude regex
     filtered_not_event: int = 0  # FILTERED: Stream doesn't look like event
@@ -432,6 +433,7 @@ def list_groups(
                 last_refresh=g.last_refresh.isoformat() if g.last_refresh else None,
                 stream_count=g.stream_count,
                 matched_count=g.matched_count,
+                filtered_stale=g.filtered_stale,
                 filtered_include_regex=g.filtered_include_regex,
                 filtered_exclude_regex=g.filtered_exclude_regex,
                 filtered_not_event=g.filtered_not_event,
@@ -552,6 +554,7 @@ def create_group(request: GroupCreate):
         last_refresh=group.last_refresh.isoformat() if group.last_refresh else None,
         stream_count=group.stream_count,
         matched_count=group.matched_count,
+        filtered_stale=group.filtered_stale,
         filtered_include_regex=group.filtered_include_regex,
         filtered_exclude_regex=group.filtered_exclude_regex,
         filtered_not_event=group.filtered_not_event,
@@ -786,6 +789,7 @@ def get_group_by_id(group_id: int):
         last_refresh=group.last_refresh.isoformat() if group.last_refresh else None,
         stream_count=group.stream_count,
         matched_count=group.matched_count,
+        filtered_stale=group.filtered_stale,
         filtered_include_regex=group.filtered_include_regex,
         filtered_exclude_regex=group.filtered_exclude_regex,
         filtered_not_event=group.filtered_not_event,
@@ -945,6 +949,7 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
         last_refresh=group.last_refresh.isoformat() if group.last_refresh else None,
         stream_count=group.stream_count,
         matched_count=group.matched_count,
+        filtered_stale=group.filtered_stale,
         filtered_include_regex=group.filtered_include_regex,
         filtered_exclude_regex=group.filtered_exclude_regex,
         filtered_not_event=group.filtered_not_event,
@@ -1173,6 +1178,7 @@ class PreviewGroupResponse(BaseModel):
     filtered_count: int
     matched_count: int
     unmatched_count: int
+    filtered_stale: int = 0
     filtered_not_event: int = 0
     filtered_include_regex: int = 0
     filtered_exclude_regex: int = 0
@@ -1218,6 +1224,7 @@ def preview_group(group_id: int):
         filtered_count=result.filtered_count,
         matched_count=result.matched_count,
         unmatched_count=result.unmatched_count,
+        filtered_stale=result.filtered_stale,
         filtered_not_event=result.filtered_not_event,
         filtered_include_regex=result.filtered_include_regex,
         filtered_exclude_regex=result.filtered_exclude_regex,

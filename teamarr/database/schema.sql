@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS settings (
 
     -- EPG Output
     epg_timezone TEXT DEFAULT 'America/New_York',
-    epg_output_path TEXT DEFAULT './teamarr.xml',
+    epg_output_path TEXT DEFAULT './data/teamarr.xml',
 
     -- Game Duration Defaults (hours)
     duration_default REAL DEFAULT 3.0,

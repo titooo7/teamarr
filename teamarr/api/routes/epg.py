@@ -283,7 +283,7 @@ def get_xmltv():
     with get_db() as conn:
         epg_settings = get_epg_settings(conn)
 
-    output_path = epg_settings.epg_output_path or "./teamarr.xml"
+    output_path = epg_settings.epg_output_path or "./data/teamarr.xml"
     file_path = Path(output_path)
 
     if not file_path.exists():

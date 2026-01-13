@@ -59,7 +59,7 @@ class EPGSettings:
     epg_output_days_ahead: int = 14
     epg_lookback_hours: int = 6
     epg_timezone: str = "America/New_York"
-    epg_output_path: str = "./teamarr.xml"
+    epg_output_path: str = "./data/teamarr.xml"
     include_final_events: bool = False
     midnight_crossover_mode: str = "postgame"
     cron_expression: str = "0 * * * *"

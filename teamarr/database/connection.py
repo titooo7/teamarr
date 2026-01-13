@@ -730,6 +730,19 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("Schema upgraded to version 27 (event_epg_groups.filtered_stale)")
         current_version = 27
 
+    # Version 28: Move XMLTV output to data/ directory for Docker volume access
+    # Old default: ./teamarr.xml (inside container, not accessible)
+    # New default: ./data/teamarr.xml (in volume mount, accessible to user)
+    if current_version < 28:
+        conn.execute("""
+            UPDATE settings
+            SET epg_output_path = './data/teamarr.xml'
+            WHERE id = 1 AND epg_output_path = './teamarr.xml'
+        """)
+        conn.execute("UPDATE settings SET schema_version = 28 WHERE id = 1")
+        logger.info("Schema upgraded to version 28 (epg_output_path -> ./data/)")
+        current_version = 28
+
 
 def _drop_stream_profile_columns(conn: sqlite3.Connection) -> None:
     """Remove stream_profile_id from event_epg_groups and managed_channels.

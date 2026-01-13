@@ -54,12 +54,17 @@ def get_all_settings(conn: Connection) -> AllSettings:
         return AllSettings()
 
     # Parse default_channel_profile_ids
-    default_profile_ids = []
+    # None = all profiles, [] = no profiles, [1,2,...] = specific profiles
+    default_profile_ids: list[int] | None = None
     if row["default_channel_profile_ids"]:
         try:
-            default_profile_ids = json.loads(row["default_channel_profile_ids"])
+            parsed = json.loads(row["default_channel_profile_ids"])
+            # json.loads("null") returns Python None, which is valid
+            # json.loads("[]") returns Python [], which is valid
+            # json.loads("[1,2]") returns Python [1,2], which is valid
+            default_profile_ids = parsed
         except json.JSONDecodeError:
-            default_profile_ids = []
+            default_profile_ids = None
 
     return AllSettings(
         dispatcharr=DispatcharrSettings(
@@ -167,12 +172,14 @@ def get_dispatcharr_settings(conn: Connection) -> DispatcharrSettings:
         return DispatcharrSettings()
 
     # Parse JSON for default_channel_profile_ids
-    default_profile_ids = []
+    # None = all profiles, [] = no profiles, [1,2,...] = specific profiles
+    default_profile_ids: list[int] | None = None
     if row["default_channel_profile_ids"]:
         try:
-            default_profile_ids = json.loads(row["default_channel_profile_ids"])
+            parsed = json.loads(row["default_channel_profile_ids"])
+            default_profile_ids = parsed
         except json.JSONDecodeError:
-            default_profile_ids = []
+            default_profile_ids = None
 
     return DispatcharrSettings(
         enabled=bool(row["dispatcharr_enabled"]),

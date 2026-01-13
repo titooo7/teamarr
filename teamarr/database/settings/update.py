@@ -7,6 +7,9 @@ import json
 from sqlite3 import Connection
 
 
+_NOT_PROVIDED = object()  # Sentinel to distinguish "not provided" from None
+
+
 def update_dispatcharr_settings(
     conn: Connection,
     enabled: bool | None = None,
@@ -14,11 +17,11 @@ def update_dispatcharr_settings(
     username: str | None = None,
     password: str | None = None,
     epg_id: int | None = None,
-    default_channel_profile_ids: list[int] | None = None,
+    default_channel_profile_ids: list[int] | None | object = _NOT_PROVIDED,
 ) -> bool:
     """Update Dispatcharr settings.
 
-    Only updates fields that are explicitly provided (not None).
+    Only updates fields that are explicitly provided.
 
     Args:
         conn: Database connection
@@ -27,7 +30,8 @@ def update_dispatcharr_settings(
         username: Username
         password: Password
         epg_id: EPG source ID in Dispatcharr
-        default_channel_profile_ids: Default channel profiles for event channels
+        default_channel_profile_ids: Default channel profiles for event channels.
+            None = all profiles, [] = no profiles, [1,2,...] = specific profiles.
 
     Returns:
         True if updated
@@ -50,9 +54,14 @@ def update_dispatcharr_settings(
     if epg_id is not None:
         updates.append("dispatcharr_epg_id = ?")
         values.append(epg_id)
-    if default_channel_profile_ids is not None:
+    # default_channel_profile_ids semantics:
+    # - _NOT_PROVIDED (default) → don't update
+    # - None → "all profiles" → store as JSON "null"
+    # - [] → "no profiles" → store as JSON "[]"
+    # - [1, 2, ...] → specific profiles → store as JSON "[1, 2, ...]"
+    if default_channel_profile_ids is not _NOT_PROVIDED:
         updates.append("default_channel_profile_ids = ?")
-        values.append(json.dumps(default_channel_profile_ids) if default_channel_profile_ids else None)
+        values.append(json.dumps(default_channel_profile_ids))
 
     if not updates:
         return False

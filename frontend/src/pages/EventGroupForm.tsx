@@ -240,20 +240,24 @@ export function EventGroupForm() {
   }, [channelGroups, channelGroupFilter])
 
   // Eligible parent groups (single-league only, not multi-sport, not already a child)
+  // Use selectedLeague for create mode, formData.leagues[0] for edit mode
+  const currentLeague = selectedLeague || (formData.leagues.length === 1 ? formData.leagues[0] : null)
   const eligibleParents = useMemo(() => {
     if (!groupsData?.groups) return []
+    // Only single-league groups can have parents
+    if (!currentLeague) return []
     return groupsData.groups.filter(g => {
       // Can't be own parent
       if (isEdit && g.id === Number(groupId)) return false
       // Must be single-league
       if (g.leagues.length !== 1) return false
       // Must match our league
-      if (selectedLeague && g.leagues[0] !== selectedLeague) return false
+      if (g.leagues[0] !== currentLeague) return false
       // Can't be a child group (groups with parents can't be parents themselves)
       if (g.parent_group_id != null) return false
       return true
     })
-  }, [groupsData, isEdit, groupId, selectedLeague])
+  }, [groupsData, isEdit, groupId, currentLeague])
 
   const handleModeSelect = (mode: GroupMode) => {
     setGroupMode(mode)
@@ -608,6 +612,30 @@ export function EventGroupForm() {
                       (set on import)
                     </span>
                   </div>
+                </div>
+              )}
+
+              {/* Parent Group - edit mode, single-league, non-child groups */}
+              {isEdit && groupMode === "single" && !isChildGroup && (
+                <div className="space-y-2">
+                  <Label>Parent Group (Optional)</Label>
+                  <Select
+                    value={formData.parent_group_id?.toString() || ""}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      parent_group_id: e.target.value ? Number(e.target.value) : null
+                    })}
+                  >
+                    <option value="">No parent (independent group)</option>
+                    {eligibleParents.map(g => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {eligibleParents.length === 0
+                      ? "No eligible parent groups for this league"
+                      : "Child groups inherit settings and add streams to parent's channels"}
+                  </p>
                 </div>
               )}
 

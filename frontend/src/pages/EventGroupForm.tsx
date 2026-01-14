@@ -20,7 +20,6 @@ import {
 } from "@/hooks/useGroups"
 import { useTemplates } from "@/hooks/useTemplates"
 import type { EventGroupCreate, EventGroupUpdate } from "@/api/types"
-import type { CachedLeague } from "@/api/teams"
 import { getLeagues } from "@/api/teams"
 import { TeamPicker } from "@/components/TeamPicker"
 import { LeaguePicker } from "@/components/LeaguePicker"

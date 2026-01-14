@@ -557,7 +557,7 @@ INSERT OR REPLACE INTO leagues (league_code, provider, provider_league_id, provi
     ('unrivaled', 'tsdb', '5622', 'Unrivaled Basketball', 'Unrivaled', 'basketball', 'https://r2.thesportsdb.com/images/media/league/badge/71mier1746291561.png', NULL, 1, NULL, 'unrivaled', 'team_vs_team', 'Unrivaled Basketball', NULL, NULL),
 
     -- Hockey (ESPN)
-    ('nhl', 'espn', 'hockey/nhl', NULL, 'NHL', 'hockey', 'https://a.espncdn.com/i/teamlogos/leagues/500/nhl.png', NULL, 1, NULL, 'nhl', 'team_vs_team', 'NHL Hockey', NULL, NULL),
+    ('nhl', 'espn', 'hockey/nhl', NULL, 'National Hockey League', 'hockey', 'https://a.espncdn.com/i/teamlogos/leagues/500/nhl.png', NULL, 1, 'NHL', 'nhl', 'team_vs_team', 'NHL Hockey', NULL, NULL),
     ('mens-college-hockey', 'espn', 'hockey/mens-college-hockey', NULL, 'NCAA Men''s Ice Hockey', 'hockey', 'https://www.ncaa.com/modules/custom/casablanca_core/img/sportbanners/icehockey.png', NULL, 1, 'NCAA Hockey', 'ncaah', 'team_vs_team', 'College Hockey', NULL, NULL),
     ('womens-college-hockey', 'espn', 'hockey/womens-college-hockey', NULL, 'NCAA Women''s Ice Hockey', 'hockey', 'https://www.ncaa.com/modules/custom/casablanca_core/img/sportbanners/icehockey.png', NULL, 1, 'NCAA W Hockey', 'ncaawh', 'team_vs_team', 'Women''s College Hockey', NULL, NULL),
 

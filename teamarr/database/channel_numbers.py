@@ -921,16 +921,11 @@ def reassign_channels_globally(conn: Connection) -> dict:
             })
             channels_moved += 1
 
-            # Log significant drift
-            try:
-                old_int = int(old_num) if old_num else 0
-                if abs(next_num - old_int) > 10:
-                    logger.warning(
-                        "[CHANNEL_NUM] Channel drift: '%s' moved #%s → #%d",
-                        ch["channel_name"], old_num, next_num
-                    )
-            except (ValueError, TypeError):
-                pass
+            # Log drift at debug level (summary is at INFO)
+            logger.debug(
+                "[CHANNEL_NUM] '%s' moved #%s → #%d",
+                ch["channel_name"], old_num, next_num
+            )
 
         next_num += 1
 

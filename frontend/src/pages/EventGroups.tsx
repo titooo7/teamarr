@@ -55,7 +55,7 @@ import { getLeagues } from "@/api/teams"
 import { TeamPicker } from "@/components/TeamPicker"
 import { LeaguePicker } from "@/components/LeaguePicker"
 import { ChannelProfileSelector } from "@/components/ChannelProfileSelector"
-import { getUniqueSports, filterLeaguesBySport, getLeagueDisplayName } from "@/lib/utils"
+import { getUniqueSports, filterLeaguesBySport, getLeagueDisplayName, SPORT_EMOJIS } from "@/lib/utils"
 
 // Fetch Dispatcharr channel groups for name lookup
 async function fetchChannelGroups(): Promise<{ id: number; name: string }[]> {
@@ -107,24 +107,6 @@ async function deleteAlias(id: number): Promise<void> {
 
 // Helper to get display name (prefer display_name over name)
 const getDisplayName = (group: EventGroup) => group.display_name || group.name
-
-// Sport emoji mapping
-const SPORT_EMOJIS: Record<string, string> = {
-  football: "🏈",
-  basketball: "🏀",
-  baseball: "⚾",
-  hockey: "🏒",
-  soccer: "⚽",
-  mma: "🥊",
-  boxing: "🥊",
-  golf: "⛳",
-  tennis: "🎾",
-  lacrosse: "🥍",
-  cricket: "🏏",
-  rugby: "🏉",
-  racing: "🏁",
-  motorsports: "🏎️",
-}
 
 export function EventGroups() {
   const navigate = useNavigate()

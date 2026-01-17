@@ -26,14 +26,14 @@ def _get_base_version() -> str:
             with open(pyproject_path, "rb") as f:
                 data = tomllib.load(f)
                 return data.get("project", {}).get("version", "0.0.0")
-    except Exception:
+    except (OSError, KeyError, ValueError):
         pass
 
     # Fall back to installed package metadata (pip install without source)
     try:
         from importlib.metadata import version
         return version("teamarr")
-    except Exception:
+    except ImportError:
         pass
 
     return "0.0.0"
@@ -67,7 +67,7 @@ def _get_version() -> str:
 
         if sha_file.exists():
             sha = sha_file.read_text().strip()
-    except Exception:
+    except OSError:
         pass
 
     # Fallback to environment variables
@@ -96,9 +96,9 @@ def _get_version() -> str:
                             text=True,
                             cwd=base_dir,
                         ).strip()
-                    except Exception:
+                    except (subprocess.SubprocessError, OSError):
                         pass
-        except Exception:
+        except (subprocess.SubprocessError, OSError):
             pass
 
     # Build version string
@@ -270,7 +270,7 @@ class Config:
             try:
                 ZoneInfo(cls._ui_timezone_from_env)
                 return cls._ui_timezone_from_env
-            except Exception:
+            except (KeyError, ValueError):
                 # Invalid timezone, fall back to EPG timezone
                 pass
         return cls.get_timezone_str()
@@ -292,7 +292,7 @@ class Config:
         try:
             ZoneInfo(cls._ui_timezone_from_env)
             return True
-        except Exception:
+        except (KeyError, ValueError):
             return False
 
 

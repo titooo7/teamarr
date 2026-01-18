@@ -513,7 +513,8 @@ def _clean_team_name(name: str) -> str:
     # Remove channel numbers like "(1)" or "[2]"
     name = re.sub(r"\s*[\(\[]\d+[\)\]]\s*$", "", name)
 
-    # Remove HD, SD, etc.
+    # Remove HD, SD, 4K, UHD quality indicators (at start or end)
+    name = re.sub(r"^\s*\b(HD|SD|FHD|4K|UHD)\b\s*", "", name, flags=re.IGNORECASE)
     name = re.sub(r"\s+\b(HD|SD|FHD|4K|UHD)\b\s*$", "", name, flags=re.IGNORECASE)
 
     # Remove broadcast network indicators like (CBS), (FOX), (ABC), (NBC), (ESPN)

@@ -54,6 +54,18 @@ from teamarr.utilities.event_status import is_event_final
 
 logger = logging.getLogger(__name__)
 
+# Sports that can be detected but are not currently supported by Teamarr
+# These sports don't have team-based schedules we can match against
+UNSUPPORTED_SPORTS = frozenset([
+    "Swimming",
+    "Diving",
+    "Gymnastics",
+    "Wrestling",
+    "Track and Field",
+    "Tennis",
+    "Golf",
+])
+
 
 @dataclass
 class MatchedStreamResult:
@@ -423,7 +435,23 @@ class StreamMatcher:
 
         classified = classify_stream(stream_name, league_event_type, self._custom_regex)
 
-        # Step 2: Handle placeholders
+        # Step 2: Filter unsupported sports (swimming, diving, gymnastics, etc.)
+        if classified.sport_hint and classified.sport_hint in UNSUPPORTED_SPORTS:
+            logger.debug(
+                "[FILTERED] Unsupported sport '%s': %s",
+                classified.sport_hint,
+                stream_name[:60],
+            )
+            return MatchedStreamResult(
+                stream_name=stream_name,
+                stream_id=stream_id,
+                matched=False,
+                included=False,
+                category=classified.category,
+                exclusion_reason=f"sport_not_supported:{classified.sport_hint}",
+            )
+
+        # Step 3: Handle placeholders
         if classified.category == StreamCategory.PLACEHOLDER:
             return MatchedStreamResult(
                 stream_name=stream_name,
@@ -434,7 +462,7 @@ class StreamMatcher:
                 exclusion_reason="placeholder",
             )
 
-        # Step 3: Route to appropriate matcher based on category
+        # Step 4: Route to appropriate matcher based on category
         if classified.category == StreamCategory.EVENT_CARD:
             outcome = self._match_event_card(
                 classified=classified,
@@ -448,7 +476,7 @@ class StreamMatcher:
                 target_date=target_date,
             )
 
-        # Step 4: Convert outcome to result
+        # Step 5: Convert outcome to result
         return self._outcome_to_result(
             outcome=outcome,
             stream_id=stream_id,

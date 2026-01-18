@@ -1903,6 +1903,13 @@ class EventGroupProcessor:
                     )
                 )
             else:
+                # Skip filtered streams (placeholder, sport_not_supported, etc.)
+                # These are expected exclusions, not match failures
+                if result.exclusion_reason and result.exclusion_reason.startswith(
+                    ("placeholder", "sport_not_supported")
+                ):
+                    continue
+
                 # Unmatched - extract parsed teams if available (Phase 7 enhancement)
                 parsed_team1 = getattr(result, "parsed_team1", None)
                 parsed_team2 = getattr(result, "parsed_team2", None)

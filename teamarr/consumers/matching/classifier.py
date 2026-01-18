@@ -468,9 +468,10 @@ def extract_teams_from_separator(
     team2 = _clean_team_name(team2)
 
     # Validate: both teams should have substance
-    if not team1 or len(team1) < 2:
+    # Minimum 3 chars - even short team abbrevs are 3+ (USC, LSU, BYU, etc.)
+    if not team1 or len(team1) < 3:
         team1 = None
-    if not team2 or len(team2) < 2:
+    if not team2 or len(team2) < 3:
         team2 = None
 
     return team1, team2
@@ -496,6 +497,15 @@ def _clean_team_name(name: str) -> str:
 
     # Clean up "@ ET", "@ EST", "@ PT", etc. at end
     name = re.sub(r"\s*@\s*[A-Z]{2,4}T?\s*$", "", name, flags=re.IGNORECASE)
+
+    # Remove standalone timezone codes (ET, EST, PT, PST, CT, CST, MT, MST, etc.)
+    # These can remain after date/time stripping: "Jan 17 5PM ET" → "ET"
+    name = re.sub(
+        r"^(E|P|C|M)(S|D)?T$",  # ET, EST, EDT, PT, PST, PDT, CT, CST, CDT, MT, MST, MDT
+        "",
+        name,
+        flags=re.IGNORECASE,
+    )
 
     # Remove trailing punctuation (NOT digits - they could be team names like 49ers, 76ers)
     name = re.sub(r"[\s\-:.,@]+$", "", name)

@@ -29,6 +29,10 @@ from teamarr.utilities.fuzzy_match import get_matcher
 
 logger = logging.getLogger(__name__)
 
+# Thresholds for whole-name matching
+HIGH_CONFIDENCE_THRESHOLD = 85.0  # Accept without date validation
+ACCEPT_WITH_DATE_THRESHOLD = 75.0  # Accept only if date/time validates
+
 
 @dataclass
 class MatchContext:
@@ -385,7 +389,13 @@ class TeamMatcher:
         events: list[Event],
         league: str,
     ) -> MatchOutcome:
-        """Try to match classified stream against events in a single league."""
+        """Try to match classified stream against events in a single league.
+
+        Uses whole-name token_set_ratio matching with the following strategy:
+        1. Try alias match first (100% confidence for known abbreviations)
+        2. Fall back to token_set_ratio between extracted teams and event name
+        3. Rank by: score > time proximity > date proximity
+        """
         team1_normalized = normalize_for_matching(ctx.team1) if ctx.team1 else None
         team2_normalized = normalize_for_matching(ctx.team2) if ctx.team2 else None
 
@@ -397,11 +407,15 @@ class TeamMatcher:
                 detail="No team names extracted",
             )
 
+        # Check if we have date validation from the stream
+        has_date_validation = ctx.classified.normalized.extracted_date is not None
+
         best_match: Event | None = None
         best_method: MatchMethod = MatchMethod.FUZZY
         best_confidence: float = 0.0
         best_is_future: bool = False  # Whether best match is today or future
         best_date_distance: int = 999  # Absolute days from target_date
+        best_time_distance: int = 999999  # Seconds from stream time (for doubleheaders)
 
         for event in events:
             # Validate event is within search window (lifecycle handles exclusions)
@@ -416,56 +430,61 @@ class TeamMatcher:
                     continue
 
             # Check for sport mismatch from stream (if detected)
-            # e.g., "Ice Hockey" in stream name should not match NFL events
-            # Use case-insensitive comparison (event.sport is lowercase, hint may be capitalized)
             if ctx.classified.sport_hint:
                 if event.sport.lower() != ctx.classified.sport_hint.lower():
                     continue
 
-            # Try to match teams
-            match_result = self._match_teams_to_event(team1_normalized, team2_normalized, event)
+            # Try alias match first (100% confidence)
+            match_result = self._check_alias_match(team1_normalized, team2_normalized, event)
+
+            # Fall back to whole-name matching using extracted teams
+            if not match_result:
+                match_result = self._match_teams_to_event(
+                    team1_normalized, team2_normalized, event, has_date_validation
+                )
 
             if match_result:
+                method, score = match_result
+
                 # Calculate date metrics for comparison
                 days_from_target = (event_date - ctx.target_date).days
                 is_future = days_from_target >= 0  # Today or future
                 abs_distance = abs(days_from_target)
 
-                # Prefer: higher confidence > future over past > closer to target_date
+                # Calculate time proximity for doubleheader disambiguation
+                time_distance = 999999
+                if ctx.classified.normalized.extracted_time:
+                    ref_date = event.start_time.astimezone(ctx.user_tz).date()
+                    stream_dt = datetime.combine(
+                        ref_date, ctx.classified.normalized.extracted_time, tzinfo=ctx.user_tz
+                    )
+                    time_distance = abs(int((event.start_time.astimezone(ctx.user_tz) - stream_dt).total_seconds()))
+
+                # Ranking: score > time proximity > future over past > date proximity
                 is_better = False
-                if match_result[1] > best_confidence:
+                if score > best_confidence:
                     is_better = True
-                elif match_result[1] == best_confidence:
-                    if is_future and not best_is_future:
-                        # Future beats past
+                elif score == best_confidence:
+                    if time_distance < best_time_distance:
+                        # Closer to stream time wins (doubleheader case)
                         is_better = True
-                    elif is_future == best_is_future and abs_distance < best_date_distance:
-                        # Same future/past status, prefer closer
-                        is_better = True
+                    elif time_distance == best_time_distance:
+                        if is_future and not best_is_future:
+                            # Future beats past
+                            is_better = True
+                        elif is_future == best_is_future and abs_distance < best_date_distance:
+                            # Same future/past status, prefer closer
+                            is_better = True
 
                 if is_better:
                     best_match = event
-                    best_method = match_result[0]
-                    best_confidence = match_result[1]
+                    best_method = method
+                    best_confidence = score
                     best_is_future = is_future
                     best_date_distance = abs_distance
+                    best_time_distance = time_distance
 
         if best_match:
-            # If multiple events same day (doubleheader), pick closest to stream time
-            if ctx.classified.normalized.extracted_time:
-                matching_events = [
-                    e
-                    for e in events
-                    if e.start_time.astimezone(ctx.user_tz).date() == ctx.target_date
-                    and self._match_teams_to_event(team1_normalized, team2_normalized, e)
-                ]
-                if len(matching_events) > 1:
-                    best_match = self._disambiguate_by_time(
-                        matching_events,
-                        ctx.classified.normalized.extracted_time,
-                        ctx.user_tz,
-                    )
-
             logger.debug(
                 "[MATCHED] stream_id=%d method=%s event=%s confidence=%.0f%%",
                 ctx.stream_id,
@@ -512,7 +531,13 @@ class TeamMatcher:
         ctx: MatchContext,
         events: list[tuple[str, Event]],
     ) -> MatchOutcome:
-        """Try to match against events from multiple leagues."""
+        """Try to match against events from multiple leagues.
+
+        Uses whole-name token_set_ratio matching with the following strategy:
+        1. Try alias match first (100% confidence for known abbreviations)
+        2. Fall back to token_set_ratio between extracted teams and event name
+        3. Rank by: score > time proximity > date proximity
+        """
         team1_normalized = normalize_for_matching(ctx.team1) if ctx.team1 else None
         team2_normalized = normalize_for_matching(ctx.team2) if ctx.team2 else None
 
@@ -524,12 +549,16 @@ class TeamMatcher:
                 detail="No team names extracted",
             )
 
+        # Check if we have date validation from the stream
+        has_date_validation = ctx.classified.normalized.extracted_date is not None
+
         best_match: Event | None = None
         best_league: str | None = None
         best_method: MatchMethod = MatchMethod.FUZZY
         best_confidence: float = 0.0
         best_is_future: bool = False  # Whether best match is today or future
         best_date_distance: int = 999  # Absolute days from target_date
+        best_time_distance: int = 999999  # Seconds from stream time (for doubleheaders)
 
         for league, event in events:
             # Validate event is within search window (lifecycle handles exclusions)
@@ -544,40 +573,60 @@ class TeamMatcher:
                     continue
 
             # Check for sport mismatch from stream (if detected)
-            # e.g., "Ice Hockey" in stream name should not match NFL events
-            # Use case-insensitive comparison (event.sport is lowercase, hint may be capitalized)
             if ctx.classified.sport_hint:
                 if event.sport.lower() != ctx.classified.sport_hint.lower():
                     continue
 
-            # Try to match teams
-            match_result = self._match_teams_to_event(team1_normalized, team2_normalized, event)
+            # Try alias match first (100% confidence)
+            match_result = self._check_alias_match(team1_normalized, team2_normalized, event)
+
+            # Fall back to whole-name matching using extracted teams
+            if not match_result:
+                match_result = self._match_teams_to_event(
+                    team1_normalized, team2_normalized, event, has_date_validation
+                )
 
             if match_result:
+                method, score = match_result
+
                 # Calculate date metrics for comparison
                 days_from_target = (event_date - ctx.target_date).days
                 is_future = days_from_target >= 0  # Today or future
                 abs_distance = abs(days_from_target)
 
-                # Prefer: higher confidence > future over past > closer to target_date
+                # Calculate time proximity for doubleheader disambiguation
+                time_distance = 999999
+                if ctx.classified.normalized.extracted_time:
+                    ref_date = event.start_time.astimezone(ctx.user_tz).date()
+                    stream_dt = datetime.combine(
+                        ref_date, ctx.classified.normalized.extracted_time, tzinfo=ctx.user_tz
+                    )
+                    time_distance = abs(int((event.start_time.astimezone(ctx.user_tz) - stream_dt).total_seconds()))
+
+                # Ranking: score > time proximity > future over past > date proximity
                 is_better = False
-                if match_result[1] > best_confidence:
+                if score > best_confidence:
                     is_better = True
-                elif match_result[1] == best_confidence:
-                    if is_future and not best_is_future:
-                        # Future beats past
+                elif score == best_confidence:
+                    if time_distance < best_time_distance:
+                        # Closer to stream time wins (doubleheader case)
                         is_better = True
-                    elif is_future == best_is_future and abs_distance < best_date_distance:
-                        # Same future/past status, prefer closer
-                        is_better = True
+                    elif time_distance == best_time_distance:
+                        if is_future and not best_is_future:
+                            # Future beats past
+                            is_better = True
+                        elif is_future == best_is_future and abs_distance < best_date_distance:
+                            # Same future/past status, prefer closer
+                            is_better = True
 
                 if is_better:
                     best_match = event
                     best_league = league
-                    best_method = match_result[0]
-                    best_confidence = match_result[1]
+                    best_method = method
+                    best_confidence = score
                     best_is_future = is_future
                     best_date_distance = abs_distance
+                    best_time_distance = time_distance
 
         if best_match and best_league:
             logger.debug(
@@ -627,80 +676,101 @@ class TeamMatcher:
         team1: str | None,
         team2: str | None,
         event: Event,
+        has_date_validation: bool = False,
     ) -> tuple[MatchMethod, float] | None:
-        """Try to match extracted team names to event teams.
+        """Match extracted team names against event using whole-name token_set_ratio.
+
+        Uses token_set_ratio for order-independent matching:
+        "Seattle U vs Portland" matches "Portland Pilots vs Seattle Redhawks"
+
+        Args:
+            team1: First extracted team name (normalized)
+            team2: Second extracted team name (normalized)
+            event: Event to match against
+            has_date_validation: True if stream has extracted date (lower threshold)
 
         Returns:
             Tuple of (method, confidence) if matched, None otherwise
         """
+        # Build comparison strings from extracted teams (clean, no noise)
+        if team1 and team2:
+            stream_teams = f"{team1} vs {team2}"
+        elif team1:
+            stream_teams = team1
+        elif team2:
+            stream_teams = team2
+        else:
+            return None
+
+        # Build event display name for comparison
+        event_name = f"{event.home_team.name} vs {event.away_team.name}"
+
+        # Use whole-name token_set_ratio matching
+        result = self._fuzzy.match_event_name(stream_teams, event_name)
+
+        # Apply threshold based on whether date validation is available
+        threshold = ACCEPT_WITH_DATE_THRESHOLD if has_date_validation else HIGH_CONFIDENCE_THRESHOLD
+
+        if result.score >= threshold:
+            return (MatchMethod.FUZZY, result.score)
+
+        return None
+
+    def _check_alias_match(
+        self,
+        team1: str | None,
+        team2: str | None,
+        event: Event,
+    ) -> tuple[MatchMethod, float] | None:
+        """Check if extracted teams match via alias lookup.
+
+        Aliases provide 100% confidence matches for known abbreviations:
+        "Man U" → "Manchester United"
+
+        Args:
+            team1: First extracted team name (normalized)
+            team2: Second extracted team name (normalized)
+            event: Event to match against
+
+        Returns:
+            Tuple of (ALIAS, 100.0) if both teams match via alias, None otherwise
+        """
+        if not team1 and not team2:
+            return None
+
+        # Generate patterns for alias checking
         home_patterns = self._fuzzy.generate_team_patterns(event.home_team)
         away_patterns = self._fuzzy.generate_team_patterns(event.away_team)
 
         team1_match = False
         team2_match = False
-        best_score = 0.0
-        method = MatchMethod.FUZZY
 
-        # Check team1
+        # Check team1 against aliases
         if team1:
-            # First check built-in aliases
             canonical = TEAM_ALIASES.get(team1.lower())
             if canonical:
-                # Check if canonical matches either team (compare against pattern strings)
                 if any(canonical in tp.pattern for tp in home_patterns):
                     team1_match = True
-                    best_score = max(best_score, 100.0)
-                    method = MatchMethod.ALIAS
                 elif any(canonical in tp.pattern for tp in away_patterns):
                     team1_match = True
-                    best_score = max(best_score, 100.0)
-                    method = MatchMethod.ALIAS
 
-            # Try fuzzy match
-            if not team1_match:
-                home_result = self._fuzzy.matches_any(home_patterns, team1)
-                away_result = self._fuzzy.matches_any(away_patterns, team1)
-
-                if home_result.matched or away_result.matched:
-                    team1_match = True
-                    score = max(home_result.score, away_result.score)
-                    best_score = max(best_score, score)
-
-        # Check team2
+        # Check team2 against aliases
         if team2:
-            # First check built-in aliases
             canonical = TEAM_ALIASES.get(team2.lower())
             if canonical:
                 if any(canonical in tp.pattern for tp in home_patterns):
                     team2_match = True
-                    best_score = max(best_score, 100.0)
-                    if method != MatchMethod.ALIAS:
-                        method = MatchMethod.ALIAS
                 elif any(canonical in tp.pattern for tp in away_patterns):
                     team2_match = True
-                    best_score = max(best_score, 100.0)
-                    if method != MatchMethod.ALIAS:
-                        method = MatchMethod.ALIAS
 
-            # Try fuzzy match
-            if not team2_match:
-                home_result = self._fuzzy.matches_any(home_patterns, team2)
-                away_result = self._fuzzy.matches_any(away_patterns, team2)
-
-                if home_result.matched or away_result.matched:
-                    team2_match = True
-                    score = max(home_result.score, away_result.score)
-                    best_score = max(best_score, score)
-
-        # Need both teams to match (if both were extracted)
+        # Need both teams to match via alias (if both were extracted)
         if team1 and team2:
             if team1_match and team2_match:
-                return (method, best_score)
-            return None
+                return (MatchMethod.ALIAS, 100.0)
         elif team1 and team1_match:
-            return (method, best_score)
+            return (MatchMethod.ALIAS, 100.0)
         elif team2 and team2_match:
-            return (method, best_score)
+            return (MatchMethod.ALIAS, 100.0)
 
         return None
 

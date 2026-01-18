@@ -1060,6 +1060,10 @@ class ChannelLifecycleService:
             # Unknown variables stay literal (e.g., {bad_var}) so user can identify issues
             base_name = self._resolve_template(name_format, event, extra_vars)
 
+            # Clean up empty wrappers when {exception_keyword} resolves to ""
+            # e.g., "Team A @ Team B ()" → "Team A @ Team B"
+            base_name = self._clean_empty_wrappers(base_name)
+
             # Auto-append keyword only if template didn't use {exception_keyword}
             if exception_keyword and not template_uses_keyword:
                 return f"{base_name} ({exception_keyword.title()})"
@@ -1076,6 +1080,35 @@ class ChannelLifecycleService:
                 return f"{base_name} ({exception_keyword.title()})"
 
             return base_name
+
+    def _clean_empty_wrappers(self, text: str) -> str:
+        """Clean up empty wrappers left when variables resolve to empty string.
+
+        Removes:
+        - Empty parentheses: () []
+        - Trailing separators: " - ", " | ", " : "
+        - Multiple consecutive spaces
+        - Leading/trailing whitespace
+
+        Examples:
+            "Team A @ Team B ()" → "Team A @ Team B"
+            "Team A @ Team B []" → "Team A @ Team B"
+            "Team A @ Team B - " → "Team A @ Team B"
+            "Team A  @  Team B" → "Team A @ Team B"
+        """
+        import re
+
+        # Remove empty parentheses and brackets (with optional surrounding space)
+        text = re.sub(r"\s*\(\s*\)", "", text)
+        text = re.sub(r"\s*\[\s*\]", "", text)
+
+        # Remove trailing separators
+        text = re.sub(r"\s*[-|:]\s*$", "", text)
+
+        # Collapse multiple spaces into one
+        text = re.sub(r"\s{2,}", " ", text)
+
+        return text.strip()
 
     def _resolve_logo_url(
         self,

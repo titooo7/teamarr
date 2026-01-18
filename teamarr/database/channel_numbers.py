@@ -777,15 +777,15 @@ def get_all_auto_channels_globally_sorted(conn: Connection) -> list[dict]:
     # Import here to avoid circular import
     from teamarr.database.sort_priorities import get_all_sort_priorities
 
-    # 1. Get sort priorities
+    # 1. Get sort priorities (normalize to lowercase for case-insensitive matching)
     priorities = get_all_sort_priorities(conn)
     sport_order = {
-        p.sport: p.sort_priority
+        p.sport.lower(): p.sort_priority
         for p in priorities
         if p.league_code is None
     }
     league_order = {
-        (p.sport, p.league_code): p.sort_priority
+        (p.sport.lower(), p.league_code.lower() if p.league_code else None): p.sort_priority
         for p in priorities
         if p.league_code is not None
     }
@@ -831,9 +831,14 @@ def get_all_auto_channels_globally_sorted(conn: Connection) -> list[dict]:
         league = ch.get("league") or ""
         event_date_str = ch.get("event_date")
 
+        # Normalize sport/league to lowercase for priority lookup
+        # (managed_channels may store title case "Football", sort_priorities uses lowercase "football")
+        sport_lower = sport.lower()
+        league_lower = league.lower()
+
         # Get priorities (default to 9999 for unknown)
-        sport_pri = sport_order.get(sport, 9999)
-        league_pri = league_order.get((sport, league), 9999)
+        sport_pri = sport_order.get(sport_lower, 9999)
+        league_pri = league_order.get((sport_lower, league_lower), 9999)
 
         # Parse event date for sorting
         if event_date_str:

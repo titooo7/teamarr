@@ -564,18 +564,17 @@ class ChannelLifecycleService:
         event_id = event.id
         event_provider = getattr(event, "provider", "espn")
 
-        # First try to find channel with matching keyword
-        existing = None
-        if matched_keyword:
-            existing = find_any_channel_for_event(
-                conn=conn,
-                event_id=event_id,
-                event_provider=event_provider,
-                exclude_group_id=group_id,
-                exception_keyword=matched_keyword,
-            )
+        # First try to find channel with matching keyword (or no keyword)
+        existing = find_any_channel_for_event(
+            conn=conn,
+            event_id=event_id,
+            event_provider=event_provider,
+            exclude_group_id=group_id,
+            exception_keyword=matched_keyword,  # None for non-keyword streams
+        )
 
-        # If no keyword match, find any channel for the event
+        # If no exact match, fall back to any channel for the event
+        # This allows non-keyword streams to use keyword channels as last resort
         if not existing:
             existing = find_any_channel_for_event(
                 conn=conn,

@@ -15,6 +15,9 @@ import {
   Trash2,
   Download,
   Upload,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react"
 import {
   ChannelProfileSelector,
@@ -189,6 +192,7 @@ export function Settings() {
     sort_by: "time",
   })
   const [newKeyword, setNewKeyword] = useState({ keywords: "", behavior: "consolidate" })
+  const [editingKeyword, setEditingKeyword] = useState<{ id: number; keywords: string } | null>(null)
 
   // Local state for channel range inputs (allows free typing)
   const [channelRangeStart, setChannelRangeStart] = useState("")
@@ -410,6 +414,25 @@ export function Settings() {
       toast.success("Keyword deleted")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete keyword")
+    }
+  }
+
+  const handleSaveKeywordEdit = async () => {
+    if (!editingKeyword || !editingKeyword.keywords.trim()) {
+      toast.error("Keywords cannot be empty")
+      return
+    }
+    try {
+      await fetch(`/api/v1/keywords/${editingKeyword.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keywords: editingKeyword.keywords }),
+      })
+      keywordsQuery.refetch()
+      setEditingKeyword(null)
+      toast.success("Keyword updated")
+    } catch (err) {
+      toast.error("Failed to update keyword")
     }
   }
 
@@ -783,7 +806,22 @@ export function Settings() {
               <tbody>
                 {keywordsQuery.data?.keywords.map((kw) => (
                   <tr key={kw.id} className="border-t">
-                    <td className="px-3 py-2">{kw.keywords}</td>
+                    <td className="px-3 py-2">
+                      {editingKeyword?.id === kw.id ? (
+                        <Input
+                          value={editingKeyword.keywords}
+                          onChange={(e) => setEditingKeyword({ ...editingKeyword, keywords: e.target.value })}
+                          className="h-8"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleSaveKeywordEdit()
+                            if (e.key === "Escape") setEditingKeyword(null)
+                          }}
+                        />
+                      ) : (
+                        kw.keywords
+                      )}
+                    </td>
                     <td className="px-3 py-2">
                       <Select
                         value={kw.behavior}
@@ -802,6 +840,7 @@ export function Settings() {
                           }
                         }}
                         className="w-40 h-8"
+                        disabled={editingKeyword?.id === kw.id}
                       >
                         <option value="consolidate">Sub-Consolidate</option>
                         <option value="separate">Separate</option>
@@ -809,14 +848,48 @@ export function Settings() {
                       </Select>
                     </td>
                     <td className="px-3 py-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteKeyword(kw.id)}
-                        disabled={deleteKeyword.isPending}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      <div className="flex gap-1">
+                        {editingKeyword?.id === kw.id ? (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleSaveKeywordEdit}
+                              title="Save"
+                            >
+                              <Check className="h-4 w-4 text-green-600" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingKeyword(null)}
+                              title="Cancel"
+                            >
+                              <X className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingKeyword({ id: kw.id, keywords: kw.keywords })}
+                              title="Edit"
+                            >
+                              <Pencil className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteKeyword(kw.id)}
+                              disabled={deleteKeyword.isPending}
+                              title="Delete"
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

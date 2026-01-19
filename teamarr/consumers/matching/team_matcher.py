@@ -24,14 +24,21 @@ from teamarr.consumers.matching.result import (
 from teamarr.consumers.stream_match_cache import StreamMatchCache, event_to_cache_data
 from teamarr.core.types import Event, Team
 from teamarr.services.sports_data import SportsDataService
+from rapidfuzz import fuzz
+
 from teamarr.utilities.constants import TEAM_ALIASES
-from teamarr.utilities.fuzzy_match import get_matcher
+from teamarr.utilities.fuzzy_match import get_matcher, normalize_text
 
 logger = logging.getLogger(__name__)
 
-# Thresholds for whole-name matching
+# Thresholds for matching
 HIGH_CONFIDENCE_THRESHOLD = 85.0  # Accept without date validation
 ACCEPT_WITH_DATE_THRESHOLD = 75.0  # Accept only if date/time validates
+
+# Both-teams matching threshold - lower because min() of two scores is strict
+# e.g., "William Jessup" vs "Jessup Warriors" scores ~62%, combined with
+# "Sacred Heart" vs "Sacred Heart Pioneers" (~100%) gives min(62, 100) = 62
+BOTH_TEAMS_THRESHOLD = 60.0
 
 
 @dataclass
@@ -678,10 +685,11 @@ class TeamMatcher:
         event: Event,
         has_date_validation: bool = False,
     ) -> tuple[MatchMethod, float] | None:
-        """Match extracted team names against event using whole-name token_set_ratio.
+        """Match extracted team names against event teams.
 
-        Uses token_set_ratio for order-independent matching:
-        "Seattle U vs Portland" matches "Portland Pilots vs Seattle Redhawks"
+        When both teams are extracted, requires BOTH to match different event teams.
+        This prevents "Marist vs Sacred Heart" from matching "Jessup vs Sacred Heart"
+        just because one team name overlaps.
 
         Args:
             team1: First extracted team name (normalized)
@@ -692,27 +700,52 @@ class TeamMatcher:
         Returns:
             Tuple of (method, confidence) if matched, None otherwise
         """
-        # Build comparison strings from extracted teams (clean, no noise)
-        if team1 and team2:
-            stream_teams = f"{team1} vs {team2}"
-        elif team1:
-            stream_teams = team1
-        elif team2:
-            stream_teams = team2
-        else:
-            return None
-
-        # Build event display name for comparison
-        event_name = f"{event.home_team.name} vs {event.away_team.name}"
-
-        # Use whole-name token_set_ratio matching
-        result = self._fuzzy.match_event_name(stream_teams, event_name)
-
         # Apply threshold based on whether date validation is available
         threshold = ACCEPT_WITH_DATE_THRESHOLD if has_date_validation else HIGH_CONFIDENCE_THRESHOLD
 
-        if result.score >= threshold:
-            return (MatchMethod.FUZZY, result.score)
+        # Normalize event team names for comparison
+        home_normalized = normalize_text(event.home_team.name)
+        away_normalized = normalize_text(event.away_team.name)
+
+        if team1 and team2:
+            # BOTH teams extracted - require both to match different event teams
+            t1_norm = normalize_text(team1)
+            t2_norm = normalize_text(team2)
+
+            # Score each stream team against each event team
+            t1_vs_home = fuzz.token_set_ratio(t1_norm, home_normalized)
+            t1_vs_away = fuzz.token_set_ratio(t1_norm, away_normalized)
+            t2_vs_home = fuzz.token_set_ratio(t2_norm, home_normalized)
+            t2_vs_away = fuzz.token_set_ratio(t2_norm, away_normalized)
+
+            # Try both valid assignments (each stream team matches a different event team)
+            # Option 1: team1 → home, team2 → away
+            # Option 2: team1 → away, team2 → home
+            # Use min() to require BOTH teams to have good matches
+            option1_score = min(t1_vs_home, t2_vs_away)
+            option2_score = min(t1_vs_away, t2_vs_home)
+
+            best_score = max(option1_score, option2_score)
+
+            # Use dedicated threshold for both-teams matching (lower because min() is strict)
+            if best_score >= BOTH_TEAMS_THRESHOLD:
+                return (MatchMethod.FUZZY, best_score)
+            return None
+
+        elif team1 or team2:
+            # Only ONE team extracted - fall back to matching against full event name
+            # Use stricter threshold since we have less confidence
+            single_team = team1 or team2
+            single_norm = normalize_text(single_team)
+            event_name = f"{event.home_team.name} vs {event.away_team.name}"
+            event_norm = normalize_text(event_name)
+
+            score = fuzz.token_set_ratio(single_norm, event_norm)
+
+            # For single-team matches, always require high confidence
+            if score >= HIGH_CONFIDENCE_THRESHOLD:
+                return (MatchMethod.FUZZY, score)
+            return None
 
         return None
 

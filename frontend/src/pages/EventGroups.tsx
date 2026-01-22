@@ -54,7 +54,7 @@ import {
 } from "@/hooks/useGroups"
 import { useTemplates } from "@/hooks/useTemplates"
 import type { EventGroup, PreviewGroupResponse, TeamFilterEntry } from "@/api/types"
-import { getLeagues } from "@/api/teams"
+import { getLeagues, getSports } from "@/api/teams"
 import { TeamPicker } from "@/components/TeamPicker"
 import { LeaguePicker } from "@/components/LeaguePicker"
 import { ChannelProfileSelector } from "@/components/ChannelProfileSelector"
@@ -117,6 +117,8 @@ export function EventGroups() {
   const { data: templates } = useTemplates()
   const { data: leaguesResponse } = useQuery({ queryKey: ["leagues"], queryFn: () => getLeagues() })
   const cachedLeagues = leaguesResponse?.leagues
+  const { data: sportsResponse } = useQuery({ queryKey: ["sports"], queryFn: getSports, staleTime: 1000 * 60 * 60 })
+  const sportsMap = sportsResponse?.sports
   const { data: channelGroups } = useQuery({ queryKey: ["dispatcharr-channel-groups"], queryFn: fetchChannelGroups })
   const deleteMutation = useDeleteGroup()
   const toggleMutation = useToggleGroup()
@@ -226,14 +228,14 @@ export function EventGroups() {
   // Get unique sports from cached leagues (normalized, sorted)
   const aliasSports = useMemo(() => {
     if (!cachedLeagues) return []
-    return getUniqueSports(cachedLeagues)
-  }, [cachedLeagues])
+    return getUniqueSports(cachedLeagues, sportsMap)
+  }, [cachedLeagues, sportsMap])
 
   // Filter leagues by selected sport (import_enabled first, then alphabetical)
   const aliasFilteredLeagues = useMemo(() => {
     if (!aliasSport || !cachedLeagues) return []
-    return filterLeaguesBySport(cachedLeagues, aliasSport)
-  }, [cachedLeagues, aliasSport])
+    return filterLeaguesBySport(cachedLeagues, aliasSport, sportsMap)
+  }, [cachedLeagues, aliasSport, sportsMap])
 
   // Handle sport change in alias modal
   const handleAliasSportChange = (sport: string) => {

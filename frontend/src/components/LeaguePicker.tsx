@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn, getSportDisplayName, getLeagueDisplayName } from "@/lib/utils"
 import type { CachedLeague } from "@/api/teams"
-import { getLeagues } from "@/api/teams"
+import { getLeagues, getSports } from "@/api/teams"
 
 interface LeaguePickerProps {
   selectedLeagues: string[]
@@ -36,6 +36,14 @@ export function LeaguePicker({
     queryFn: () => getLeagues(),
   })
   const cachedLeagues = leaguesResponse?.leagues
+
+  // Fetch sport display names from database (single source of truth)
+  const { data: sportsResponse } = useQuery({
+    queryKey: ["sports"],
+    queryFn: getSports,
+    staleTime: 1000 * 60 * 60, // 1 hour - sports rarely change
+  })
+  const sportsMap = sportsResponse?.sports
 
   // Convert to Set for easier operations
   const selectedSet = useMemo(() => new Set(selectedLeagues), [selectedLeagues])
@@ -253,7 +261,7 @@ export function LeaguePicker({
                   />
                   <div className="flex-1">
                     <div className="font-medium text-sm">
-                      {getSportDisplayName(sport)}
+                      {getSportDisplayName(sport, sportsMap)}
                     </div>
                     <div className="text-xs text-muted-foreground">
                       All {leagues.length} leagues (EPL, La Liga, Bundesliga, Serie A, Ligue 1, MLS, Champions League, etc.)
@@ -280,7 +288,7 @@ export function LeaguePicker({
                       <ChevronRight className="h-4 w-4 text-muted-foreground" />
                     )}
                     <span className="font-medium text-sm">
-                      {getSportDisplayName(sport)} ({displayLeagues.length})
+                      {getSportDisplayName(sport, sportsMap)} ({displayLeagues.length})
                     </span>
                     {selectedCount > 0 && !isExpanded && (
                       <Badge variant="secondary" className="text-xs h-5">

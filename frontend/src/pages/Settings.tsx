@@ -56,7 +56,7 @@ import {
 import { TeamPicker } from "@/components/TeamPicker"
 import { SortPriorityManager } from "@/components/SortPriorityManager"
 import { StreamOrderingManager } from "@/components/StreamOrderingManager"
-import { getLeagues } from "@/api/teams"
+import { getLeagues, getSports } from "@/api/teams"
 import { downloadBackup, restoreBackup } from "@/api/backup"
 import { useQuery } from "@tanstack/react-query"
 import { useCacheStatus, useRefreshCache } from "@/hooks/useEPG"
@@ -172,6 +172,14 @@ export function Settings() {
     queryKey: ["cache", "leagues"],
     queryFn: () => getLeagues(),
   })
+
+  // Fetch sport display names from database (single source of truth)
+  const { data: sportsData } = useQuery({
+    queryKey: ["sports"],
+    queryFn: getSports,
+    staleTime: 1000 * 60 * 60, // 1 hour
+  })
+  const sportsMap = sportsData?.sports
 
   // Local form state
   const [dispatcharr, setDispatcharr] = useState<Partial<DispatcharrSettings>>({})
@@ -1654,7 +1662,7 @@ export function Settings() {
               Object.entries(durations).map(([sport, hours]) => (
                 <div key={sport} className="space-y-1">
                   <Label htmlFor={`duration-${sport}`}>
-                    {getSportDisplayName(sport)}
+                    {getSportDisplayName(sport, sportsMap)}
                   </Label>
                   <Input
                     id={`duration-${sport}`}

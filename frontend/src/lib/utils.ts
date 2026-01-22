@@ -25,6 +25,7 @@ export const SPORT_EMOJIS: Record<string, string> = {
   softball: "🥎",
   racing: "🏎️",
   wrestling: "🤼",
+  "australian-football": "🏉",
   default: "🏆",
 }
 
@@ -36,31 +37,30 @@ export function getSportEmoji(sport: string): string {
 }
 
 /**
- * Sport display names - handles special cases and formatting.
- * Used for consistent sport name formatting across the UI.
- */
-const SPORT_DISPLAY_NAMES: Record<string, string> = {
-  football: "Football (American)",
-  soccer: "Soccer",
-  basketball: "Basketball",
-  hockey: "Hockey",
-  baseball: "Baseball",
-  softball: "Softball",
-  mma: "MMA / Combat Sports",
-  boxing: "Boxing",
-  lacrosse: "Lacrosse",
-  cricket: "Cricket",
-  rugby: "Rugby",
-  volleyball: "Volleyball",
-}
-
-/**
  * Get display name for a sport.
- * Returns special-cased names or capitalizes the first letter.
+ * Uses provided sportsMap from API when available, otherwise falls back to title case.
+ *
+ * @param sport - Sport code (e.g., "football", "australian-football")
+ * @param sportsMap - Optional map of sport_code -> display_name from /cache/sports API
+ * @returns Display name (e.g., "Football", "Australian Football")
  */
-export function getSportDisplayName(sport: string): string {
+export function getSportDisplayName(
+  sport: string,
+  sportsMap?: Record<string, string>
+): string {
+  if (!sport) return ""
   const lower = sport.toLowerCase()
-  return SPORT_DISPLAY_NAMES[lower] ?? sport.charAt(0).toUpperCase() + sport.slice(1).replace(/_/g, ' ')
+
+  // Use API data if available
+  if (sportsMap?.[lower]) {
+    return sportsMap[lower]
+  }
+
+  // Fallback: title case with hyphen/underscore handling
+  return sport
+    .split(/[-_]/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ")
 }
 
 /**
@@ -81,12 +81,16 @@ export function getLeagueDisplayName(
 
 /**
  * Get unique sports from leagues, normalized and sorted alphabetically.
+ * @param sportsMap - Optional map from /cache/sports API for accurate display names
  */
-export function getUniqueSports(leagues: { sport: string | null }[]): string[] {
+export function getUniqueSports(
+  leagues: { sport: string | null }[],
+  sportsMap?: Record<string, string>
+): string[] {
   const sportSet = new Set<string>()
   for (const league of leagues) {
     if (league.sport) {
-      sportSet.add(getSportDisplayName(league.sport))
+      sportSet.add(getSportDisplayName(league.sport, sportsMap))
     }
   }
   return [...sportSet].sort()
@@ -112,14 +116,16 @@ export function sortLeaguesImportFirst<T extends { name: string; import_enabled?
 
 /**
  * Filter leagues by sport (case-insensitive) and sort with import_enabled first.
+ * @param sportsMap - Optional map from /cache/sports API for accurate display names
  */
 export function filterLeaguesBySport<T extends { sport: string | null; name: string; import_enabled?: boolean }>(
   leagues: T[],
-  sport: string
+  sport: string,
+  sportsMap?: Record<string, string>
 ): T[] {
-  const normalizedSport = getSportDisplayName(sport)
+  const normalizedSport = getSportDisplayName(sport, sportsMap)
   const filtered = leagues.filter(
-    (l) => l.sport && getSportDisplayName(l.sport) === normalizedSport
+    (l) => l.sport && getSportDisplayName(l.sport, sportsMap) === normalizedSport
   )
   return sortLeaguesImportFirst(filtered)
 }

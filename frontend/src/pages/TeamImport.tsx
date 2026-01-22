@@ -4,10 +4,10 @@ import { api } from "@/api/client"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
-import { cn, getLeagueDisplayName } from "@/lib/utils"
+import { cn, getLeagueDisplayName, getSportDisplayName } from "@/lib/utils"
 import { toast } from "sonner"
 import type { CachedLeague } from "@/api/teams"
-import { getLeagues } from "@/api/teams"
+import { getLeagues, getSports } from "@/api/teams"
 import { ChevronRight, Loader2, Check, Search, X } from "lucide-react"
 import { useThemedLogo } from "@/hooks/useTheme"
 
@@ -153,6 +153,14 @@ export function TeamImport() {
     queryFn: () => getLeagues(true).then(r => r.leagues),
   })
 
+  // Fetch sports for display names
+  const sportsQuery = useQuery({
+    queryKey: ["sports"],
+    queryFn: getSports,
+    staleTime: 1000 * 60 * 60, // 1 hour
+  })
+  const sportsMap = sportsQuery.data?.sports
+
   // Fetch teams for selected league
   const teamsQuery = useQuery({
     queryKey: ["cache-league-teams", selectedLeague?.slug],
@@ -191,7 +199,7 @@ export function TeamImport() {
     },
   })
 
-  // Group leagues by sport - only include leagues with import_enabled flag
+  // Group leagues by sport display name - only include leagues with import_enabled flag
   const leaguesBySport = useMemo(() => {
     if (!leaguesQuery.data) return {}
 
@@ -202,16 +210,16 @@ export function TeamImport() {
         return
       }
 
-      const sport = league.sport || "Other"
-      if (!grouped[sport]) grouped[sport] = []
-      grouped[sport].push(league)
+      const sportDisplayName = getSportDisplayName(league.sport, sportsMap) || "Other"
+      if (!grouped[sportDisplayName]) grouped[sportDisplayName] = []
+      grouped[sportDisplayName].push(league)
     })
     // Sort leagues within each sport - handle null names
     Object.values(grouped).forEach((leagues) => {
       leagues.sort((a, b) => getLeagueName(a).localeCompare(getLeagueName(b)))
     })
     return grouped
-  }, [leaguesQuery.data])
+  }, [leaguesQuery.data, sportsMap])
 
   // Get set of imported team+league keys (provider_team_id:sport:league format)
   const importedSet = useMemo(() => {

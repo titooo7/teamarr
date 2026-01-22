@@ -904,10 +904,11 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
 
     # Version 34: Add team_filter_enabled to settings
     # Master toggle to enable/disable team filtering without clearing selections
+    # NOTE: Always check - column was missing from schema.sql so existing DBs may lack it
+    _add_column_if_not_exists(
+        conn, "settings", "team_filter_enabled", "BOOLEAN DEFAULT 1"
+    )
     if current_version < 34:
-        _add_column_if_not_exists(
-            conn, "settings", "team_filter_enabled", "BOOLEAN DEFAULT 1"
-        )
         conn.execute("UPDATE settings SET schema_version = 34 WHERE id = 1")
         logger.info("[MIGRATE] Schema upgraded to version 34 (team_filter_enabled)")
         current_version = 34

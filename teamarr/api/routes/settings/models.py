@@ -3,7 +3,38 @@
 All request/response models for settings endpoints.
 """
 
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, Field, field_validator
+
+
+def _validate_profile_ids(v: Any) -> list[str | int] | None:
+    """Validate channel_profile_ids accepts mixed int/str types.
+
+    Pydantic v2 union validation can fail on mixed types when the first
+    element is an int (it infers list[int] and rejects subsequent strings).
+    This validator explicitly handles the mixed case.
+    """
+    if v is None:
+        return None
+    if not isinstance(v, list):
+        return v
+    result: list[str | int] = []
+    for item in v:
+        if isinstance(item, int):
+            result.append(item)
+        elif isinstance(item, str):
+            # Keep wildcards as strings, convert numeric strings to int
+            if item in ("{sport}", "{league}"):
+                result.append(item)
+            elif item.isdigit():
+                result.append(int(item))
+            else:
+                result.append(item)
+        else:
+            # Let Pydantic handle invalid types
+            result.append(item)
+    return result
 
 # =============================================================================
 # DISPATCHARR SETTINGS
@@ -19,7 +50,13 @@ class DispatcharrSettingsModel(BaseModel):
     password: str | None = None
     epg_id: int | None = None
     # None = all profiles, [] = no profiles, [1,2,...] = specific profiles
-    default_channel_profile_ids: list[int] | None = None
+    # Supports int IDs and string wildcards like "{sport}", "{league}"
+    default_channel_profile_ids: list[str | int] | None = None
+
+    @field_validator("default_channel_profile_ids", mode="before")
+    @classmethod
+    def validate_profile_ids(cls, v: Any) -> list[str | int] | None:
+        return _validate_profile_ids(v)
 
 
 class DispatcharrSettingsUpdate(BaseModel):
@@ -30,7 +67,12 @@ class DispatcharrSettingsUpdate(BaseModel):
     username: str | None = None
     password: str | None = None
     epg_id: int | None = None
-    default_channel_profile_ids: list[int] | None = None
+    default_channel_profile_ids: list[str | int] | None = None
+
+    @field_validator("default_channel_profile_ids", mode="before")
+    @classmethod
+    def validate_profile_ids(cls, v: Any) -> list[str | int] | None:
+        return _validate_profile_ids(v)
 
 
 class ConnectionTestRequest(BaseModel):

@@ -82,6 +82,7 @@ class MatchedStreamResult:
     parsed_team1: str | None = None
     parsed_team2: str | None = None
     detected_league: str | None = None
+    card_segment: str | None = None  # For UFC: "early_prelims", "prelims", "main_card"
 
     # Exception handling
     exception_keyword: str | None = None
@@ -591,6 +592,7 @@ class StreamMatcher:
             parsed_team1=classified.team1,
             parsed_team2=classified.team2,
             detected_league=classified.league_hint,
+            card_segment=classified.card_segment,  # UFC segment from stream name
         )
 
     def _get_dominant_event_type(self) -> str | None:

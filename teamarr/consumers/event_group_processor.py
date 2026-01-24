@@ -1612,6 +1612,7 @@ class EventGroupProcessor:
                         {
                             "stream": stream,
                             "event": result.event,
+                            "card_segment": result.card_segment,  # UFC segment from classifier
                         }
                     )
 

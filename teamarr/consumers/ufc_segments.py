@@ -213,8 +213,8 @@ def expand_ufc_segments(
             )
             continue
 
-        # Detect segment from stream name
-        segment = get_stream_segment(stream)
+        # Use pre-detected segment from classifier, or detect from stream name
+        segment = match.get("card_segment") or get_stream_segment(stream)
 
         # Default to main_card if no segment detected
         if not segment:

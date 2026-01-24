@@ -118,7 +118,11 @@ class StreamProcessResult:
 # =============================================================================
 
 
-def generate_event_tvg_id(event_id: str, provider: str = "espn") -> str:
+def generate_event_tvg_id(
+    event_id: str,
+    provider: str = "espn",
+    segment: str | None = None,
+) -> str:
     """Generate consistent tvg_id for an event.
 
     This tvg_id is used:
@@ -129,8 +133,12 @@ def generate_event_tvg_id(event_id: str, provider: str = "espn") -> str:
     Args:
         event_id: Provider event ID (e.g., "401547679")
         provider: Provider name (default: espn)
+        segment: Optional card segment for UFC/MMA (e.g., "prelims", "main_card")
 
     Returns:
-        Formatted tvg_id (e.g., "teamarr-event-401547679")
+        Formatted tvg_id (e.g., "teamarr-event-401547679" or
+        "teamarr-event-401547679-prelims" for segments)
     """
+    if segment:
+        return f"teamarr-event-{event_id}-{segment}"
     return f"teamarr-event-{event_id}"

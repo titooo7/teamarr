@@ -167,6 +167,8 @@ class EventEPGGenerator:
         channel_id: str,
         options: EventEPGOptions,
         stream_name: str | None = None,
+        segment_start: datetime | None = None,
+        segment_end: datetime | None = None,
     ) -> Programme:
         """Convert an Event to a Programme with template resolution.
 
@@ -176,9 +178,15 @@ class EventEPGGenerator:
             channel_id: XMLTV channel ID
             options: Generation options
             stream_name: Optional stream name (for UFC prelim/main detection)
+            segment_start: Explicit segment start time (for UFC segments)
+            segment_end: Explicit segment end time (for UFC segments)
         """
-        # UFC/MMA events have special time handling based on stream name
-        if event.sport == "mma" and stream_name and event.main_card_start:
+        # If explicit segment timing is provided, use it (Phase 2 UFC segments)
+        if segment_start and segment_end:
+            start = segment_start - timedelta(minutes=options.pregame_minutes)
+            stop = segment_end
+        # UFC/MMA events have special time handling based on stream name (legacy)
+        elif event.sport == "mma" and stream_name and event.main_card_start:
             start, stop = self._get_ufc_programme_times(
                 event, stream_name, options.sport_durations, options.default_duration_hours
             )
@@ -304,6 +312,10 @@ class EventEPGGenerator:
             matched_streams: List of dicts with 'stream' and 'event' keys.
                 stream: dict with 'id', 'name', 'tvg_id' etc
                 event: Event dataclass
+                segment: (optional) UFC card segment code
+                segment_display: (optional) segment display name
+                segment_start: (optional) segment start time
+                segment_end: (optional) segment end time
             options: Generation options
 
         Returns:
@@ -326,11 +338,17 @@ class EventEPGGenerator:
             if not event:
                 continue
 
+            # Extract segment info for UFC events
+            segment = match.get("segment")
+            segment_display = match.get("segment_display", "")
+            segment_start = match.get("segment_start")
+            segment_end = match.get("segment_end")
+
             # Generate consistent tvg_id matching what ChannelLifecycleService uses
             # This ensures XMLTV channel IDs match managed_channels.tvg_id for EPG association
             from teamarr.consumers.lifecycle import generate_event_tvg_id
 
-            tvg_id = generate_event_tvg_id(event.id, event.provider)
+            tvg_id = generate_event_tvg_id(event.id, event.provider, segment)
             stream_name = stream.get("name", "")
 
             # Build context using home team perspective
@@ -343,6 +361,10 @@ class EventEPGGenerator:
             # Generate channel name from template
             # Unknown variables stay literal (e.g., {bad_var}) so user can identify issues
             channel_name = self._resolver.resolve(options.template.channel_name_format, context)
+
+            # Add segment display name to channel name for UFC segments
+            if segment_display:
+                channel_name = f"{channel_name} - {segment_display}"
 
             # Use template-configured logo if set (no fallback to team logo)
             # Resolve template variables in logo URL (e.g., {league_id}, {home_team_pascal})
@@ -359,9 +381,16 @@ class EventEPGGenerator:
             )
             channels.append(channel_info)
 
-            # Generate programme - pass stream_name for UFC detection
+            # Generate programme
+            # If segment timing is provided, use it; otherwise fall back to stream_name detection
             programme = self._event_to_programme(
-                event, context, tvg_id, options, stream_name=stream_name
+                event,
+                context,
+                tvg_id,
+                options,
+                stream_name=stream_name,
+                segment_start=segment_start,
+                segment_end=segment_end,
             )
             programmes.append(programme)
 

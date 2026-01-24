@@ -1598,6 +1598,7 @@ class EventGroupProcessor:
         """Build list of matched streams with their events.
 
         Returns list of dicts with 'stream' and 'event' keys.
+        Also applies UFC segment expansion to create separate channels per segment.
         """
         # Build name -> stream lookup
         stream_lookup = {s["name"]: s for s in streams}
@@ -1614,7 +1615,28 @@ class EventGroupProcessor:
                         }
                     )
 
+        # Apply UFC segment expansion
+        # This splits UFC streams into separate segment channels
+        matched = self._expand_ufc_segments(matched)
+
         return matched
+
+    def _expand_ufc_segments(self, matched_streams: list[dict]) -> list[dict]:
+        """Expand UFC streams into segment-based channels.
+
+        Groups UFC streams by detected segment (early_prelims, prelims, main_card)
+        and creates separate channel entries for each. Non-UFC streams pass through.
+
+        Args:
+            matched_streams: List of {'stream': ..., 'event': ...} dicts
+
+        Returns:
+            Expanded list with UFC streams grouped by segment
+        """
+        from teamarr.consumers.ufc_segments import expand_ufc_segments
+
+        sport_durations = self._load_sport_durations_cached()
+        return expand_ufc_segments(matched_streams, sport_durations)
 
     def _enrich_matched_events(self, matched_streams: list[dict]) -> list[dict]:
         """Enrich all matched events with fresh status from provider.

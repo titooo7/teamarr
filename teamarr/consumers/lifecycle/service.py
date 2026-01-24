@@ -310,6 +310,13 @@ class ChannelLifecycleService:
                     stream_name = stream.get("name", "")
                     stream_id = stream.get("id")
 
+                    # UFC segment support: extract segment info if present
+                    segment = matched.get("segment")  # e.g., "prelims", "main_card"
+                    segment_display = matched.get("segment_display", "")
+                    # For channel lookup/creation, use segment-aware event_id
+                    # This treats each segment as a separate "sub-event"
+                    effective_event_id = f"{event_id}-{segment}" if segment else event_id
+
                     # Check if event should be excluded based on timing
                     logger.debug(
                         "[LIFECYCLE] Checking stream '%s' for event %s (status=%s)",
@@ -361,10 +368,11 @@ class ChannelLifecycleService:
                     effective_mode = keyword_behavior if keyword_behavior else duplicate_mode
 
                     # Find existing channel based on mode
+                    # Use effective_event_id for segment-aware lookup
                     existing = find_existing_channel(
                         conn=conn,
                         group_id=group_id,
-                        event_id=event_id,
+                        event_id=effective_event_id,
                         event_provider=event_provider,
                         exception_keyword=matched_keyword,
                         stream_id=stream_id,
@@ -459,6 +467,8 @@ class ChannelLifecycleService:
                         matched_keyword=matched_keyword,
                         channel_group_id=resolved_channel_group_id,
                         channel_profile_ids=resolved_channel_profile_ids,
+                        segment=segment,
+                        segment_display=segment_display,
                     )
 
                     if channel_result.success:
@@ -867,8 +877,15 @@ class ChannelLifecycleService:
         matched_keyword: str | None,
         channel_group_id: int | None,
         channel_profile_ids: list[int],
+        segment: str | None = None,
+        segment_display: str = "",
     ) -> ChannelCreationResult:
-        """Create a new channel in DB and Dispatcharr."""
+        """Create a new channel in DB and Dispatcharr.
+
+        Args:
+            segment: UFC card segment code (e.g., "prelims", "main_card")
+            segment_display: Display name for segment (e.g., "Prelims")
+        """
         from teamarr.database.channels import (
             add_stream_to_channel,
             create_managed_channel,
@@ -880,11 +897,16 @@ class ChannelLifecycleService:
         stream_id = stream.get("id")
         group_id = group_config.get("id")
 
-        # Generate tvg_id
-        tvg_id = generate_event_tvg_id(event_id, event_provider)
+        # For segments, use segment-aware event_id for DB storage
+        effective_event_id = f"{event_id}-{segment}" if segment else event_id
 
-        # Generate channel name
+        # Generate tvg_id with segment suffix
+        tvg_id = generate_event_tvg_id(event_id, event_provider, segment)
+
+        # Generate channel name, appending segment display if present
         channel_name = self._generate_channel_name(event, template, matched_keyword)
+        if segment_display:
+            channel_name = f"{channel_name} - {segment_display}"
 
         # Get channel number - use group's start number if configured
         group_start_number = group_config.get("channel_start_number")
@@ -957,7 +979,7 @@ class ChannelLifecycleService:
             managed_channel_id = create_managed_channel(
                 conn=conn,
                 event_epg_group_id=group_id,
-                event_id=event_id,
+                event_id=effective_event_id,  # Segment-aware event ID for UFC segments
                 event_provider=event_provider,
                 tvg_id=tvg_id,
                 channel_name=channel_name,

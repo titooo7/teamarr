@@ -1130,9 +1130,9 @@ class TeamMatcher:
             if isinstance(start_time, str):
                 start_time = datetime.fromisoformat(start_time)
 
-            # Reconstruct teams
-            home_data = cached_data.get("home_team", {})
-            away_data = cached_data.get("away_team", {})
+            # Reconstruct teams (use `or {}` to handle explicit None values)
+            home_data = cached_data.get("home_team") or {}
+            away_data = cached_data.get("away_team") or {}
 
             home_team = Team(
                 id=home_data.get("id", ""),
@@ -1160,7 +1160,7 @@ class TeamMatcher:
 
             from teamarr.core.types import EventStatus
 
-            status_data = cached_data.get("status", {})
+            status_data = cached_data.get("status") or {}
             status = EventStatus(
                 state=status_data.get("state", "scheduled"),
                 detail=status_data.get("detail"),
@@ -1195,7 +1195,8 @@ class TeamMatcher:
                     venue = venue_data  # Already a Venue
 
             # Reconstruct segment_times for UFC events
-            segment_times_data = cached_data.get("segment_times", {})
+            # Use `or {}` to handle both missing key AND explicit None value
+            segment_times_data = cached_data.get("segment_times") or {}
             segment_times = {}
             for seg_name, seg_time in segment_times_data.items():
                 if isinstance(seg_time, str):

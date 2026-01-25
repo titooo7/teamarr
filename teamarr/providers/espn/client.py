@@ -16,8 +16,7 @@ logger = logging.getLogger(__name__)
 ESPN_BASE_URL = "https://site.api.espn.com/apis/site/v2/sports"
 ESPN_CORE_URL = "http://sports.core.api.espn.com/v2/sports"
 
-# UFC uses different API endpoints
-ESPN_UFC_EVENTS_URL = "https://api-app.espn.com/v1/sports/mma/ufc/events"
+# UFC athlete endpoint (for fighter profiles)
 ESPN_UFC_ATHLETE_URL = "https://sports.core.api.espn.com/v2/sports/mma/leagues/ufc/athletes"
 
 COLLEGE_SCOREBOARD_GROUPS = {
@@ -281,17 +280,6 @@ class ESPNClient:
         return self._request(url, {"limit": 1000})
 
     # UFC-specific endpoints
-
-    def get_ufc_events(self) -> dict | None:
-        """Fetch all UFC events from the app API.
-
-        NOTE: This endpoint returns times 3 hours late. Use get_ufc_scoreboard()
-        for correct times on upcoming events.
-
-        Returns:
-            Raw ESPN response with events list or None on error
-        """
-        return self._request(ESPN_UFC_EVENTS_URL)
 
     def get_ufc_scoreboard(self) -> dict | None:
         """Fetch UFC scoreboard with correct bout times.

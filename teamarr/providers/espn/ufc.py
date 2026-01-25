@@ -1,13 +1,12 @@
 """UFC event parsing for ESPN provider.
 
-Extracted as a mixin to keep provider.py focused on core sports.
+Pure parsing layer - converts raw ESPN API responses into Event objects.
+No API calls, no date filtering - that's the provider's responsibility.
 """
 
 import logging
-from datetime import date
 
 from teamarr.core import Event, EventStatus, Team
-from teamarr.utilities.tz import to_user_tz
 
 logger = logging.getLogger(__name__)
 
@@ -15,53 +14,32 @@ logger = logging.getLogger(__name__)
 class UFCParserMixin:
     """Mixin providing UFC-specific parsing methods.
 
+    Pure parsing only - no API calls or business logic.
+
     Requires:
-        - self._client: ESPNClient instance
         - self.name: Provider name ('espn')
         - self._parse_datetime(date_str): Parse datetime from string
     """
 
-    def _get_ufc_events(self, target_date: date) -> list[Event]:
-        """Fetch and parse UFC events for a specific date.
+    def _parse_ufc_events(self, data: dict) -> list[Event]:
+        """Parse UFC scoreboard response into Event objects.
 
-        Uses scoreboard endpoint (correct times) for current/upcoming events.
-        Falls back to app API for events not on scoreboard.
+        Pure parsing - no filtering, no API calls.
+
+        Args:
+            data: Raw ESPN scoreboard response
+
+        Returns:
+            List of parsed Event objects
         """
+        if not data:
+            return []
+
         events = []
-
-        # Try scoreboard first - has correct segment times
-        scoreboard_data = self._client.get_ufc_scoreboard()
-        if scoreboard_data:
-            scoreboard_events = scoreboard_data.get("events", [])
-            for event_data in scoreboard_events:
-                event = self._parse_ufc_event(event_data)
-                if event:
-                    local_date = to_user_tz(event.start_time).date()
-                    if local_date == target_date:
-                        events.append(event)
-                        logger.debug(
-                            "[ESPN_UFC] Using scoreboard data for %s (correct times)",
-                            event.name,
-                        )
-
-        # If no events from scoreboard, try app API (times may be 3h late)
-        if not events:
-            data = self._client.get_ufc_events()
-            if data:
-                try:
-                    ufc_events = data["sports"][0]["leagues"][0]["events"]
-                    for event_data in ufc_events:
-                        event = self._parse_ufc_event(event_data)
-                        if event:
-                            local_date = to_user_tz(event.start_time).date()
-                            if local_date == target_date:
-                                events.append(event)
-                                logger.warning(
-                                    "[ESPN_UFC] Using app API for %s (times may be inaccurate)",
-                                    event.name,
-                                )
-                except (KeyError, IndexError):
-                    logger.warning("[ESPN_UFC] Unexpected events response structure")
+        for event_data in data.get("events", []):
+            event = self._parse_ufc_event(event_data)
+            if event:
+                events.append(event)
 
         return events
 

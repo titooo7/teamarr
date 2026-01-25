@@ -20,6 +20,7 @@ from teamarr.providers.espn.client import ESPN_TEAM_ID_CORRECTIONS, ESPNClient
 from teamarr.providers.espn.constants import STATUS_MAP, TOURNAMENT_SPORTS
 from teamarr.providers.espn.tournament import TournamentParserMixin
 from teamarr.providers.espn.ufc import UFCParserMixin
+from teamarr.utilities.tz import to_user_tz
 import logging
 
 logger = logging.getLogger(__name__)
@@ -94,9 +95,19 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
         return self._get_display_sport(league)
 
     def get_events(self, league: str, target_date: date) -> list[Event]:
-        # UFC uses different API and parsing
+        # UFC uses different API endpoint
         if league == "ufc":
-            return self._get_ufc_events(target_date)
+            # Provider handles: endpoint selection, parsing, date filtering
+            data = self._client.get_ufc_scoreboard()
+            if not data:
+                return []
+            # Mixin handles: pure parsing only
+            events = self._parse_ufc_events(data)
+            # Provider handles: date filtering
+            return [
+                e for e in events
+                if to_user_tz(e.start_time).date() == target_date
+            ]
 
         # Get sport/league from database config
         sport_league = self._get_sport_league_from_db(league)

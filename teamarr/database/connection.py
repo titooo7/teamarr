@@ -963,24 +963,153 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("[MIGRATE] Schema upgraded to version 38 (separate mode unique constraint fix)")
         current_version = 38
 
-    # Version 39: Convert channel_group_mode enum to pattern format
-    # Enables custom patterns like '{sport} | {league}' instead of just 'sport' or 'league'
+    # Version 39: (BROKEN - did not remove CHECK constraint)
+    # Skipped - v40 handles this properly
     if current_version < 39:
-        # Convert existing 'sport' mode to '{sport}' pattern
+        conn.execute("UPDATE settings SET schema_version = 39 WHERE id = 1")
+        current_version = 39
+
+    # Version 40: Convert channel_group_mode enum to pattern format (fixes v39)
+    # Enables custom patterns like '{sport} | {league}' instead of just 'sport' or 'league'
+    # Must recreate table to remove CHECK constraint
+    if current_version < 40:
+        _migrate_channel_group_mode_to_patterns(conn)
+        conn.execute("UPDATE settings SET schema_version = 40 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 40 (channel_group_mode patterns)")
+        current_version = 40
+
+
+def _migrate_channel_group_mode_to_patterns(conn: sqlite3.Connection) -> None:
+    """Convert channel_group_mode from enum to pattern strings.
+
+    This migration:
+    1. Recreates event_epg_groups table WITHOUT the CHECK constraint
+    2. Converts 'sport' -> '{sport}' and 'league' -> '{league}'
+    """
+    # Check if table exists
+    cursor = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='event_epg_groups'"
+    )
+    if not cursor.fetchone():
+        return  # Fresh database, schema.sql will create correct table
+
+    logger.info("[MIGRATE] Converting channel_group_mode to pattern format")
+
+    conn.execute("PRAGMA foreign_keys = OFF")
+
+    try:
+        # Get column info to preserve structure
+        cursor = conn.execute("PRAGMA table_info(event_epg_groups)")
+        columns = [row["name"] for row in cursor.fetchall()]
+
+        if "channel_group_mode" not in columns:
+            logger.debug("[MIGRATE] channel_group_mode column not found, skipping")
+            return
+
+        # Build column list for copy (all columns)
+        col_list = ", ".join(columns)
+
+        # Create new table without CHECK constraint on channel_group_mode
+        # Copy the exact schema but remove the CHECK constraint
         conn.execute("""
-            UPDATE event_epg_groups
+            CREATE TABLE event_epg_groups_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                display_name TEXT,
+                leagues TEXT NOT NULL DEFAULT '[]',
+                group_mode TEXT DEFAULT 'single',
+                parent_group_id INTEGER REFERENCES event_epg_groups(id) ON DELETE SET NULL,
+                template_id INTEGER REFERENCES templates(id) ON DELETE SET NULL,
+                channel_start_number INTEGER,
+                channel_group_id INTEGER,
+                channel_group_mode TEXT DEFAULT 'static',
+                channel_profile_ids TEXT,
+                duplicate_event_handling TEXT DEFAULT 'consolidate'
+                    CHECK(duplicate_event_handling IN ('consolidate', 'separate', 'ignore')),
+                channel_assignment_mode TEXT DEFAULT 'one_per_event'
+                    CHECK(channel_assignment_mode IN ('one_per_event', 'one_per_stream')),
+                sort_order INTEGER DEFAULT 0,
+                total_stream_count INTEGER DEFAULT 0,
+                m3u_group_id INTEGER,
+                m3u_group_name TEXT,
+                m3u_account_id INTEGER,
+                m3u_account_name TEXT,
+                stream_include_regex TEXT,
+                stream_include_regex_enabled BOOLEAN DEFAULT 0,
+                stream_exclude_regex TEXT,
+                stream_exclude_regex_enabled BOOLEAN DEFAULT 0,
+                custom_regex_teams TEXT,
+                custom_regex_teams_enabled BOOLEAN DEFAULT 0,
+                custom_regex_date TEXT,
+                custom_regex_date_enabled BOOLEAN DEFAULT 0,
+                custom_regex_time TEXT,
+                custom_regex_time_enabled BOOLEAN DEFAULT 0,
+                custom_regex_league TEXT,
+                custom_regex_league_enabled BOOLEAN DEFAULT 0,
+                skip_builtin_filter BOOLEAN DEFAULT 0,
+                include_teams TEXT,
+                exclude_teams TEXT,
+                team_filter_mode TEXT DEFAULT 'include' CHECK(team_filter_mode IN ('include', 'exclude')),
+                team_filter_enabled BOOLEAN DEFAULT 0,
+                last_refresh TIMESTAMP,
+                stream_count INTEGER DEFAULT 0,
+                matched_count INTEGER DEFAULT 0,
+                filtered_include_regex INTEGER DEFAULT 0,
+                filtered_exclude_regex INTEGER DEFAULT 0,
+                filtered_not_event INTEGER DEFAULT 0,
+                filtered_team INTEGER DEFAULT 0,
+                failed_count INTEGER DEFAULT 0,
+                streams_excluded INTEGER DEFAULT 0,
+                excluded_event_final INTEGER DEFAULT 0,
+                excluded_event_past INTEGER DEFAULT 0,
+                excluded_before_window INTEGER DEFAULT 0,
+                excluded_league_not_included INTEGER DEFAULT 0,
+                filtered_stale INTEGER DEFAULT 0,
+                channel_sort_order TEXT DEFAULT 'start_time',
+                overlap_handling TEXT DEFAULT 'allow',
+                enabled BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Copy data with conversion
+        conn.execute(f"""
+            INSERT INTO event_epg_groups_new ({col_list})
+            SELECT {col_list} FROM event_epg_groups
+        """)
+
+        # Convert enum values to patterns
+        conn.execute("""
+            UPDATE event_epg_groups_new
             SET channel_group_mode = '{sport}'
             WHERE channel_group_mode = 'sport'
         """)
-        # Convert existing 'league' mode to '{league}' pattern
         conn.execute("""
-            UPDATE event_epg_groups
+            UPDATE event_epg_groups_new
             SET channel_group_mode = '{league}'
             WHERE channel_group_mode = 'league'
         """)
-        conn.execute("UPDATE settings SET schema_version = 39 WHERE id = 1")
-        logger.info("[MIGRATE] Schema upgraded to version 39 (channel_group_mode patterns)")
-        current_version = 39
+
+        # Drop old table and rename
+        conn.execute("DROP TABLE event_epg_groups")
+        conn.execute("ALTER TABLE event_epg_groups_new RENAME TO event_epg_groups")
+
+        # Recreate indexes
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_event_epg_groups_parent
+            ON event_epg_groups(parent_group_id)
+        """)
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_event_epg_groups_name_account
+            ON event_epg_groups(name, COALESCE(m3u_account_id, -1))
+        """)
+
+        conn.commit()
+        logger.info("[MIGRATE] Successfully converted channel_group_mode to patterns")
+
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
 
 
 def _migrate_to_v35(conn: sqlite3.Connection) -> None:

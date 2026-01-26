@@ -6,4 +6,4 @@ has_children: true
 
 # User Guide
 
-Step-by-step guides for using Teamarr V2.
+Step-by-step guides for using Teamarr.

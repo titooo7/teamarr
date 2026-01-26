@@ -994,6 +994,49 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("[MIGRATE] Schema upgraded to version 42 (enum value fixes)")
         current_version = 42
 
+    # Version 43: Clean up erroneous columns from buggy v40 migration
+    # - team_filter_enabled was added to event_epg_groups but should only be in settings
+    # - stream_profile_id may still exist on SQLite < 3.35 (v26 DROP failed)
+    if current_version < 43:
+        _migrate_cleanup_legacy_columns(conn)
+        conn.execute("UPDATE settings SET schema_version = 43 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 43 (legacy column cleanup)")
+        current_version = 43
+
+
+def _migrate_cleanup_legacy_columns(conn: sqlite3.Connection) -> None:
+    """Clean up erroneous columns from buggy v40 migration.
+
+    Removes:
+    - team_filter_enabled from event_epg_groups (erroneously added, belongs in settings)
+    - stream_profile_id from event_epg_groups/managed_channels (v26 DROP may have failed)
+
+    On SQLite < 3.35, DROP COLUMN is not supported - columns are left but unused.
+    """
+    tables_and_columns = [
+        ("event_epg_groups", "team_filter_enabled"),
+        ("event_epg_groups", "stream_profile_id"),
+        ("managed_channels", "stream_profile_id"),
+    ]
+
+    for table, column in tables_and_columns:
+        # Check if column exists
+        cursor = conn.execute(f"PRAGMA table_info({table})")
+        columns = {row["name"] for row in cursor.fetchall()}
+
+        if column not in columns:
+            continue
+
+        try:
+            conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+            logger.info("[MIGRATE] Dropped %s.%s", table, column)
+        except sqlite3.OperationalError as e:
+            # SQLite < 3.35 doesn't support DROP COLUMN
+            logger.debug(
+                "[MIGRATE] Could not drop %s.%s (SQLite < 3.35): %s",
+                table, column, e
+            )
+
 
 def _migrate_fix_invalid_enum_values(conn: sqlite3.Connection) -> None:
     """Fix invalid enum values in event_epg_groups.
@@ -1083,6 +1126,10 @@ def _migrate_channel_group_mode_to_patterns(conn: sqlite3.Connection) -> None:
     2. Converts old enum values in the source table FIRST
     3. Recreates event_epg_groups table WITHOUT the CHECK constraint
     4. Copies data (now with valid values for CHECK constraints)
+
+    IMPORTANT: Handles legacy columns that may exist on SQLite < 3.35:
+    - stream_profile_id: v26 tried to DROP this but failed on older SQLite
+    - The new table doesn't have this column, so we filter it out during copy
     """
     # Check if table exists
     cursor = conn.execute(
@@ -1101,11 +1148,21 @@ def _migrate_channel_group_mode_to_patterns(conn: sqlite3.Connection) -> None:
     try:
         # Get column info to preserve structure
         cursor = conn.execute("PRAGMA table_info(event_epg_groups)")
-        columns = [row["name"] for row in cursor.fetchall()]
+        all_columns = [row["name"] for row in cursor.fetchall()]
 
-        if "channel_group_mode" not in columns:
+        if "channel_group_mode" not in all_columns:
             logger.debug("[MIGRATE] channel_group_mode column not found, skipping")
             return
+
+        # Filter out columns that don't exist in the new table structure
+        # stream_profile_id: v26 tried to DROP but may have failed on SQLite < 3.35
+        # team_filter_enabled: was erroneously added in earlier v40, now removed
+        legacy_columns = {"stream_profile_id", "team_filter_enabled"}
+        columns = [c for c in all_columns if c not in legacy_columns]
+
+        if len(columns) < len(all_columns):
+            removed = set(all_columns) - set(columns)
+            logger.info("[MIGRATE] Filtering out legacy columns: %s", removed)
 
         # CRITICAL: Convert old values in source table BEFORE copying to new table
         # This prevents CHECK constraint violations during INSERT
@@ -1198,7 +1255,6 @@ def _migrate_channel_group_mode_to_patterns(conn: sqlite3.Connection) -> None:
                 include_teams TEXT,
                 exclude_teams TEXT,
                 team_filter_mode TEXT DEFAULT 'include' CHECK(team_filter_mode IN ('include', 'exclude')),
-                team_filter_enabled BOOLEAN DEFAULT 0,
                 last_refresh TIMESTAMP,
                 stream_count INTEGER DEFAULT 0,
                 matched_count INTEGER DEFAULT 0,

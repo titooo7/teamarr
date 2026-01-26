@@ -286,7 +286,7 @@ CREATE TABLE IF NOT EXISTS settings (
     prepend_postponed_label BOOLEAN DEFAULT 1,
 
     -- Schema Version
-    schema_version INTEGER DEFAULT 42
+    schema_version INTEGER DEFAULT 43
 );
 
 -- Insert default settings

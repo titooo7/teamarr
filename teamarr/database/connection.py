@@ -963,6 +963,25 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("[MIGRATE] Schema upgraded to version 38 (separate mode unique constraint fix)")
         current_version = 38
 
+    # Version 39: Convert channel_group_mode enum to pattern format
+    # Enables custom patterns like '{sport} | {league}' instead of just 'sport' or 'league'
+    if current_version < 39:
+        # Convert existing 'sport' mode to '{sport}' pattern
+        conn.execute("""
+            UPDATE event_epg_groups
+            SET channel_group_mode = '{sport}'
+            WHERE channel_group_mode = 'sport'
+        """)
+        # Convert existing 'league' mode to '{league}' pattern
+        conn.execute("""
+            UPDATE event_epg_groups
+            SET channel_group_mode = '{league}'
+            WHERE channel_group_mode = 'league'
+        """)
+        conn.execute("UPDATE settings SET schema_version = 39 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 39 (channel_group_mode patterns)")
+        current_version = 39
+
 
 def _migrate_to_v35(conn: sqlite3.Connection) -> None:
     """Restructure exception keywords table: keywords -> match_terms, display_name -> label.

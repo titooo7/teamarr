@@ -340,9 +340,11 @@ class EventGroupProcessor:
         self._epg_generator = EventEPGGenerator(self._service)
 
         # Shared events cache for cross-group reuse in a single generation run
-        # Keys are "league:date" strings, values are lists of events
+        # Keys are "league:date" strings, values are (events, was_cache_only) tuples
+        # was_cache_only=True means the result came from a cache-only lookup (no API call attempted)
         # This avoids redundant API/cache lookups when multiple groups search the same leagues
-        self._shared_events: dict[str, list[Event]] = {}
+        # while ensuring groups that need fresh API data can still get it
+        self._shared_events: dict[str, tuple[list[Event], bool]] = {}
 
     def process_group(
         self,

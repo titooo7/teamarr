@@ -29,19 +29,6 @@ For team-based channels with persistent channel assignments.
 
 [Download Team Template](../../assets/templates/team-template-jesmannstlpanda.json){: .btn .btn-primary }
 
-<details>
-<summary>Preview</summary>
-
-**Title**: `{gracenote_category}`
-
-**Pregame**: "Coming up: {gracenote_category} starting at {game_time.next}"
-
-**Postgame**: "{gracenote_category}: {team_name} Postgame Recap"
-
-**Idle**: "No {team_name} Game Today" with next game info
-
-</details>
-
 #### Event Template
 
 For event-based channels that appear only during games.
@@ -52,19 +39,6 @@ For event-based channels that appear only during games.
 - Gracenote-style categories
 
 [Download Event Template](../../assets/templates/event-template-jesmannstlpanda.json){: .btn .btn-primary }
-
-<details>
-<summary>Preview</summary>
-
-**Title**: `{gracenote_category}`
-
-**Pregame**: "Coming up: {gracenote_category} starting at {game_time}"
-
-**Postgame**: "{gracenote_category}: Postgame Recap"
-
-**Channel Logo**: Dynamic with broadcast network badge
-
-</details>
 
 ---
 

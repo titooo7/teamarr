@@ -28,9 +28,10 @@ For full documentation, visit: [game-thumbs-docs.swvn.io](https://game-thumbs-do
 
 If you don't want to self-host, there are community-hosted instances available:
 
-| Host | URL | Notes |
-|------|-----|-------|
-| **swvn.io** | `https://sportslogos.jesmann.com` | Primary hosted instance |
+| URL | User |
+|-----|------|
+| `https://game-thumbs.swvn.io` | @sethwv |
+| `https://sportslogos.jesmann.com` | @jesmannstlPanda |
 
 {: .important }
 Hosted instances are provided as a community service and may have usage limits or availability constraints.

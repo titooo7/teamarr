@@ -10,7 +10,7 @@ nav_order: 3
 Community-contributed templates to get you started.
 
 {: .note }
-These templates use [game-thumbs](../settings/advanced#game-thumbs) for dynamic program artwork. Replace `<game-thumbs-base-url>` with your game-thumbs instance URL or a hosted version.
+These templates use [game-thumbs](../game-thumbs) for dynamic program artwork. Replace `<game-thumbs-base-url>` with your game-thumbs instance URL or a hosted version.
 
 ## Community Templates
 
@@ -47,7 +47,7 @@ For event-based channels that appear only during games.
 1. Download the template JSON file
 2. Open the file and replace `<game-thumbs-base-url>` with your game-thumbs URL:
    - Self-hosted: `http://your-server:port`
-   - Hosted options: See [game-thumbs documentation](game-thumbs#hosted-options)
+   - Hosted options: See [Game Thumbs](../game-thumbs#hosted-instances)
 3. In Teamarr, go to **Templates** and click **Import**
 4. Select your modified JSON file
 

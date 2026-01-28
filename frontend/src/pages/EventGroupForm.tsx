@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
-import { ArrowLeft, Loader2, Save, ChevronRight, ChevronDown, X, Plus, Check } from "lucide-react"
+import { ArrowLeft, Loader2, Save, ChevronRight, ChevronDown, X, Plus, Check, FlaskConical } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -24,6 +24,7 @@ import { getLeagues } from "@/api/teams"
 import { TeamPicker } from "@/components/TeamPicker"
 import { LeaguePicker } from "@/components/LeaguePicker"
 import { ChannelProfileSelector } from "@/components/ChannelProfileSelector"
+import { TestPatternsModal, type PatternState } from "@/components/TestPatternsModal"
 
 // Group mode
 type GroupMode = "single" | "multi" | null
@@ -140,6 +141,9 @@ export function EventGroupForm() {
   const [regexExpanded, setRegexExpanded] = useState(false)
   const [teamFilterExpanded, setTeamFilterExpanded] = useState(false)
 
+  // Test Patterns modal
+  const [testPatternsOpen, setTestPatternsOpen] = useState(false)
+
   // Channel profile default state - true = use global default, false = custom selection
   const [useDefaultProfiles, setUseDefaultProfiles] = useState(true)
 
@@ -149,6 +153,28 @@ export function EventGroupForm() {
   // Mutations
   const createMutation = useCreateGroup()
   const updateMutation = useUpdateGroup()
+
+  // Test Patterns modal — bidirectional sync with form
+  const currentPatterns = useMemo<Partial<PatternState>>(() => ({
+    skip_builtin_filter: formData.skip_builtin_filter ?? false,
+    stream_include_regex: formData.stream_include_regex ?? null,
+    stream_include_regex_enabled: formData.stream_include_regex_enabled ?? false,
+    stream_exclude_regex: formData.stream_exclude_regex ?? null,
+    stream_exclude_regex_enabled: formData.stream_exclude_regex_enabled ?? false,
+    custom_regex_teams: formData.custom_regex_teams ?? null,
+    custom_regex_teams_enabled: formData.custom_regex_teams_enabled ?? false,
+    custom_regex_date: formData.custom_regex_date ?? null,
+    custom_regex_date_enabled: formData.custom_regex_date_enabled ?? false,
+    custom_regex_time: formData.custom_regex_time ?? null,
+    custom_regex_time_enabled: formData.custom_regex_time_enabled ?? false,
+    custom_regex_league: formData.custom_regex_league ?? null,
+    custom_regex_league_enabled: formData.custom_regex_league_enabled ?? false,
+  }), [formData])
+
+  const handlePatternsApply = useCallback((patterns: PatternState) => {
+    setFormData((prev) => ({ ...prev, ...patterns }))
+    toast.success("Patterns applied to form")
+  }, [])
 
   // Populate form when editing
   useEffect(() => {
@@ -1230,13 +1256,15 @@ export function EventGroupForm() {
                     </p>
                   </div>
 
-                  {/* Test Patterns Button - only in edit mode */}
+                  {/* Test Patterns Button - only in edit mode (needs group ID to load streams) */}
                   {isEdit && (
                     <Button
                       type="button"
                       variant="secondary"
-                      onClick={() => toast.info("Test Patterns feature coming soon")}
+                      onClick={() => setTestPatternsOpen(true)}
+                      className="gap-2"
                     >
+                      <FlaskConical className="h-4 w-4" />
                       Test Patterns
                     </Button>
                   )}
@@ -1467,6 +1495,15 @@ export function EventGroupForm() {
           </div>
         </div>
       )}
+
+      {/* Test Patterns Modal — bidirectional sync with form regex fields */}
+      <TestPatternsModal
+        open={testPatternsOpen}
+        onOpenChange={setTestPatternsOpen}
+        groupId={isEdit ? Number(groupId) : null}
+        initialPatterns={currentPatterns}
+        onApply={handlePatternsApply}
+      />
     </div>
   )
 }

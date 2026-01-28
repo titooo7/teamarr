@@ -33,9 +33,9 @@ export function escapeRegex(str: string): string {
 function generalizeForField(
   field: TextSelection["field"],
   text: string,
-  streamName: string,
-  beforeText: string,
-  afterText: string
+  _streamName: string,
+  _beforeText: string,
+  _afterText: string
 ): string {
   switch (field) {
     case "team1":

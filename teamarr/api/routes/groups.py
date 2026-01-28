@@ -1467,6 +1467,74 @@ def preview_group(group_id: int):
     )
 
 
+class RawStreamModel(BaseModel):
+    """Minimal stream info for regex testing."""
+    stream_id: int
+    stream_name: str
+
+
+class RawStreamsResponse(BaseModel):
+    """Response for raw streams endpoint."""
+    group_id: int
+    group_name: str
+    total: int
+    streams: list[RawStreamModel]
+
+
+@router.get("/{group_id}/streams/raw", response_model=RawStreamsResponse)
+def get_raw_streams(group_id: int):
+    """Get raw stream names for a group without filtering or matching.
+
+    Returns minimal stream data (id + name) for regex testing in the UI.
+    Fetches directly from Dispatcharr without running the matching pipeline.
+    """
+    from teamarr.database.groups import get_group
+    from teamarr.dispatcharr import get_factory
+
+    with get_db() as conn:
+        group = get_group(conn, group_id)
+        if not group:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Group {group_id} not found",
+            )
+
+    factory = get_factory(get_db)
+    if not factory:
+        return RawStreamsResponse(
+            group_id=group_id,
+            group_name=group.name,
+            total=0,
+            streams=[],
+        )
+
+    conn = factory.get_connection()
+    if not conn or not conn.m3u:
+        return RawStreamsResponse(
+            group_id=group_id,
+            group_name=group.name,
+            total=0,
+            streams=[],
+        )
+
+    raw = conn.m3u.list_streams(
+        group_id=group.m3u_group_id,
+        account_id=group.m3u_account_id,
+    )
+
+    streams = [
+        RawStreamModel(stream_id=s.id, stream_name=s.name)
+        for s in raw
+    ]
+
+    return RawStreamsResponse(
+        group_id=group_id,
+        group_name=group.name,
+        total=len(streams),
+        streams=streams,
+    )
+
+
 @router.post("/{group_id}/process", response_model=ProcessGroupResponse)
 def process_group(group_id: int):
     """Process an event EPG group.

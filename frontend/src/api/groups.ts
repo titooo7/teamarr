@@ -75,6 +75,24 @@ export async function previewGroup(
   return api.get(`/groups/${groupId}/preview`)
 }
 
+export interface RawStream {
+  stream_id: number
+  stream_name: string
+}
+
+export interface RawStreamsResponse {
+  group_id: number
+  group_name: string
+  total: number
+  streams: RawStream[]
+}
+
+export async function getRawStreams(
+  groupId: number
+): Promise<RawStreamsResponse> {
+  return api.get(`/groups/${groupId}/streams/raw`)
+}
+
 export async function reorderGroups(
   groups: { group_id: number; sort_order: number }[]
 ): Promise<{ success: boolean; updated_count: number; message: string }> {

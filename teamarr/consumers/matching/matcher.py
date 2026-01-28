@@ -167,7 +167,7 @@ class StreamMatcher:
         custom_regex_league: str | None = None,
         custom_regex_league_enabled: bool = False,
         days_ahead: int | None = None,
-        shared_events: dict[str, list[Event]] | None = None,
+        shared_events: dict[str, tuple[list[Event], bool]] | None = None,
     ):
         """Initialize the matcher.
 
@@ -191,7 +191,9 @@ class StreamMatcher:
             custom_regex_league_enabled: Whether custom regex for league is enabled
             days_ahead: Days to look ahead for events (if None, loaded from settings)
             shared_events: Shared events cache dict (keyed by "league:date") to reuse
-                           across multiple matchers in a single generation run
+                           across multiple matchers in a single generation run.
+                           Values are (events, was_cache_only) tuples where was_cache_only
+                           indicates if the result came from a cache-only lookup.
         """
         self._service = service
         self._db_factory = db_factory
@@ -245,7 +247,7 @@ class StreamMatcher:
         self._league_event_types: dict[str, str] = {}
 
         # Shared events cache (cross-matcher in a single generation run)
-        # Keys are "league:date" strings, values are lists of events
+        # Keys are "league:date" strings, values are (events, was_cache_only) tuples
         self._shared_events = shared_events
 
         # Prefetched events (populated in match_all for multi-league matching)
@@ -374,12 +376,6 @@ class StreamMatcher:
                 fetch_date = target_date + timedelta(days=offset)
                 shared_key = f"{league}:{fetch_date.isoformat()}"
 
-                # Check shared events cache first (from prior groups in same run)
-                if self._shared_events is not None and shared_key in self._shared_events:
-                    league_events.extend(self._shared_events[shared_key])
-                    shared_hits += 1
-                    continue
-
                 # Cache-only rules:
                 # - TSDB: always cache-only
                 # - Past days: always cache-only
@@ -394,17 +390,31 @@ class StreamMatcher:
                     # Today: fetch from API for group's leagues, cache for others
                     cache_only = not is_group_league
 
+                # Check shared events cache first (from prior groups in same run)
+                if self._shared_events is not None and shared_key in self._shared_events:
+                    shared_events, was_cache_only = self._shared_events[shared_key]
+
+                    # Use shared result if:
+                    # - It has events (data is valid regardless of how it was fetched)
+                    # - OR it was fetched with API available (empty is legitimate)
+                    # - OR current group doesn't need this league anyway
+                    # Don't use if: empty + was_cache_only + we need this league
+                    # (empty from cache miss shouldn't block groups that need API data)
+                    if shared_events or not was_cache_only or not is_group_league:
+                        league_events.extend(shared_events)
+                        shared_hits += 1
+                        continue
+                    # Fall through to fetch fresh if empty cache-only result
+                    # and this group actually needs the league
+
                 events = self._service.get_events(league, fetch_date, cache_only=cache_only)
                 service_calls += 1
                 league_events.extend(events)
 
-                # Store ALL results in shared cache for subsequent matchers
-                # This includes:
-                # - API fetch results (empty or not) for configured leagues
-                # - Cache lookup results for non-configured leagues (cache_only=True)
-                # Sharing cache-only results avoids redundant service cache lookups
+                # Store result in shared cache for subsequent matchers
+                # Include was_cache_only flag so later groups can decide whether to re-fetch
                 if self._shared_events is not None:
-                    self._shared_events[shared_key] = events
+                    self._shared_events[shared_key] = (events, cache_only)
 
             if league_events:
                 self._prefetched_events[league] = league_events

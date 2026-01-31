@@ -503,7 +503,7 @@ export function Channels() {
               No managed channels found.
             </div>
           ) : (
-            <Table>
+            <Table className="table-fixed">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-10">
@@ -512,8 +512,8 @@ export function Channels() {
                       onCheckedChange={toggleSelectAll}
                     />
                   </TableHead>
-                  <TableHead>Channel</TableHead>
-                  <TableHead>Event</TableHead>
+                  <TableHead className="w-[25%]">Channel</TableHead>
+                  <TableHead className="w-[25%]">Event</TableHead>
                   <TableHead className="w-28">Group</TableHead>
                   <TableHead className="w-20">League</TableHead>
                   <TableHead className="w-20">Status</TableHead>
@@ -530,14 +530,14 @@ export function Channels() {
                         placeholder="Filter..."
                         value={nameFilter}
                         onChange={(e) => setNameFilter(e.target.value)}
-                        className="h-7 text-xs pr-7"
+                        className="h-[18px] text-[0.65rem] italic px-1 pr-4 rounded-sm"
                       />
                       {nameFilter && (
                         <button
                           onClick={() => setNameFilter("")}
-                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          className="absolute right-0.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                         >
-                          <X className="h-3.5 w-3.5" />
+                          <X className="h-2.5 w-2.5" />
                         </button>
                       )}
                     </div>
@@ -581,7 +581,13 @@ export function Channels() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredChannels.map((channel) => (
+                {filteredChannels.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      No channels match the current filters.
+                    </TableCell>
+                  </TableRow>
+                ) : filteredChannels.map((channel) => (
                   <TableRow key={channel.id}>
                     <TableCell>
                       <Checkbox

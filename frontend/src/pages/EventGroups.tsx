@@ -183,6 +183,7 @@ export function EventGroups() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
 
   // Filter state
+  const [nameFilter, setNameFilter] = useState("")
   const [leagueFilter, setLeagueFilter] = useState("")
   const [sportFilter, setSportFilter] = useState("")
   const [templateFilter, setTemplateFilter] = useState<number | "">("")
@@ -368,6 +369,7 @@ export function EventGroups() {
 
     // Filter parents
     const filteredParents = parents.filter((group) => {
+      if (nameFilter && !group.name.toLowerCase().includes(nameFilter.toLowerCase())) return false
       if (leagueFilter && !group.leagues.includes(leagueFilter)) return false
       if (sportFilter) {
         const groupSports = group.leagues.map(l => leagueSports[l]).filter(Boolean)
@@ -426,7 +428,7 @@ export function EventGroups() {
       filteredGroups: flat,
       childrenMap,
     }
-  }, [data?.groups, leagueFilter, sportFilter, templateFilter, statusFilter, leagueSports])
+  }, [data?.groups, nameFilter, leagueFilter, sportFilter, templateFilter, statusFilter, leagueSports])
 
   // Apply sorting to MANUAL groups only (AUTO groups use drag-and-drop order)
   const sortedGroups = useMemo(() => {
@@ -795,13 +797,14 @@ export function EventGroups() {
   }
 
   const clearFilters = () => {
+    setNameFilter("")
     setLeagueFilter("")
     setSportFilter("")
     setTemplateFilter("")
     setStatusFilter("")
   }
 
-  const hasActiveFilters = leagueFilter || sportFilter || templateFilter !== "" || statusFilter !== ""
+  const hasActiveFilters = nameFilter || leagueFilter || sportFilter || templateFilter !== "" || statusFilter !== ""
 
   // Drag-and-drop handlers for AUTO groups
   const handleDragStart = (e: React.DragEvent, groupId: number) => {
@@ -1078,14 +1081,12 @@ export function EventGroups() {
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : sortedGroups.length === 0 ? (
+          ) : data?.groups.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              {data?.groups.length === 0
-                ? "No event groups configured. Create one to get started."
-                : "No groups match the current filters."}
+              No event groups configured. Create one to get started.
             </div>
           ) : (
-            <Table>
+            <Table className="table-fixed">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-6"></TableHead>
@@ -1096,7 +1097,7 @@ export function EventGroups() {
                     />
                   </TableHead>
                   <TableHead
-                    className="cursor-pointer hover:bg-muted/50"
+                    className="w-[20%] cursor-pointer hover:bg-muted/50"
                     onClick={() => handleSort("name")}
                   >
                     <div className="flex items-center">
@@ -1144,7 +1145,25 @@ export function EventGroups() {
                 <TableRow className="border-b-2 border-border">
                   <TableHead className="py-0.5 pb-1.5"></TableHead>
                   <TableHead className="py-0.5 pb-1.5"></TableHead>
-                  <TableHead className="py-0.5 pb-1.5"></TableHead>
+                  <TableHead className="py-0.5 pb-1.5">
+                    <div className="relative">
+                      <Input
+                        type="text"
+                        placeholder="Filter..."
+                        value={nameFilter}
+                        onChange={(e) => setNameFilter(e.target.value)}
+                        className="h-[18px] text-[0.65rem] italic px-1 pr-4 rounded-sm"
+                      />
+                      {nameFilter && (
+                        <button
+                          onClick={() => setNameFilter("")}
+                          className="absolute right-0.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      )}
+                    </div>
+                  </TableHead>
                   <TableHead className="py-0.5 pb-1.5">
                     <FilterSelect
                       value={leagueFilter}
@@ -1209,6 +1228,14 @@ export function EventGroups() {
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {sortedGroups.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                      No groups match the current filters.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  <>
                 {/* AUTO Section Header - V1 style */}
                 {autoGroups.length > 0 && (
                   <TableRow className="bg-secondary/50 hover:bg-secondary/50 border-b-2 border-emerald-500/40">
@@ -1546,6 +1573,8 @@ export function EventGroups() {
                     </React.Fragment>
                   )
                 })}
+                  </>
+                )}
               </TableBody>
             </Table>
           )}

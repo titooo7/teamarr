@@ -102,6 +102,11 @@ class GroupCreate(BaseModel):
     custom_regex_time_enabled: bool = False
     custom_regex_league: str | None = None
     custom_regex_league_enabled: bool = False
+    # EVENT_CARD specific regex (UFC, Boxing, MMA)
+    custom_regex_fighters: str | None = None
+    custom_regex_fighters_enabled: bool = False
+    custom_regex_event_name: str | None = None
+    custom_regex_event_name_enabled: bool = False
     skip_builtin_filter: bool = False
     # Team filtering (canonical team selection, inherited by children)
     include_teams: list[TeamFilterEntry] | None = None
@@ -154,6 +159,11 @@ class GroupUpdate(BaseModel):
     custom_regex_time_enabled: bool | None = None
     custom_regex_league: str | None = None
     custom_regex_league_enabled: bool | None = None
+    # EVENT_CARD specific regex (UFC, Boxing, MMA)
+    custom_regex_fighters: str | None = None
+    custom_regex_fighters_enabled: bool | None = None
+    custom_regex_event_name: str | None = None
+    custom_regex_event_name_enabled: bool | None = None
     skip_builtin_filter: bool | None = None
     # Team filtering (canonical team selection, inherited by children)
     include_teams: list[TeamFilterEntry] | None = None
@@ -183,6 +193,8 @@ class GroupUpdate(BaseModel):
     clear_custom_regex_date: bool = False
     clear_custom_regex_time: bool = False
     clear_custom_regex_league: bool = False
+    clear_custom_regex_fighters: bool = False
+    clear_custom_regex_event_name: bool = False
     clear_include_teams: bool = False
     clear_exclude_teams: bool = False
 
@@ -229,6 +241,11 @@ class GroupResponse(BaseModel):
     custom_regex_time_enabled: bool = False
     custom_regex_league: str | None = None
     custom_regex_league_enabled: bool = False
+    # EVENT_CARD specific regex (UFC, Boxing, MMA)
+    custom_regex_fighters: str | None = None
+    custom_regex_fighters_enabled: bool = False
+    custom_regex_event_name: str | None = None
+    custom_regex_event_name_enabled: bool = False
     skip_builtin_filter: bool = False
     # Team filtering (canonical team selection, inherited by children)
     include_teams: list[TeamFilterEntry] | None = None
@@ -561,6 +578,10 @@ def list_groups(
                 custom_regex_time_enabled=g.custom_regex_time_enabled,
                 custom_regex_league=g.custom_regex_league,
                 custom_regex_league_enabled=g.custom_regex_league_enabled,
+                custom_regex_fighters=g.custom_regex_fighters,
+                custom_regex_fighters_enabled=g.custom_regex_fighters_enabled,
+                custom_regex_event_name=g.custom_regex_event_name,
+                custom_regex_event_name_enabled=g.custom_regex_event_name_enabled,
                 skip_builtin_filter=g.skip_builtin_filter,
                 include_teams=[TeamFilterEntry(**t) for t in g.include_teams]
                 if g.include_teams
@@ -651,6 +672,10 @@ def create_group(request: GroupCreate):
             custom_regex_time_enabled=request.custom_regex_time_enabled,
             custom_regex_league=request.custom_regex_league,
             custom_regex_league_enabled=request.custom_regex_league_enabled,
+            custom_regex_fighters=request.custom_regex_fighters,
+            custom_regex_fighters_enabled=request.custom_regex_fighters_enabled,
+            custom_regex_event_name=request.custom_regex_event_name,
+            custom_regex_event_name_enabled=request.custom_regex_event_name_enabled,
             skip_builtin_filter=request.skip_builtin_filter,
             include_teams=[t.model_dump() for t in request.include_teams]
             if request.include_teams is not None
@@ -1086,6 +1111,10 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
             custom_regex_time_enabled=request.custom_regex_time_enabled,
             custom_regex_league=request.custom_regex_league,
             custom_regex_league_enabled=request.custom_regex_league_enabled,
+            custom_regex_fighters=request.custom_regex_fighters,
+            custom_regex_fighters_enabled=request.custom_regex_fighters_enabled,
+            custom_regex_event_name=request.custom_regex_event_name,
+            custom_regex_event_name_enabled=request.custom_regex_event_name_enabled,
             skip_builtin_filter=request.skip_builtin_filter,
             include_teams=[t.model_dump() for t in request.include_teams]
             if request.include_teams is not None
@@ -1115,6 +1144,8 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
             clear_custom_regex_date=request.clear_custom_regex_date,
             clear_custom_regex_time=request.clear_custom_regex_time,
             clear_custom_regex_league=request.clear_custom_regex_league,
+            clear_custom_regex_fighters=request.clear_custom_regex_fighters,
+            clear_custom_regex_event_name=request.clear_custom_regex_event_name,
             clear_include_teams=request.clear_include_teams,
             clear_exclude_teams=request.clear_exclude_teams,
         )

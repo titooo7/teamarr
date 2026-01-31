@@ -63,8 +63,9 @@ class ClassifiedStream:
 
 @dataclass
 class CustomRegexConfig:
-    """Configuration for custom regex extraction (teams, date, time, league)."""
+    """Configuration for custom regex extraction patterns."""
 
+    # TEAM_VS_TEAM patterns
     teams_pattern: str | None = None
     teams_enabled: bool = False
     date_pattern: str | None = None
@@ -74,11 +75,19 @@ class CustomRegexConfig:
     league_pattern: str | None = None
     league_enabled: bool = False
 
+    # EVENT_CARD patterns (UFC, Boxing, MMA)
+    fighters_pattern: str | None = None
+    fighters_enabled: bool = False
+    event_name_pattern: str | None = None
+    event_name_enabled: bool = False
+
     # Compiled patterns (cached)
     _compiled_teams: Pattern | None = None
     _compiled_date: Pattern | None = None
     _compiled_time: Pattern | None = None
     _compiled_league: Pattern | None = None
+    _compiled_fighters: Pattern | None = None
+    _compiled_event_name: Pattern | None = None
 
     def get_pattern(self) -> Pattern | None:
         """Get compiled teams regex pattern, compiling on first access."""
@@ -136,6 +145,34 @@ class CustomRegexConfig:
 
         return self._compiled_league
 
+    def get_fighters_pattern(self) -> Pattern | None:
+        """Get compiled fighters regex pattern for EVENT_CARD streams."""
+        if not self.fighters_enabled or not self.fighters_pattern:
+            return None
+
+        if self._compiled_fighters is None:
+            try:
+                self._compiled_fighters = re.compile(self.fighters_pattern, re.IGNORECASE)
+            except re.error as e:
+                logger.warning("[CLASSIFY] Invalid custom fighters regex pattern: %s", e)
+                return None
+
+        return self._compiled_fighters
+
+    def get_event_name_pattern(self) -> Pattern | None:
+        """Get compiled event name regex pattern for EVENT_CARD streams."""
+        if not self.event_name_enabled or not self.event_name_pattern:
+            return None
+
+        if self._compiled_event_name is None:
+            try:
+                self._compiled_event_name = re.compile(self.event_name_pattern, re.IGNORECASE)
+            except re.error as e:
+                logger.warning("[CLASSIFY] Invalid custom event_name regex pattern: %s", e)
+                return None
+
+        return self._compiled_event_name
+
 
 def extract_teams_with_custom_regex(
     text: str,
@@ -176,6 +213,84 @@ def extract_teams_with_custom_regex(
         pass
 
     return None, None, False
+
+
+def extract_fighters_with_custom_regex(
+    text: str,
+    config: CustomRegexConfig,
+) -> tuple[str | None, str | None, bool]:
+    """Extract fighter names using custom regex pattern for EVENT_CARD streams.
+
+    Args:
+        text: Stream name (normalized)
+        config: Custom regex configuration
+
+    Returns:
+        Tuple of (fighter1, fighter2, success)
+    """
+    pattern = config.get_fighters_pattern()
+    if not pattern:
+        return None, None, False
+
+    match = pattern.search(text)
+    if not match:
+        return None, None, False
+
+    # Try numbered groups first (group 1 and 2)
+    groups = match.groups()
+    if len(groups) >= 2:
+        fighter1 = groups[0].strip() if groups[0] else None
+        fighter2 = groups[1].strip() if groups[1] else None
+        if fighter1 and fighter2:
+            return fighter1, fighter2, True
+
+    # Try named groups (?P<fighter1>...) and (?P<fighter2>...)
+    try:
+        fighter1 = match.group("fighter1")
+        fighter2 = match.group("fighter2")
+        if fighter1 and fighter2:
+            return fighter1.strip(), fighter2.strip(), True
+    except (IndexError, re.error):
+        pass
+
+    return None, None, False
+
+
+def extract_event_name_with_custom_regex(
+    text: str,
+    config: CustomRegexConfig,
+) -> str | None:
+    """Extract event name using custom regex pattern for EVENT_CARD streams.
+
+    Args:
+        text: Stream name (original, not normalized)
+        config: Custom regex configuration
+
+    Returns:
+        Event name string or None
+    """
+    pattern = config.get_event_name_pattern()
+    if not pattern:
+        return None
+
+    match = pattern.search(text)
+    if not match:
+        return None
+
+    # Try named group (?P<event_name>...)
+    try:
+        event_name = match.group("event_name")
+        if event_name:
+            return event_name.strip()
+    except (IndexError, re.error):
+        pass
+
+    # Try first capture group
+    groups = match.groups()
+    if groups and groups[0]:
+        return groups[0].strip()
+
+    return None
 
 
 def extract_date_with_custom_regex(
@@ -1035,9 +1150,37 @@ def classify_stream(
             # Use original stream name for more accurate pattern matching
             card_segment = detect_card_segment(stream_name)
 
-            # Extract fighter names from "vs" pattern (reuse team extraction logic)
-            # Fighters are treated as "teams" for matching purposes
-            fighter1, fighter2 = extract_fighters_from_event_card(text)
+            # Try custom regex for fighters first (if configured)
+            custom_regex_used = False
+            fighter1, fighter2 = None, None
+            if custom_regex and custom_regex.fighters_enabled:
+                fighter1, fighter2, success = extract_fighters_with_custom_regex(
+                    stream_name, custom_regex
+                )
+                if success:
+                    custom_regex_used = True
+                    logger.debug(
+                        "[CLASSIFY] Custom fighters regex matched: %s vs %s",
+                        fighter1,
+                        fighter2,
+                    )
+
+            # Fallback to builtin extraction if custom regex didn't match
+            if not fighter1 and not fighter2:
+                fighter1, fighter2 = extract_fighters_from_event_card(text)
+
+            # Try custom regex for event name (if configured)
+            custom_event_name = None
+            if custom_regex and custom_regex.event_name_enabled:
+                custom_event_name = extract_event_name_with_custom_regex(
+                    stream_name, custom_regex
+                )
+                if custom_event_name:
+                    event_hint = custom_event_name
+                    custom_regex_used = True
+                    logger.debug(
+                        "[CLASSIFY] Custom event_name regex matched: %s", custom_event_name
+                    )
 
             result = ClassifiedStream(
                 category=StreamCategory.EVENT_CARD,
@@ -1048,6 +1191,7 @@ def classify_stream(
                 card_segment=card_segment,
                 league_hint=league_hint,
                 sport_hint=sport_hint,
+                custom_regex_used=custom_regex_used,
             )
 
         # Step 3: Try custom regex for team extraction (if configured)

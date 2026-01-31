@@ -383,6 +383,11 @@ CREATE TABLE IF NOT EXISTS event_epg_groups (
     custom_regex_time_enabled BOOLEAN DEFAULT 0,
     custom_regex_league TEXT,                -- Custom pattern to extract league hint
     custom_regex_league_enabled BOOLEAN DEFAULT 0,
+    -- EVENT_CARD specific regex (UFC, Boxing, MMA)
+    custom_regex_fighters TEXT,              -- Custom pattern to extract fighter names (?P<fighter1>...) (?P<fighter2>...)
+    custom_regex_fighters_enabled BOOLEAN DEFAULT 0,
+    custom_regex_event_name TEXT,            -- Custom pattern to extract event name (?P<event_name>...)
+    custom_regex_event_name_enabled BOOLEAN DEFAULT 0,
     skip_builtin_filter BOOLEAN DEFAULT 0,   -- Skip built-in stream filtering (placeholder, unsupported sports, event patterns)
 
     -- Team Filtering (canonical team selection, inherited by children)

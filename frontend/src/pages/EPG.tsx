@@ -138,6 +138,12 @@ export function EPG() {
   const [failedModalRunId, setFailedModalRunId] = useState<number | null>(null)
   const [eventMatcherOpen, setEventMatcherOpen] = useState(false)
 
+  // Filter state for modals
+  const [matchedFilter, setMatchedFilter] = useState("")
+  const [matchedGroupFilter, setMatchedGroupFilter] = useState<string>("all")
+  const [failedFilter, setFailedFilter] = useState("")
+  const [failedGroupFilter, setFailedGroupFilter] = useState<string>("all")
+
   // Event matcher state
   const [matcherStream, setMatcherStream] = useState<CorrectableStream | null>(null)
   const [matcherLeague, setMatcherLeague] = useState("")
@@ -214,6 +220,64 @@ export function EPG() {
     }
     return grouped
   }, [sortedLeagues])
+
+  // Get unique groups from matched streams for filter dropdown
+  const matchedGroups = useMemo(() => {
+    if (!matchedData?.streams) return []
+    const groups = new Set<string>()
+    for (const s of matchedData.streams) {
+      if (s.group_name) groups.add(s.group_name)
+    }
+    return Array.from(groups).sort()
+  }, [matchedData?.streams])
+
+  // Get unique groups from failed matches for filter dropdown
+  const failedGroups = useMemo(() => {
+    if (!failedData?.failures) return []
+    const groups = new Set<string>()
+    for (const f of failedData.failures) {
+      if (f.group_name) groups.add(f.group_name)
+    }
+    return Array.from(groups).sort()
+  }, [failedData?.failures])
+
+  // Filter matched streams by search text and group
+  const filteredMatchedStreams = useMemo(() => {
+    if (!matchedData?.streams) return []
+    const searchLower = matchedFilter.toLowerCase()
+    return matchedData.streams.filter((s) => {
+      // Group filter
+      if (matchedGroupFilter !== "all" && s.group_name !== matchedGroupFilter) return false
+      // Text search
+      if (!searchLower) return true
+      return (
+        s.stream_name.toLowerCase().includes(searchLower) ||
+        s.event_name?.toLowerCase().includes(searchLower) ||
+        s.home_team?.toLowerCase().includes(searchLower) ||
+        s.away_team?.toLowerCase().includes(searchLower) ||
+        s.league?.toLowerCase().includes(searchLower)
+      )
+    })
+  }, [matchedData?.streams, matchedFilter, matchedGroupFilter])
+
+  // Filter failed matches by search text and group
+  const filteredFailedMatches = useMemo(() => {
+    if (!failedData?.failures) return []
+    const searchLower = failedFilter.toLowerCase()
+    return failedData.failures.filter((f) => {
+      // Group filter
+      if (failedGroupFilter !== "all" && f.group_name !== failedGroupFilter) return false
+      // Text search
+      if (!searchLower) return true
+      return (
+        f.stream_name.toLowerCase().includes(searchLower) ||
+        f.extracted_team1?.toLowerCase().includes(searchLower) ||
+        f.extracted_team2?.toLowerCase().includes(searchLower) ||
+        f.detected_league?.toLowerCase().includes(searchLower) ||
+        f.reason.toLowerCase().includes(searchLower)
+      )
+    })
+  }, [failedData?.failures, failedFilter, failedGroupFilter])
 
   const handleCopyUrl = async () => {
     try {
@@ -868,8 +932,18 @@ export function EPG() {
       </Card>
 
       {/* Matched Streams Modal */}
-      <Dialog open={matchedModalRunId !== null} onOpenChange={() => setMatchedModalRunId(null)}>
-        <DialogContent onClose={() => setMatchedModalRunId(null)} className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+      <Dialog open={matchedModalRunId !== null} onOpenChange={(open) => {
+        if (!open) {
+          setMatchedModalRunId(null)
+          setMatchedFilter("")
+          setMatchedGroupFilter("all")
+        }
+      }}>
+        <DialogContent onClose={() => {
+          setMatchedModalRunId(null)
+          setMatchedFilter("")
+          setMatchedGroupFilter("all")
+        }} className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CheckCircle className="h-5 w-5 text-green-600" />
@@ -880,18 +954,41 @@ export function EPG() {
             </DialogDescription>
           </DialogHeader>
 
+          {/* Filter controls */}
+          <div className="flex items-center gap-3 pb-2 border-b">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search streams, events, teams..."
+                value={matchedFilter}
+                onChange={(e) => setMatchedFilter(e.target.value)}
+                className="pl-9 h-9"
+              />
+            </div>
+            <select
+              value={matchedGroupFilter}
+              onChange={(e) => setMatchedGroupFilter(e.target.value)}
+              className="h-9 px-3 rounded-md border border-input bg-background text-sm"
+            >
+              <option value="all">All Groups</option>
+              {matchedGroups.map((g) => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex-1 overflow-auto">
             {matchedLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
-            ) : matchedData?.streams.length === 0 ? (
+            ) : filteredMatchedStreams.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                No matched streams for this run.
+                {matchedData?.streams.length === 0 ? "No matched streams for this run." : "No streams match your filter."}
               </div>
             ) : (
               <VirtualizedTable<MatchedStream>
-                data={matchedData?.streams ?? []}
+                data={filteredMatchedStreams}
                 getRowKey={(item) => item.id}
                 rowHeight={56}
                 columns={[
@@ -969,9 +1066,15 @@ export function EPG() {
 
           <DialogFooter>
             <div className="text-sm text-muted-foreground">
-              {matchedData?.count ?? 0} matched streams
+              {filteredMatchedStreams.length === (matchedData?.streams.length ?? 0)
+                ? `${matchedData?.count ?? 0} matched streams`
+                : `${filteredMatchedStreams.length} of ${matchedData?.count ?? 0} streams`}
             </div>
-            <Button variant="outline" onClick={() => setMatchedModalRunId(null)}>
+            <Button variant="outline" onClick={() => {
+              setMatchedModalRunId(null)
+              setMatchedFilter("")
+              setMatchedGroupFilter("all")
+            }}>
               Close
             </Button>
           </DialogFooter>
@@ -979,8 +1082,18 @@ export function EPG() {
       </Dialog>
 
       {/* Failed Matches Modal */}
-      <Dialog open={failedModalRunId !== null} onOpenChange={() => setFailedModalRunId(null)}>
-        <DialogContent onClose={() => setFailedModalRunId(null)} className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+      <Dialog open={failedModalRunId !== null} onOpenChange={(open) => {
+        if (!open) {
+          setFailedModalRunId(null)
+          setFailedFilter("")
+          setFailedGroupFilter("all")
+        }
+      }}>
+        <DialogContent onClose={() => {
+          setFailedModalRunId(null)
+          setFailedFilter("")
+          setFailedGroupFilter("all")
+        }} className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <XCircle className="h-5 w-5 text-red-600" />
@@ -991,18 +1104,41 @@ export function EPG() {
             </DialogDescription>
           </DialogHeader>
 
+          {/* Filter controls */}
+          <div className="flex items-center gap-3 pb-2 border-b">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search streams, teams, reasons..."
+                value={failedFilter}
+                onChange={(e) => setFailedFilter(e.target.value)}
+                className="pl-9 h-9"
+              />
+            </div>
+            <select
+              value={failedGroupFilter}
+              onChange={(e) => setFailedGroupFilter(e.target.value)}
+              className="h-9 px-3 rounded-md border border-input bg-background text-sm"
+            >
+              <option value="all">All Groups</option>
+              {failedGroups.map((g) => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex-1 overflow-auto">
             {failedLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
-            ) : failedData?.failures.length === 0 ? (
+            ) : filteredFailedMatches.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                No failed matches for this run.
+                {failedData?.failures.length === 0 ? "No failed matches for this run." : "No streams match your filter."}
               </div>
             ) : (
               <VirtualizedTable<FailedMatch>
-                data={failedData?.failures ?? []}
+                data={filteredFailedMatches}
                 getRowKey={(item) => item.id}
                 rowHeight={56}
                 columns={[
@@ -1075,9 +1211,15 @@ export function EPG() {
 
           <DialogFooter>
             <div className="text-sm text-muted-foreground">
-              {failedData?.count ?? 0} failed matches
+              {filteredFailedMatches.length === (failedData?.failures.length ?? 0)
+                ? `${failedData?.count ?? 0} failed matches`
+                : `${filteredFailedMatches.length} of ${failedData?.count ?? 0} matches`}
             </div>
-            <Button variant="outline" onClick={() => setFailedModalRunId(null)}>
+            <Button variant="outline" onClick={() => {
+              setFailedModalRunId(null)
+              setFailedFilter("")
+              setFailedGroupFilter("all")
+            }}>
               Close
             </Button>
           </DialogFooter>

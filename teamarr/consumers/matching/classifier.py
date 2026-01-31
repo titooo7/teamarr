@@ -17,12 +17,13 @@ from re import Pattern
 from teamarr.consumers.matching.normalizer import NormalizedStream, normalize_stream
 from teamarr.utilities.constants import (
     CARD_SEGMENT_PATTERNS,
-    EVENT_CARD_KEYWORDS,
+    COMBAT_SPORTS_EXCLUDE_PATTERNS,
+    COMBAT_SPORTS_KEYWORDS,
+    EVENT_CARD_KEYWORDS,  # Legacy - used by extract_event_card_hint
     GAME_SEPARATORS,
     LEAGUE_HINT_PATTERNS,
     PLACEHOLDER_PATTERNS,
     SPORT_HINT_PATTERNS,
-    UFC_EXCLUDE_PATTERNS,
 )
 
 logger = logging.getLogger(__name__)
@@ -784,14 +785,14 @@ def detect_sport_hint(text: str) -> str | None:
 
 
 def is_event_card(text: str, league_event_type: str | None = None) -> bool:
-    """Check if stream is an event card (UFC, Boxing).
+    """Check if stream is a combat sports event card (UFC, MMA, Boxing).
 
     Args:
         text: Normalized stream name
         league_event_type: Optional event_type from leagues table
 
     Returns:
-        True if stream is an event card
+        True if stream is a combat sports event card
     """
     if not text:
         return False
@@ -802,11 +803,10 @@ def is_event_card(text: str, league_event_type: str | None = None) -> bool:
 
     text_lower = text.lower()
 
-    # Check for event card keywords
-    for _league, keywords in EVENT_CARD_KEYWORDS.items():
-        for keyword in keywords:
-            if keyword.lower() in text_lower:
-                return True
+    # Check against unified combat sports keywords
+    for keyword in COMBAT_SPORTS_KEYWORDS:
+        if keyword.lower() in text_lower:
+            return True
 
     return False
 
@@ -876,8 +876,8 @@ def detect_card_segment(text: str) -> str | None:
     return None
 
 
-def is_ufc_excluded(text: str) -> bool:
-    """Check if stream should be excluded from UFC matching.
+def is_combat_sports_excluded(text: str) -> bool:
+    """Check if stream should be excluded from combat sports matching.
 
     Excludes weigh-ins, press conferences, countdowns, and other non-event content.
 
@@ -892,12 +892,18 @@ def is_ufc_excluded(text: str) -> bool:
 
     text_lower = text.lower()
 
-    for pattern in UFC_EXCLUDE_PATTERNS:
+    for pattern in COMBAT_SPORTS_EXCLUDE_PATTERNS:
         if re.search(pattern, text_lower, re.IGNORECASE):
-            logger.debug("[CLASSIFY] UFC stream excluded by pattern '%s': %s", pattern, text[:50])
+            logger.debug(
+                "[CLASSIFY] Combat sports excluded by pattern '%s': %s", pattern, text[:50]
+            )
             return True
 
     return False
+
+
+# Legacy alias for backwards compatibility
+is_ufc_excluded = is_combat_sports_excluded
 
 
 def extract_fighters_from_event_card(text: str) -> tuple[str | None, str | None]:

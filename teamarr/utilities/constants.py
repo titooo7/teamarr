@@ -517,34 +517,90 @@ SPORT_HINT_PATTERNS: list[tuple[str, str]] = [
 
 
 # =============================================================================
-# EVENT CARD KEYWORDS
-# Keywords that identify event card streams (UFC, boxing) within their league.
-# Used by EventCardMatcher to validate streams.
+# COMBAT SPORTS KEYWORDS
+# Keywords that identify combat sports event card streams (UFC, MMA, Boxing).
+# Used to classify streams as EVENT_CARD category.
+#
+# These are unified across all combat sports - the specific league/org is
+# determined by league hint detection, not by which keyword matched.
 # =============================================================================
 
+COMBAT_SPORTS_KEYWORDS: list[str] = [
+    # -------------------------------------------------------------------------
+    # MMA Organizations
+    # -------------------------------------------------------------------------
+    "ufc",
+    "bellator",
+    "pfl",
+    "one fc",
+    "one championship",
+    "cage warriors",
+    "invicta fc",
+    "lfa",  # Legacy Fighting Alliance
+    "bkfc",  # Bare Knuckle FC
+    # UFC-specific terms
+    "fight night",
+    "ufc fn",
+    "dana white",
+    "contender series",
+    "dwcs",
+    "the ultimate fighter",
+    "tuf",
+    # -------------------------------------------------------------------------
+    # Boxing Organizations & Promoters
+    # -------------------------------------------------------------------------
+    "boxing",
+    "premier boxing",
+    "pbc",  # Premier Boxing Champions
+    "top rank",
+    "matchroom",
+    "golden boy",
+    "showtime boxing",
+    "dazn boxing",
+    "espn boxing",
+    "triller",
+    # -------------------------------------------------------------------------
+    # Card Segments (shared across combat sports)
+    # -------------------------------------------------------------------------
+    "main card",
+    "main event",
+    "prelims",
+    "early prelims",
+    "undercard",
+    "co-main",
+    # -------------------------------------------------------------------------
+    # Generic Combat Sports Terms
+    # -------------------------------------------------------------------------
+    "mma",
+    "mixed martial arts",
+    "kickboxing",
+    "muay thai",
+    "title fight",
+    "title bout",
+    "championship fight",
+    "undisputed",
+    # -------------------------------------------------------------------------
+    # Boxing Sanctioning Bodies (indicates boxing event)
+    # -------------------------------------------------------------------------
+    "wbc",  # World Boxing Council
+    "wba",  # World Boxing Association
+    "ibf",  # International Boxing Federation
+    "wbo",  # World Boxing Organization
+    "ibo",  # International Boxing Organization
+]
+
+
+# Legacy alias for backwards compatibility during transition
+# TODO: Remove after DetectionKeywordService migration
 EVENT_CARD_KEYWORDS: dict[str, list[str]] = {
-    "ufc": [
-        "ufc",
-        "fight night",
-        "ufc fn",
-        "main card",
-        "prelims",
-        "early prelims",
-        "dana white",
-        "contender series",
-        "dwcs",
-    ],
-    "boxing": [
-        "boxing",
-        "main event",
-        "undercard",
-        "premier boxing",
-        "top rank",
-        "matchroom",
-        "dazn boxing",
-        "showtime boxing",
-        "golden boy",
-    ],
+    "ufc": [k for k in COMBAT_SPORTS_KEYWORDS if k in [
+        "ufc", "fight night", "ufc fn", "main card", "prelims", "early prelims",
+        "dana white", "contender series", "dwcs",
+    ]],
+    "boxing": [k for k in COMBAT_SPORTS_KEYWORDS if k in [
+        "boxing", "main event", "undercard", "premier boxing", "top rank",
+        "matchroom", "dazn boxing", "showtime boxing", "golden boy",
+    ]],
 }
 
 
@@ -577,12 +633,12 @@ CARD_SEGMENT_PATTERNS: list[tuple[str, str]] = [
 
 
 # =============================================================================
-# UFC EXCLUDE PATTERNS
-# Stream name patterns that should NOT be matched to UFC events.
+# COMBAT SPORTS EXCLUDE PATTERNS
+# Stream name patterns that should NOT be matched to combat sports events.
 # These are related content (weigh-ins, press conferences) not actual fights.
 # =============================================================================
 
-UFC_EXCLUDE_PATTERNS: list[str] = [
+COMBAT_SPORTS_EXCLUDE_PATTERNS: list[str] = [
     r"\bweigh[\s-]?in\b",
     r"\bpress\s*conference\b",
     r"\bcountdown\b",
@@ -593,4 +649,11 @@ UFC_EXCLUDE_PATTERNS: list[str] = [
     r"\bclassic\s*fight\b",
     r"\breplay\b",
     r"\bencore\b",
+    r"\bhighlights?\b",
+    r"\binterview\b",
+    r"\banalysis\b",
+    r"\bbreakdown\b",
 ]
+
+# Legacy alias for backwards compatibility
+UFC_EXCLUDE_PATTERNS = COMBAT_SPORTS_EXCLUDE_PATTERNS

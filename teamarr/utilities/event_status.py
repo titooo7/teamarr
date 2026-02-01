@@ -3,6 +3,8 @@
 Single source of truth for determining event final status.
 """
 
+from datetime import datetime
+
 from teamarr.core import Event
 
 
@@ -39,3 +41,49 @@ def is_event_final(event: Event) -> bool:
         return True
 
     return False
+
+
+def find_last_completed_event(
+    events: list[Event],
+    before_event: Event | None = None,
+    before_time: datetime | None = None,
+) -> Event | None:
+    """Find the most recently completed event from a list.
+
+    This is used for .last template variable resolution to ensure we only
+    show scores from games that have actually finished, not scheduled games.
+
+    Args:
+        events: List of events (should be sorted by start_time)
+        before_event: If provided, only consider events before this one
+        before_time: If provided, only consider events before this time
+
+    Returns:
+        The most recently completed (final) event, or None if none found
+    """
+    if not events:
+        return None
+
+    # Filter to events before the reference point
+    candidates = []
+    for event in events:
+        # Skip the reference event itself
+        if before_event and event.id == before_event.id:
+            continue
+
+        # Check time constraint
+        if before_event and event.start_time >= before_event.start_time:
+            continue
+        if before_time and event.start_time >= before_time:
+            continue
+
+        # Only include completed events
+        if is_event_final(event):
+            candidates.append(event)
+
+    if not candidates:
+        return None
+
+    # Return the most recent (last in sorted order)
+    candidates.sort(key=lambda e: e.start_time)
+    return candidates[-1]

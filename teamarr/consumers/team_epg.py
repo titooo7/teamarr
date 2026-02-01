@@ -18,7 +18,7 @@ from teamarr.core import Event, Programme, TemplateConfig
 from teamarr.services import SportsDataService
 from teamarr.templates.context_builder import ContextBuilder
 from teamarr.templates.resolver import TemplateResolver
-from teamarr.utilities.event_status import is_event_final
+from teamarr.utilities.event_status import find_last_completed_event, is_event_final
 from teamarr.utilities.sports import get_effective_duration
 from teamarr.utilities.tz import now_user, to_user_tz
 
@@ -260,7 +260,9 @@ class TeamEPGGenerator:
             # Determine next/last events for suffix resolution
             # (uses full schedule for accurate .next vars)
             next_event = sorted_events[i + 1] if i + 1 < len(sorted_events) else None
-            last_event = sorted_events[i - 1] if i > 0 else None
+            # Find last COMPLETED event - not just previous in schedule
+            # This ensures .last variables show actual final scores, not 0-0 from scheduled games
+            last_event = find_last_completed_event(sorted_events, before_event=event)
 
             # Build template context (always build for .next/.last vars)
             context = self._context_builder.build_for_event(

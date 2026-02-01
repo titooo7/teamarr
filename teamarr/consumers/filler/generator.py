@@ -24,6 +24,7 @@ from teamarr.services import SportsDataService
 from teamarr.templates.context import GameContext, TeamChannelContext, TemplateContext
 from teamarr.templates.context_builder import ContextBuilder
 from teamarr.templates.resolver import TemplateResolver
+from teamarr.utilities.event_status import find_last_completed_event
 from teamarr.utilities.sports import get_sport_duration, get_sport_from_league
 from teamarr.utilities.time_blocks import create_filler_chunks, crosses_midnight
 from teamarr.utilities.tz import now_user, to_user_tz
@@ -206,11 +207,10 @@ class FillerGenerator:
                 f"Idle day {date}: NO next_future_event found. Total events in schedule: {len(events)}"  # noqa: E501
             )
 
-        # Find last completed event relative to THIS DAY (for .last context)
-        # Important: use day_start (the EPG date) not epg_start (actual now)
-        # This ensures .last refers to the most recent game before the programme being generated
-        past_events = [e for e in events if e.start_time < day_start]
-        last_past_event = past_events[-1] if past_events else None
+        # Find last COMPLETED event relative to THIS DAY (for .last context)
+        # Important: Only use events with final status to ensure we show actual scores
+        # This prevents showing 0-0 scores from scheduled games
+        last_past_event = find_last_completed_event(events, before_time=day_start)
 
         fillers: list[Programme] = []
 

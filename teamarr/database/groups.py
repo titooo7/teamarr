@@ -1201,7 +1201,7 @@ def _row_to_group_template(row) -> GroupTemplate:
         template_id=row["template_id"],
         sports=sports,
         leagues=leagues,
-        template_name=row.get("template_name"),
+        template_name=row["template_name"] if "template_name" in row.keys() else None,
     )
 
 

@@ -14,7 +14,7 @@ from teamarr.templates.variables.registry import (
 @register_variable(
     name="fighter1",
     category=Category.COMBAT,
-    suffix_rules=SuffixRules.ALL,
+    suffix_rules=SuffixRules.BASE_ONLY,  # Event EPG only, no next/last
     description="First fighter name (headline bout home_team)",
 )
 def extract_fighter1(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
@@ -38,7 +38,7 @@ def extract_fighter1(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
 @register_variable(
     name="fighter2",
     category=Category.COMBAT,
-    suffix_rules=SuffixRules.ALL,
+    suffix_rules=SuffixRules.BASE_ONLY,  # Event EPG only
     description="Second fighter name (headline bout away_team)",
 )
 def extract_fighter2(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
@@ -59,7 +59,7 @@ def extract_fighter2(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
 @register_variable(
     name="matchup",
     category=Category.COMBAT,
-    suffix_rules=SuffixRules.ALL,
+    suffix_rules=SuffixRules.BASE_ONLY,  # Event EPG only
     description="Full matchup (Fighter1 vs Fighter2)",
 )
 def extract_matchup(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
@@ -87,7 +87,7 @@ def extract_matchup(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
 @register_variable(
     name="event_number",
     category=Category.COMBAT,
-    suffix_rules=SuffixRules.ALL,
+    suffix_rules=SuffixRules.BASE_ONLY,  # Event EPG only
     description="UFC event number (e.g., '325' from 'UFC 325')",
 )
 def extract_event_number(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
@@ -118,7 +118,7 @@ def extract_event_number(ctx: TemplateContext, game_ctx: GameContext | None) -> 
 @register_variable(
     name="event_title",
     category=Category.COMBAT,
-    suffix_rules=SuffixRules.ALL,
+    suffix_rules=SuffixRules.BASE_ONLY,  # Event EPG only
     description="Full event title (e.g., 'UFC 325: Volkanovski vs Lopes')",
 )
 def extract_event_title(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
@@ -192,7 +192,7 @@ def extract_card_segment_display(ctx: TemplateContext, game_ctx: GameContext | N
 @register_variable(
     name="main_card_time",
     category=Category.COMBAT,
-    suffix_rules=SuffixRules.ALL,
+    suffix_rules=SuffixRules.BASE_ONLY,  # Event EPG only
     description="Main card start time (e.g., '10:00 PM EST')",
 )
 def extract_main_card_time(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
@@ -216,7 +216,7 @@ def extract_main_card_time(ctx: TemplateContext, game_ctx: GameContext | None) -
 @register_variable(
     name="prelims_time",
     category=Category.COMBAT,
-    suffix_rules=SuffixRules.ALL,
+    suffix_rules=SuffixRules.BASE_ONLY,  # Event EPG only
     description="Prelims start time (e.g., '8:00 PM EST')",
 )
 def extract_prelims_time(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
@@ -240,7 +240,7 @@ def extract_prelims_time(ctx: TemplateContext, game_ctx: GameContext | None) -> 
 @register_variable(
     name="early_prelims_time",
     category=Category.COMBAT,
-    suffix_rules=SuffixRules.ALL,
+    suffix_rules=SuffixRules.BASE_ONLY,  # Event EPG only
     description="Early prelims start time (e.g., '6:00 PM EST')",
 )
 def extract_early_prelims_time(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
@@ -269,7 +269,7 @@ def extract_early_prelims_time(ctx: TemplateContext, game_ctx: GameContext | Non
 @register_variable(
     name="bout_count",
     category=Category.COMBAT,
-    suffix_rules=SuffixRules.ALL,
+    suffix_rules=SuffixRules.BASE_ONLY,  # Event EPG only
     description="Total number of bouts on the card",
 )
 def extract_bout_count(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
@@ -287,7 +287,7 @@ def extract_bout_count(ctx: TemplateContext, game_ctx: GameContext | None) -> st
 @register_variable(
     name="fight_card",
     category=Category.COMBAT,
-    suffix_rules=SuffixRules.ALL,
+    suffix_rules=SuffixRules.BASE_ONLY,  # Event EPG only
     description="All bouts formatted as 'Fighter1 vs Fighter2' (newline-separated)",
 )
 def extract_fight_card(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
@@ -308,7 +308,7 @@ def extract_fight_card(ctx: TemplateContext, game_ctx: GameContext | None) -> st
 @register_variable(
     name="main_card_bouts",
     category=Category.COMBAT,
-    suffix_rules=SuffixRules.ALL,
+    suffix_rules=SuffixRules.BASE_ONLY,  # Event EPG only
     description="Main card bouts only (newline-separated)",
 )
 def extract_main_card_bouts(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
@@ -327,7 +327,7 @@ def extract_main_card_bouts(ctx: TemplateContext, game_ctx: GameContext | None) 
 @register_variable(
     name="prelims_bouts",
     category=Category.COMBAT,
-    suffix_rules=SuffixRules.ALL,
+    suffix_rules=SuffixRules.BASE_ONLY,  # Event EPG only
     description="Prelims bouts only (newline-separated)",
 )
 def extract_prelims_bouts(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
@@ -346,7 +346,7 @@ def extract_prelims_bouts(ctx: TemplateContext, game_ctx: GameContext | None) ->
 @register_variable(
     name="early_prelims_bouts",
     category=Category.COMBAT,
-    suffix_rules=SuffixRules.ALL,
+    suffix_rules=SuffixRules.BASE_ONLY,  # Event EPG only
     description="Early prelims bouts only (newline-separated)",
 )
 def extract_early_prelims_bouts(ctx: TemplateContext, game_ctx: GameContext | None) -> str:

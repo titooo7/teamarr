@@ -134,6 +134,57 @@ def extract_event_title(ctx: TemplateContext, game_ctx: GameContext | None) -> s
 
 
 # =============================================================================
+# Card Segment Variables
+# =============================================================================
+
+# Display names for template output
+SEGMENT_DISPLAY_NAMES: dict[str, str] = {
+    "early_prelims": "Early Prelims",
+    "prelims": "Prelims",
+    "main_card": "Main Card",
+}
+
+
+@register_variable(
+    name="card_segment",
+    category=Category.COMBAT,
+    suffix_rules=SuffixRules.NONE,  # Segment is specific to current channel, no .next/.last
+    description="Card segment code (early_prelims, prelims, main_card)",
+)
+def extract_card_segment(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    """Extract card segment for this UFC channel.
+
+    Returns the segment code assigned to this specific stream/channel.
+    Used for conditional logic and routing in templates.
+    """
+    if not game_ctx:
+        return ""
+
+    return game_ctx.card_segment or ""
+
+
+@register_variable(
+    name="card_segment_display",
+    category=Category.COMBAT,
+    suffix_rules=SuffixRules.NONE,  # Segment is specific to current channel
+    description="Card segment display name (Early Prelims, Prelims, Main Card)",
+)
+def extract_card_segment_display(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    """Extract human-readable card segment name.
+
+    Converts segment code to display format:
+    - early_prelims -> "Early Prelims"
+    - prelims -> "Prelims"
+    - main_card -> "Main Card"
+    """
+    if not game_ctx or not game_ctx.card_segment:
+        return ""
+
+    segment = game_ctx.card_segment
+    return SEGMENT_DISPLAY_NAMES.get(segment, segment.replace("_", " ").title())
+
+
+# =============================================================================
 # Bout Card Variables - All fighter pairings on the card
 # =============================================================================
 

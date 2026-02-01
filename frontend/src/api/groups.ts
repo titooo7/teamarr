@@ -53,6 +53,22 @@ export async function disableGroup(
   return api.post(`/groups/${groupId}/disable`)
 }
 
+export interface PromoteGroupResponse {
+  success: boolean
+  promoted_group_id: number
+  promoted_group_name: string
+  old_parent_id: number
+  old_parent_name: string
+  reassigned_groups: number[]
+  message: string
+}
+
+export async function promoteGroup(
+  groupId: number
+): Promise<PromoteGroupResponse> {
+  return api.post(`/groups/${groupId}/promote`)
+}
+
 export async function processGroup(
   groupId: number
 ): Promise<ProcessGroupResponse> {

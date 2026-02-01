@@ -17,6 +17,7 @@ import {
   ArrowUpDown,
   RotateCcw,
   Library,
+  Crown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -51,6 +52,7 @@ import {
   useToggleGroup,
   usePreviewGroup,
   useReorderGroups,
+  usePromoteGroup,
 } from "@/hooks/useGroups"
 import { useTemplates } from "@/hooks/useTemplates"
 import type { EventGroup, PreviewGroupResponse } from "@/api/types"
@@ -86,6 +88,7 @@ export function EventGroups() {
   const reorderMutation = useReorderGroups()
   const clearCacheMutation = useClearGroupMatchCache()
   const clearCachesBulkMutation = useClearGroupsMatchCache()
+  const promoteMutation = usePromoteGroup()
 
   // Drag-and-drop state for AUTO groups
   const [draggedGroupId, setDraggedGroupId] = useState<number | null>(null)
@@ -147,6 +150,7 @@ export function EventGroups() {
   const [statusFilter, setStatusFilter] = useState<"" | "enabled" | "disabled">("")
 
   const [deleteConfirm, setDeleteConfirm] = useState<EventGroup | null>(null)
+  const [promoteConfirm, setPromoteConfirm] = useState<EventGroup | null>(null)
   const [showBulkDelete, setShowBulkDelete] = useState(false)
   const [showBulkEdit, setShowBulkEdit] = useState(false)
   // Bulk edit form state - checkboxes control which fields to update
@@ -1424,6 +1428,17 @@ export function EventGroups() {
                             <RotateCcw className="h-4 w-4" />
                           )}
                         </Button>
+                        {isChild && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setPromoteConfirm(group)}
+                            title="Promote to parent"
+                          >
+                            <Crown className="h-4 w-4 text-amber-500" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -1482,6 +1497,72 @@ export function EventGroups() {
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               )}
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Promote to Parent Confirmation Dialog */}
+      <Dialog
+        open={promoteConfirm !== null}
+        onOpenChange={(open) => !open && setPromoteConfirm(null)}
+      >
+        <DialogContent onClose={() => setPromoteConfirm(null)}>
+          <DialogHeader>
+            <DialogTitle>Promote to Parent</DialogTitle>
+            <DialogDescription className="space-y-2">
+              <p>
+                Promote "{promoteConfirm ? getDisplayName(promoteConfirm) : ''}" to become the parent group?
+              </p>
+              {promoteConfirm && (() => {
+                const currentParent = parentGroups.find(p => p.id === promoteConfirm.parent_group_id)
+                const siblings = data?.groups.filter(g =>
+                  g.parent_group_id === promoteConfirm.parent_group_id && g.id !== promoteConfirm.id
+                ) || []
+                return (
+                  <div className="mt-2 p-2 bg-muted rounded text-sm">
+                    <p className="font-medium mb-1">This will reorganize the hierarchy:</p>
+                    <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                      {currentParent && (
+                        <li>"{getDisplayName(currentParent)}" will become a child</li>
+                      )}
+                      {siblings.map(s => (
+                        <li key={s.id}>"{getDisplayName(s)}" will become a child</li>
+                      ))}
+                      <li>"{getDisplayName(promoteConfirm)}" will become the parent</li>
+                    </ul>
+                    <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                      Channels will be reassigned on next EPG generation.
+                    </p>
+                  </div>
+                )
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPromoteConfirm(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (promoteConfirm) {
+                  promoteMutation.mutate(promoteConfirm.id, {
+                    onSuccess: (result) => {
+                      toast.success(result.message)
+                      setPromoteConfirm(null)
+                    },
+                    onError: (error) => {
+                      toast.error(error instanceof Error ? error.message : "Failed to promote group")
+                    },
+                  })
+                }
+              }}
+              disabled={promoteMutation.isPending}
+            >
+              {promoteMutation.isPending && (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              )}
+              Promote
             </Button>
           </DialogFooter>
         </DialogContent>

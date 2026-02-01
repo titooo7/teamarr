@@ -1333,6 +1333,46 @@ def disable_group(group_id: int) -> dict:
     return {"success": True, "message": f"Group '{group.name}' disabled"}
 
 
+@router.post("/{group_id}/promote")
+def promote_group_to_parent(group_id: int) -> dict:
+    """Promote a child group to become the parent, swapping the hierarchy.
+
+    This operation:
+    1. Makes the old parent a child of the promoted group
+    2. Makes all siblings children of the promoted group
+    3. Copies settings from old parent to promoted group if needed
+
+    Example:
+        Before: A (parent) -> B, C, D (children)
+        POST /groups/D/promote
+        After: D (parent) -> A, B, C (children)
+
+    Returns:
+        Success message with details of reassigned groups
+    """
+    from teamarr.database.groups import promote_to_parent
+
+    try:
+        with get_db() as conn:
+            result = promote_to_parent(conn, group_id)
+
+        return {
+            "success": True,
+            "promoted_group_id": result["promoted_group_id"],
+            "promoted_group_name": result["promoted_group_name"],
+            "old_parent_id": result["old_parent_id"],
+            "old_parent_name": result["old_parent_name"],
+            "reassigned_groups": result["reassigned_groups"],
+            "message": f"'{result['promoted_group_name']}' is now the parent of "
+            f"'{result['old_parent_name']}' and {result['reassigned_count'] - 1} other group(s)",
+        }
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from None
+
+
 @router.post("/{group_id}/cache/clear", response_model=ClearCacheResponse)
 def clear_group_match_cache(group_id: int):
     """Clear stream match cache for a specific event group.

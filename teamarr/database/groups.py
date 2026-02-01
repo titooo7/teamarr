@@ -1044,6 +1044,138 @@ def delete_group(conn: Connection, group_id: int) -> bool:
     return False
 
 
+def promote_to_parent(conn: Connection, group_id: int) -> dict:
+    """Promote a child group to become the parent, swapping the hierarchy.
+
+    This is an atomic operation that:
+    1. Makes the old parent a child of the promoted group
+    2. Makes all siblings children of the promoted group
+    3. Copies settings from old parent to promoted group if needed
+    4. Clears the promoted group's parent_group_id
+
+    Example:
+        Before: A (parent) -> B, C, D (children)
+        promote_to_parent(D)
+        After: D (parent) -> A, B, C (children)
+
+    Args:
+        conn: Database connection
+        group_id: ID of the child group to promote
+
+    Returns:
+        dict with promoted_group_id, old_parent_id, reassigned_groups
+
+    Raises:
+        ValueError: If group is not a child or validation fails
+    """
+    # Get the group to promote
+    promoted = conn.execute(
+        """SELECT id, name, parent_group_id, template_id, channel_start_number,
+                  channel_group_id, channel_group_mode, channel_profile_ids,
+                  stream_profile_id, channel_assignment_mode, leagues
+           FROM event_epg_groups WHERE id = ?""",
+        (group_id,),
+    ).fetchone()
+
+    if not promoted:
+        raise ValueError(f"Group {group_id} not found")
+
+    if not promoted["parent_group_id"]:
+        raise ValueError(f"Group {group_id} is not a child group - cannot promote")
+
+    old_parent_id = promoted["parent_group_id"]
+
+    # Get the old parent's settings (to copy if needed)
+    old_parent = conn.execute(
+        """SELECT id, name, template_id, channel_start_number, channel_group_id,
+                  channel_group_mode, channel_profile_ids, stream_profile_id,
+                  channel_assignment_mode
+           FROM event_epg_groups WHERE id = ?""",
+        (old_parent_id,),
+    ).fetchone()
+
+    if not old_parent:
+        raise ValueError(f"Parent group {old_parent_id} not found")
+
+    # Get all siblings (other children of the same parent, excluding self)
+    siblings = conn.execute(
+        "SELECT id, name FROM event_epg_groups WHERE parent_group_id = ? AND id != ?",
+        (old_parent_id, group_id),
+    ).fetchall()
+
+    # Copy settings from old parent to promoted group if promoted has NULL
+    settings_updates = []
+    settings_values = []
+
+    if promoted["template_id"] is None and old_parent["template_id"] is not None:
+        settings_updates.append("template_id = ?")
+        settings_values.append(old_parent["template_id"])
+
+    if promoted["channel_start_number"] is None and old_parent["channel_start_number"]:
+        settings_updates.append("channel_start_number = ?")
+        settings_values.append(old_parent["channel_start_number"])
+
+    if promoted["channel_group_id"] is None and old_parent["channel_group_id"]:
+        settings_updates.append("channel_group_id = ?")
+        settings_values.append(old_parent["channel_group_id"])
+
+    if promoted["channel_group_mode"] is None and old_parent["channel_group_mode"]:
+        settings_updates.append("channel_group_mode = ?")
+        settings_values.append(old_parent["channel_group_mode"])
+
+    if promoted["channel_profile_ids"] is None and old_parent["channel_profile_ids"]:
+        settings_updates.append("channel_profile_ids = ?")
+        settings_values.append(old_parent["channel_profile_ids"])
+
+    if promoted["stream_profile_id"] is None and old_parent["stream_profile_id"]:
+        settings_updates.append("stream_profile_id = ?")
+        settings_values.append(old_parent["stream_profile_id"])
+
+    if old_parent["channel_assignment_mode"]:
+        settings_updates.append("channel_assignment_mode = ?")
+        settings_values.append(old_parent["channel_assignment_mode"])
+
+    # Clear promoted group's parent and apply copied settings
+    settings_updates.append("parent_group_id = NULL")
+    if settings_updates:
+        conn.execute(
+            f"UPDATE event_epg_groups SET {', '.join(settings_updates)} WHERE id = ?",
+            (*settings_values, group_id),
+        )
+
+    # Make old parent a child of promoted group
+    conn.execute(
+        "UPDATE event_epg_groups SET parent_group_id = ? WHERE id = ?",
+        (group_id, old_parent_id),
+    )
+
+    # Make all siblings children of promoted group
+    reassigned_ids = [old_parent_id]
+    for sibling in siblings:
+        conn.execute(
+            "UPDATE event_epg_groups SET parent_group_id = ? WHERE id = ?",
+            (group_id, sibling["id"]),
+        )
+        reassigned_ids.append(sibling["id"])
+
+    logger.info(
+        "[PROMOTE] Group %d (%s) promoted to parent. Old parent %d and %d siblings reassigned.",
+        group_id,
+        promoted["name"],
+        old_parent_id,
+        len(siblings),
+    )
+
+    return {
+        "promoted_group_id": group_id,
+        "promoted_group_name": promoted["name"],
+        "old_parent_id": old_parent_id,
+        "old_parent_name": old_parent["name"],
+        "reassigned_groups": reassigned_ids,
+        "reassigned_count": len(reassigned_ids),
+    }
+
+
 # =============================================================================
 # STATS / HELPERS
 # =============================================================================

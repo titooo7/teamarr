@@ -7,7 +7,7 @@ Organization: Variables grouped by category, with base/.next/.last variants toge
 """
 
 # Available sports for the dropdown
-AVAILABLE_SPORTS = ["NBA", "NFL", "MLB", "NHL", "NCAAM", "NCAAF", "Soccer"]
+AVAILABLE_SPORTS = ["NBA", "NFL", "MLB", "NHL", "NCAAM", "NCAAF", "Soccer", "UFC"]
 
 # Sample data organized by variable name and sport
 # Each variable can have different sample values per sport
@@ -142,6 +142,7 @@ SAMPLE_DATA: dict[str, dict[str, str]] = {
         "NCAAM": "Ohio State Buckeyes @ Michigan Wolverines",
         "NCAAF": "Ohio State Buckeyes @ Michigan Wolverines",
         "Soccer": "Manchester City @ Liverpool",
+        "UFC": "Alex Volkanovski vs Diego Lopes",
     },
     "matchup.next": {
         "NBA": "Detroit Pistons @ Milwaukee Bucks",
@@ -151,6 +152,7 @@ SAMPLE_DATA: dict[str, dict[str, str]] = {
         "NCAAM": "Michigan Wolverines @ Indiana Hoosiers",
         "NCAAF": "Michigan Wolverines @ Penn State Nittany Lions",
         "Soccer": "Liverpool @ Arsenal",
+        "UFC": "Islam Makhachev vs Arman Tsarukyan",
     },
     "matchup.last": {
         "NBA": "Detroit Pistons @ Cleveland Cavaliers",
@@ -160,6 +162,7 @@ SAMPLE_DATA: dict[str, dict[str, str]] = {
         "NCAAM": "Michigan Wolverines @ Michigan State Spartans",
         "NCAAF": "Michigan Wolverines @ Michigan State Spartans",
         "Soccer": "Liverpool @ Chelsea",
+        "UFC": "Jon Jones vs Stipe Miocic",
     },
     "matchup_abbrev": {
         "NBA": "CHI @ DET",
@@ -3631,6 +3634,127 @@ SAMPLE_DATA: dict[str, dict[str, str]] = {
         "NCAAF": "",
         "Soccer": "",
     },
+    # ==========================================================================
+    # COMBAT SPORTS - UFC/MMA specific variables
+    # ==========================================================================
+    "fighter1": {
+        "UFC": "Alex Volkanovski",
+    },
+    "fighter1.next": {
+        "UFC": "Islam Makhachev",
+    },
+    "fighter1.last": {
+        "UFC": "Jon Jones",
+    },
+    "fighter2": {
+        "UFC": "Diego Lopes",
+    },
+    "fighter2.next": {
+        "UFC": "Arman Tsarukyan",
+    },
+    "fighter2.last": {
+        "UFC": "Stipe Miocic",
+    },
+    "event_number": {
+        "UFC": "314",
+    },
+    "event_number.next": {
+        "UFC": "315",
+    },
+    "event_number.last": {
+        "UFC": "309",
+    },
+    "event_title": {
+        "UFC": "UFC 314: Volkanovski vs Lopes",
+    },
+    "event_title.next": {
+        "UFC": "UFC 315: Makhachev vs Tsarukyan 2",
+    },
+    "event_title.last": {
+        "UFC": "UFC 309: Jones vs Miocic",
+    },
+    "card_segment": {
+        "UFC": "main_card",
+    },
+    "card_segment_display": {
+        "UFC": "Main Card",
+    },
+    "main_card_time": {
+        "UFC": "10:00 PM EST",
+    },
+    "main_card_time.next": {
+        "UFC": "10:00 PM EST",
+    },
+    "main_card_time.last": {
+        "UFC": "10:00 PM EST",
+    },
+    "prelims_time": {
+        "UFC": "8:00 PM EST",
+    },
+    "prelims_time.next": {
+        "UFC": "8:00 PM EST",
+    },
+    "prelims_time.last": {
+        "UFC": "8:00 PM EST",
+    },
+    "early_prelims_time": {
+        "UFC": "6:00 PM EST",
+    },
+    "early_prelims_time.next": {
+        "UFC": "6:00 PM EST",
+    },
+    "early_prelims_time.last": {
+        "UFC": "6:00 PM EST",
+    },
+    "bout_count": {
+        "UFC": "14",
+    },
+    "bout_count.next": {
+        "UFC": "13",
+    },
+    "bout_count.last": {
+        "UFC": "12",
+    },
+    "fight_card": {
+        "UFC": (
+            "Alex Volkanovski vs Diego Lopes\n"
+            "Merab Dvalishvili vs Umar Nurmagomedov\n"
+            "Renato Moicano vs Beneil Dariush"
+        ),
+    },
+    "fight_card.next": {
+        "UFC": "Islam Makhachev vs Arman Tsarukyan\nAlexander Volkov vs Ciryl Gane",
+    },
+    "fight_card.last": {
+        "UFC": "Jon Jones vs Stipe Miocic\nCharles Oliveira vs Michael Chandler",
+    },
+    "main_card_bouts": {
+        "UFC": "Alex Volkanovski vs Diego Lopes\nMerab Dvalishvili vs Umar Nurmagomedov",
+    },
+    "main_card_bouts.next": {
+        "UFC": "Islam Makhachev vs Arman Tsarukyan",
+    },
+    "main_card_bouts.last": {
+        "UFC": "Jon Jones vs Stipe Miocic",
+    },
+    "prelims_bouts": {
+        "UFC": "Sean Brady vs Kelvin Gastelum\nChris Weidman vs Eryk Anders",
+    },
+    "prelims_bouts.next": {
+        "UFC": "Alexander Volkov vs Ciryl Gane",
+    },
+    "prelims_bouts.last": {
+        "UFC": "Charles Oliveira vs Michael Chandler",
+    },
+    "early_prelims_bouts": {
+        "UFC": "Mauricio Ruffy vs Jamie Mullarkey\nOtar Kentchadze vs Ismael Bonfim",
+    },
+    "early_prelims_bouts.next": {
+        "UFC": "TBA vs TBA",
+    },
+    "early_prelims_bouts.last": {
+        "UFC": "Viviane Araujo vs Karine Silva",
+    },
 }
 
 
@@ -3682,6 +3806,15 @@ _TIME_VARIABLES = {
     "game_time",
     "game_time.next",
     "game_time.last",
+    "main_card_time",
+    "main_card_time.next",
+    "main_card_time.last",
+    "prelims_time",
+    "prelims_time.next",
+    "prelims_time.last",
+    "early_prelims_time",
+    "early_prelims_time.next",
+    "early_prelims_time.last",
 }
 
 

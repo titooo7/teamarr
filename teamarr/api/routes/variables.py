@@ -27,6 +27,7 @@ def _category_display_name(category: Category) -> str:
         Category.RANKINGS: "Rankings",
         Category.CONFERENCE: "Conference",
         Category.SOCCER: "Soccer",
+        Category.COMBAT: "Combat Sports",
     }
     return names.get(category, category.name.title())
 

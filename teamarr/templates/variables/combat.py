@@ -148,7 +148,7 @@ SEGMENT_DISPLAY_NAMES: dict[str, str] = {
 @register_variable(
     name="card_segment",
     category=Category.COMBAT,
-    suffix_rules=SuffixRules.NONE,  # Segment is specific to current channel, no .next/.last
+    suffix_rules=SuffixRules.BASE_ONLY,  # Segment is specific to current channel
     description="Card segment code (early_prelims, prelims, main_card)",
 )
 def extract_card_segment(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
@@ -166,7 +166,7 @@ def extract_card_segment(ctx: TemplateContext, game_ctx: GameContext | None) -> 
 @register_variable(
     name="card_segment_display",
     category=Category.COMBAT,
-    suffix_rules=SuffixRules.NONE,  # Segment is specific to current channel
+    suffix_rules=SuffixRules.BASE_ONLY,  # Segment is specific to current channel
     description="Card segment display name (Early Prelims, Prelims, Main Card)",
 )
 def extract_card_segment_display(ctx: TemplateContext, game_ctx: GameContext | None) -> str:

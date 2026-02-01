@@ -15,7 +15,6 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
-  Plus,
   RotateCcw,
   Library,
 } from "lucide-react"
@@ -54,14 +53,13 @@ import {
   useReorderGroups,
 } from "@/hooks/useGroups"
 import { useTemplates } from "@/hooks/useTemplates"
-import type { EventGroup, PreviewGroupResponse, TeamFilterEntry } from "@/api/types"
-import { getLeagues, getSports } from "@/api/teams"
-import { TeamPicker } from "@/components/TeamPicker"
+import type { EventGroup, PreviewGroupResponse } from "@/api/types"
+import { getLeagues } from "@/api/teams"
 import { LeaguePicker } from "@/components/LeaguePicker"
 import { ChannelProfileSelector } from "@/components/ChannelProfileSelector"
 import { StreamProfileSelector } from "@/components/StreamProfileSelector"
 import { StreamTimezoneSelector } from "@/components/StreamTimezoneSelector"
-import { getUniqueSports, filterLeaguesBySport, getLeagueDisplayName, SPORT_EMOJIS } from "@/lib/utils"
+import { getLeagueDisplayName, SPORT_EMOJIS } from "@/lib/utils"
 
 // Fetch Dispatcharr channel groups for name lookup
 async function fetchChannelGroups(): Promise<{ id: number; name: string }[]> {
@@ -69,46 +67,6 @@ async function fetchChannelGroups(): Promise<{ id: number; name: string }[]> {
   if (!response.ok) return []
   const data = await response.json()
   return data.groups || []
-}
-
-// ============================================================================
-// Team Alias Types and API Functions
-// ============================================================================
-
-interface TeamAlias {
-  id: number
-  alias: string
-  league: string
-  provider: string
-  team_id: string
-  team_name: string
-  created_at: string | null
-}
-
-async function fetchAliases(): Promise<TeamAlias[]> {
-  const response = await fetch("/api/v1/aliases")
-  if (!response.ok) return []
-  const data = await response.json()
-  return data.aliases || []
-}
-
-async function createAlias(alias: { alias: string; league: string; team_id: string; team_name: string; provider?: string }): Promise<void> {
-  const response = await fetch("/api/v1/aliases", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...alias, provider: alias.provider || "espn" }),
-  })
-  if (!response.ok) {
-    const data = await response.json()
-    throw new Error(data.detail || "Failed to create alias")
-  }
-}
-
-async function deleteAlias(id: number): Promise<void> {
-  const response = await fetch(`/api/v1/aliases/${id}`, { method: "DELETE" })
-  if (!response.ok) {
-    throw new Error("Failed to delete alias")
-  }
 }
 
 // Helper to get display name (prefer display_name over name)
@@ -120,8 +78,6 @@ export function EventGroups() {
   const { data: templates } = useTemplates()
   const { data: leaguesResponse } = useQuery({ queryKey: ["leagues"], queryFn: () => getLeagues() })
   const cachedLeagues = leaguesResponse?.leagues
-  const { data: sportsResponse } = useQuery({ queryKey: ["sports"], queryFn: getSports, staleTime: 1000 * 60 * 60 })
-  const sportsMap = sportsResponse?.sports
   const { data: channelGroups } = useQuery({ queryKey: ["dispatcharr-channel-groups"], queryFn: fetchChannelGroups })
   const deleteMutation = useDeleteGroup()
   const toggleMutation = useToggleGroup()
@@ -222,94 +178,6 @@ export function EventGroups() {
   type SortDirection = "asc" | "desc"
   const [sortColumn, setSortColumn] = useState<SortColumn>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc")
-
-  // Team Aliases state
-  const { data: aliases, refetch: refetchAliases } = useQuery({
-    queryKey: ["aliases"],
-    queryFn: fetchAliases,
-  })
-  const [showAliasModal, setShowAliasModal] = useState(false)
-  const [aliasForm, setAliasForm] = useState({ alias: "", league: "", team_id: "", team_name: "" })
-  const [aliasSport, setAliasSport] = useState("")
-  const [aliasSelectedTeams, setAliasSelectedTeams] = useState<TeamFilterEntry[]>([])
-  const [aliasSubmitting, setAliasSubmitting] = useState(false)
-  const [aliasDeleting, setAliasDeleting] = useState<number | null>(null)
-
-  // Get unique sports from cached leagues (normalized, sorted)
-  const aliasSports = useMemo(() => {
-    if (!cachedLeagues) return []
-    return getUniqueSports(cachedLeagues, sportsMap)
-  }, [cachedLeagues, sportsMap])
-
-  // Filter leagues by selected sport (import_enabled first, then alphabetical)
-  const aliasFilteredLeagues = useMemo(() => {
-    if (!aliasSport || !cachedLeagues) return []
-    return filterLeaguesBySport(cachedLeagues, aliasSport, sportsMap)
-  }, [cachedLeagues, aliasSport, sportsMap])
-
-  // Handle sport change in alias modal
-  const handleAliasSportChange = (sport: string) => {
-    setAliasSport(sport)
-    setAliasForm({ ...aliasForm, league: "", team_id: "", team_name: "" })
-    setAliasSelectedTeams([])
-  }
-
-  // Handle league change in alias modal
-  const handleAliasLeagueChange = (league: string) => {
-    setAliasForm({ ...aliasForm, league, team_id: "", team_name: "" })
-    setAliasSelectedTeams([])
-  }
-
-  // Handle team selection from TeamPicker
-  const handleAliasTeamSelect = (teams: TeamFilterEntry[]) => {
-    setAliasSelectedTeams(teams)
-    const team = teams[0]
-    if (team) {
-      setAliasForm({ ...aliasForm, team_id: team.team_id, team_name: team.name || "" })
-    } else {
-      setAliasForm({ ...aliasForm, team_id: "", team_name: "" })
-    }
-  }
-
-  const handleCreateAlias = async () => {
-    if (!aliasForm.alias.trim() || !aliasForm.league || !aliasForm.team_id) {
-      toast.error("Please fill in all fields")
-      return
-    }
-
-    setAliasSubmitting(true)
-    try {
-      await createAlias({
-        alias: aliasForm.alias.trim().toLowerCase(),
-        league: aliasForm.league,
-        team_id: aliasForm.team_id,
-        team_name: aliasForm.team_name,
-      })
-      toast.success(`Alias "${aliasForm.alias}" created`)
-      setShowAliasModal(false)
-      setAliasForm({ alias: "", league: "", team_id: "", team_name: "" })
-      setAliasSport("")
-      setAliasSelectedTeams([])
-      refetchAliases()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to create alias")
-    } finally {
-      setAliasSubmitting(false)
-    }
-  }
-
-  const handleDeleteAlias = async (id: number) => {
-    setAliasDeleting(id)
-    try {
-      await deleteAlias(id)
-      toast.success("Alias deleted")
-      refetchAliases()
-    } catch {
-      toast.error("Failed to delete alias")
-    } finally {
-      setAliasDeleting(null)
-    }
-  }
 
   // Handle column sort
   const handleSort = (column: SortColumn) => {
@@ -1586,168 +1454,6 @@ export function EventGroups() {
             </Table>
           )}
       </div>
-
-      {/* Team Aliases Section - Compact like V1 */}
-      <div className="mt-4">
-        <div className="flex items-center gap-2 mb-1.5">
-          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Team Aliases</h3>
-          <span className="text-[0.65rem] text-muted-foreground/70">({aliases?.length ?? 0})</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-5 px-1.5 text-xs ml-auto"
-            onClick={() => {
-              setAliasForm({ alias: "", league: "", team_id: "", team_name: "" })
-              setAliasSelectedTeams([])
-              setShowAliasModal(true)
-            }}
-          >
-            <Plus className="h-3 w-3 mr-0.5" />
-            Add
-          </Button>
-        </div>
-
-        {aliases && aliases.length > 0 ? (
-          <div className="border rounded overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="h-6 bg-muted/30">
-                  <TableHead className="text-[0.65rem] py-1 font-medium">Alias</TableHead>
-                  <TableHead className="text-[0.65rem] py-1 font-medium">League</TableHead>
-                  <TableHead className="text-[0.65rem] py-1 font-medium">Maps To</TableHead>
-                  <TableHead className="text-[0.65rem] py-1 w-8"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {aliases.map((alias) => (
-                  <TableRow key={alias.id} className="h-7">
-                    <TableCell className="py-1 font-mono text-xs">{alias.alias}</TableCell>
-                    <TableCell className="py-1">
-                      <Badge variant="outline" className="text-[0.6rem] px-1 py-0 h-4">
-                        {alias.league.toUpperCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="py-1 text-xs">{alias.team_name}</TableCell>
-                    <TableCell className="py-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5"
-                        onClick={() => handleDeleteAlias(alias.id)}
-                        disabled={aliasDeleting === alias.id}
-                        title="Delete"
-                      >
-                        {aliasDeleting === alias.id ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
-                        )}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground/70 italic">
-            No aliases defined. Aliases help match stream names to teams.
-          </p>
-        )}
-      </div>
-
-      {/* Add Alias Modal */}
-      <Dialog open={showAliasModal} onOpenChange={(open) => {
-        setShowAliasModal(open)
-        if (!open) {
-          setAliasForm({ alias: "", league: "", team_id: "", team_name: "" })
-          setAliasSport("")
-          setAliasSelectedTeams([])
-        }
-      }}>
-        <DialogContent onClose={() => setShowAliasModal(false)}>
-          <DialogHeader>
-            <DialogTitle>Add Team Alias</DialogTitle>
-            <DialogDescription>
-              Create a new alias to map stream names to teams.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Alias Text</label>
-              <Input
-                value={aliasForm.alias}
-                onChange={(e) => setAliasForm({ ...aliasForm, alias: e.target.value })}
-                placeholder="e.g., spurs, man u"
-              />
-              <p className="text-xs text-muted-foreground">
-                The text that appears in stream names (case-insensitive)
-              </p>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Sport</label>
-              <Select
-                value={aliasSport}
-                onChange={(e) => handleAliasSportChange(e.target.value)}
-              >
-                <option value="">Select sport...</option>
-                {aliasSports.map((sport) => (
-                  <option key={sport} value={sport}>
-                    {sport}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">League</label>
-              {!aliasSport ? (
-                <p className="text-sm text-muted-foreground py-2">Select a sport first</p>
-              ) : (
-                <Select
-                  value={aliasForm.league}
-                  onChange={(e) => handleAliasLeagueChange(e.target.value)}
-                >
-                  <option value="">Select league...</option>
-                  {aliasFilteredLeagues.map((league) => (
-                    <option key={league.slug} value={league.slug}>
-                      {getLeagueDisplayName(league, true)}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Team</label>
-              {!aliasForm.league ? (
-                <p className="text-sm text-muted-foreground py-2">Select a league first</p>
-              ) : (
-                <TeamPicker
-                  leagues={[aliasForm.league]}
-                  selectedTeams={aliasSelectedTeams}
-                  onSelectionChange={handleAliasTeamSelect}
-                  placeholder="Search teams..."
-                  singleSelect
-                />
-              )}
-              <p className="text-xs text-muted-foreground">
-                The actual team this alias should map to
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAliasModal(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreateAlias}
-              disabled={aliasSubmitting || !aliasForm.alias.trim() || !aliasForm.team_id}
-            >
-              {aliasSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Save Alias
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <Dialog

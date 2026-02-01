@@ -1903,7 +1903,7 @@ export function EventGroups() {
             </Button>
             <Button
               onClick={handleBulkEdit}
-              disabled={bulkUpdateMutation.isPending || (!bulkEditLeaguesEnabled && !bulkEditTemplateEnabled && !bulkEditChannelGroupEnabled && !bulkEditProfilesEnabled && !bulkEditStreamTimezoneEnabled && !bulkEditSortOrderEnabled && !bulkEditOverlapHandlingEnabled)}
+              disabled={bulkUpdateMutation.isPending || (!bulkEditLeaguesEnabled && !bulkEditTemplateEnabled && !bulkEditChannelGroupEnabled && !bulkEditProfilesEnabled && !bulkEditStreamProfileEnabled && !bulkEditStreamTimezoneEnabled && !bulkEditSortOrderEnabled && !bulkEditOverlapHandlingEnabled)}
             >
               {bulkUpdateMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Apply to {selectedIds.size} groups

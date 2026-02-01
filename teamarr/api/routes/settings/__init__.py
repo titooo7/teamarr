@@ -72,6 +72,8 @@ def get_settings():
             password="********" if settings.dispatcharr.password else None,
             epg_id=settings.dispatcharr.epg_id,
             default_channel_profile_ids=settings.dispatcharr.default_channel_profile_ids,
+            default_stream_profile_id=settings.dispatcharr.default_stream_profile_id,
+            cleanup_unused_logos=settings.dispatcharr.cleanup_unused_logos,
         ),
         lifecycle=LifecycleSettingsModel(
             channel_create_timing=settings.lifecycle.channel_create_timing,

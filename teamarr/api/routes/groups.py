@@ -219,7 +219,7 @@ class GroupResponse(BaseModel):
     channel_start_number: int | None = None
     channel_group_id: int | None = None
     channel_group_mode: str = "static"  # "static", "sport", "league"
-    channel_profile_ids: list[str | int] = []  # IDs or "{sport}", "{league}"
+    channel_profile_ids: list[str | int] | None = None  # null = use default, [] = no profiles
     stream_profile_id: int | None = None  # Stream profile (overrides global default)
     stream_timezone: str | None = None  # Timezone for stream datetime parsing
     duplicate_event_handling: str = "consolidate"
@@ -280,9 +280,9 @@ class GroupResponse(BaseModel):
 
     @field_validator("channel_profile_ids", mode="before")
     @classmethod
-    def validate_profile_ids(cls, v: Any) -> list[str | int]:
-        result = _validate_profile_ids(v)
-        return result if result is not None else []
+    def validate_profile_ids(cls, v: Any) -> list[str | int] | None:
+        # Preserve None (use default) vs [] (no profiles) distinction
+        return _validate_profile_ids(v)
 
 
 class GroupListResponse(BaseModel):

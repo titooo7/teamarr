@@ -25,9 +25,7 @@ class EventEPGGroup:
     channel_start_number: int | None = None
     channel_group_id: int | None = None
     channel_group_mode: str = "static"  # "static", "sport", "league"
-    channel_profile_ids: list[int | str] = field(
-        default_factory=list
-    )  # IDs or "{sport}", "{league}"
+    channel_profile_ids: list[int | str] | None = None  # null = use default, [] = no profiles
     stream_profile_id: int | None = None  # Stream profile (overrides global default)
     stream_timezone: str | None = None  # Timezone for stream datetime parsing
     duplicate_event_handling: str = "consolidate"
@@ -90,12 +88,13 @@ class EventEPGGroup:
 def _row_to_group(row) -> EventEPGGroup:
     """Convert a database row to EventEPGGroup."""
     leagues = json.loads(row["leagues"]) if row["leagues"] else []
-    channel_profile_ids = []
+    # Preserve None (use default) vs [] (no profiles) distinction
+    channel_profile_ids = None
     if row["channel_profile_ids"]:
         try:
             channel_profile_ids = json.loads(row["channel_profile_ids"])
         except (json.JSONDecodeError, TypeError):
-            pass
+            channel_profile_ids = None
 
     created_at = None
     if row["created_at"]:

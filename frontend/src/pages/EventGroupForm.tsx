@@ -27,7 +27,7 @@ import { ChannelProfileSelector } from "@/components/ChannelProfileSelector"
 import { StreamProfileSelector } from "@/components/StreamProfileSelector"
 import { StreamTimezoneSelector } from "@/components/StreamTimezoneSelector"
 import { TestPatternsModal, type PatternState } from "@/components/TestPatternsModal"
-import { TemplateAssignmentModal } from "@/components/TemplateAssignmentModal"
+import { TemplateAssignmentModal, type LocalTemplateAssignment } from "@/components/TemplateAssignmentModal"
 
 // Group mode
 type GroupMode = "single" | "multi" | null
@@ -153,6 +153,8 @@ export function EventGroupForm() {
 
   // Template Assignment modal (for multi-league groups)
   const [templateModalOpen, setTemplateModalOpen] = useState(false)
+  // Pending template assignments for new groups (not saved to DB yet)
+  const [pendingTemplateAssignments, setPendingTemplateAssignments] = useState<LocalTemplateAssignment[]>([])
 
   // Channel profile default state - true = use global default, false = custom selection
   const [useDefaultProfiles, setUseDefaultProfiles] = useState(true)
@@ -373,7 +375,18 @@ export function EventGroupForm() {
         await updateMutation.mutateAsync({ groupId: Number(groupId), data: updateData })
         toast.success(`Updated group "${formData.name}"`)
       } else {
-        await createMutation.mutateAsync(submitData)
+        // Include pending template assignments for new multi-league groups
+        const createData = {
+          ...submitData,
+          ...(pendingTemplateAssignments.length > 0 && {
+            template_assignments: pendingTemplateAssignments.map((a) => ({
+              template_id: a.template_id,
+              sports: a.sports,
+              leagues: a.leagues,
+            })),
+          }),
+        }
+        await createMutation.mutateAsync(createData)
         toast.success(`Created group "${formData.name}"`)
       }
       navigate("/event-groups")
@@ -625,14 +638,20 @@ export function EventGroupForm() {
                           variant="outline"
                           className="w-full justify-start"
                           onClick={() => setTemplateModalOpen(true)}
-                          disabled={!isEdit}
                         >
                           Manage Templates...
+                          {!isEdit && pendingTemplateAssignments.length > 0 && (
+                            <Badge variant="secondary" className="ml-2">
+                              {pendingTemplateAssignments.length}
+                            </Badge>
+                          )}
                         </Button>
                         <p className="text-xs text-muted-foreground">
                           {isEdit
                             ? "Assign different templates per sport/league"
-                            : "Save group first to manage templates"}
+                            : pendingTemplateAssignments.length > 0
+                              ? `${pendingTemplateAssignments.length} template assignment(s) configured`
+                              : "Configure template assignments per sport/league"}
                         </p>
                       </>
                     ) : (
@@ -1712,13 +1731,15 @@ export function EventGroupForm() {
       />
 
       {/* Template Assignment Modal — for multi-league groups */}
-      {isEdit && formData.leagues.length > 1 && (
+      {formData.leagues.length > 1 && (
         <TemplateAssignmentModal
           open={templateModalOpen}
           onOpenChange={setTemplateModalOpen}
-          groupId={Number(groupId)}
+          groupId={isEdit ? Number(groupId) : undefined}
           groupName={formData.display_name || formData.name}
           groupLeagues={formData.leagues}
+          localAssignments={!isEdit ? pendingTemplateAssignments : undefined}
+          onLocalChange={!isEdit ? setPendingTemplateAssignments : undefined}
         />
       )}
     </div>

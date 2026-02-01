@@ -35,12 +35,23 @@ import { Loader2, Plus, Pencil, Trash2, Layers } from "lucide-react"
 // Types
 // ---------------------------------------------------------------------------
 
+// Local assignment type for new groups (no database ID yet)
+export interface LocalTemplateAssignment {
+  template_id: number
+  sports: string[] | null
+  leagues: string[] | null
+  template_name?: string
+}
+
 interface TemplateAssignmentModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  groupId: number
+  groupId?: number // Optional - if not provided, uses local mode
   groupName: string
   groupLeagues: string[] // Leagues configured in this group
+  // Local mode props (for new groups before saving)
+  localAssignments?: LocalTemplateAssignment[]
+  onLocalChange?: (assignments: LocalTemplateAssignment[]) => void
 }
 
 interface EditingAssignment {
@@ -60,22 +71,39 @@ export function TemplateAssignmentModal({
   groupId,
   groupName,
   groupLeagues,
+  localAssignments,
+  onLocalChange,
 }: TemplateAssignmentModalProps) {
   const queryClient = useQueryClient()
+
+  // Determine if we're in local mode (no groupId, managing assignments locally)
+  const isLocalMode = !groupId
 
   // Form state for add/edit
   const [editing, setEditing] = useState<EditingAssignment | null>(null)
 
-  // Fetch current assignments
+  // Fetch current assignments (only when not in local mode)
   const {
-    data: assignments,
+    data: dbAssignments,
     isLoading,
     error,
   } = useQuery({
     queryKey: ["groupTemplates", groupId],
-    queryFn: () => getGroupTemplates(groupId),
-    enabled: open,
+    queryFn: () => getGroupTemplates(groupId!),
+    enabled: open && !isLocalMode,
   })
+
+  // Use local assignments in local mode, otherwise use DB assignments
+  const assignments = isLocalMode
+    ? localAssignments?.map((a, idx) => ({
+        id: idx + 1, // Temporary ID for local assignments
+        group_id: 0,
+        template_id: a.template_id,
+        sports: a.sports,
+        leagues: a.leagues,
+        template_name: a.template_name ?? null,
+      }))
+    : dbAssignments
 
   // Fetch templates for dropdown
   const { data: templates } = useTemplates()
@@ -100,10 +128,10 @@ export function TemplateAssignmentModal({
       .map((l) => l.sport)
   )]
 
-  // Mutations
+  // Mutations (only used when not in local mode)
   const addMutation = useMutation({
     mutationFn: (data: { template_id: number; sports?: string[]; leagues?: string[] }) =>
-      addGroupTemplate(groupId, data),
+      addGroupTemplate(groupId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groupTemplates", groupId] })
       setEditing(null)
@@ -117,7 +145,7 @@ export function TemplateAssignmentModal({
     }: {
       assignmentId: number
       data: { template_id?: number; sports?: string[]; leagues?: string[] }
-    }) => updateGroupTemplate(groupId, assignmentId, data),
+    }) => updateGroupTemplate(groupId!, assignmentId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groupTemplates", groupId] })
       setEditing(null)
@@ -125,7 +153,7 @@ export function TemplateAssignmentModal({
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (assignmentId: number) => deleteGroupTemplate(groupId, assignmentId),
+    mutationFn: (assignmentId: number) => deleteGroupTemplate(groupId!, assignmentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groupTemplates", groupId] })
     },
@@ -158,27 +186,57 @@ export function TemplateAssignmentModal({
   const handleDelete = useCallback(
     (assignmentId: number) => {
       if (confirm("Delete this template assignment?")) {
-        deleteMutation.mutate(assignmentId)
+        if (isLocalMode && onLocalChange && localAssignments) {
+          // In local mode, remove from local state (assignmentId is index + 1)
+          const newAssignments = localAssignments.filter((_, idx) => idx + 1 !== assignmentId)
+          onLocalChange(newAssignments)
+        } else {
+          deleteMutation.mutate(assignmentId)
+        }
       }
     },
-    [deleteMutation]
+    [deleteMutation, isLocalMode, onLocalChange, localAssignments]
   )
 
   const handleSave = useCallback(() => {
     if (!editing || !editing.template_id) return
 
-    const data = {
-      template_id: editing.template_id,
-      sports: editing.sports.length > 0 ? editing.sports : undefined,
-      leagues: editing.leagues.length > 0 ? editing.leagues : undefined,
-    }
+    const templateName = eventTemplates.find((t) => t.id === editing.template_id)?.name
 
-    if (editing.id) {
-      updateMutation.mutate({ assignmentId: editing.id, data })
+    if (isLocalMode && onLocalChange) {
+      // In local mode, update local state
+      const newAssignment: LocalTemplateAssignment = {
+        template_id: editing.template_id,
+        sports: editing.sports.length > 0 ? editing.sports : null,
+        leagues: editing.leagues.length > 0 ? editing.leagues : null,
+        template_name: templateName,
+      }
+
+      if (editing.id && localAssignments) {
+        // Edit existing (editing.id is index + 1)
+        const newAssignments = [...localAssignments]
+        newAssignments[editing.id - 1] = newAssignment
+        onLocalChange(newAssignments)
+      } else {
+        // Add new
+        onLocalChange([...(localAssignments || []), newAssignment])
+      }
+      setEditing(null)
     } else {
-      addMutation.mutate(data)
+      // Database mode
+      const data = {
+        template_id: editing.template_id,
+        sports: editing.sports.length > 0 ? editing.sports : undefined,
+        leagues: editing.leagues.length > 0 ? editing.leagues : undefined,
+      }
+
+      if (editing.id) {
+        updateMutation.mutate({ assignmentId: editing.id, data })
+      } else {
+        addMutation.mutate(data)
+      }
     }
-  }, [editing, addMutation, updateMutation])
+  }, [editing, addMutation, updateMutation, isLocalMode, onLocalChange, localAssignments, eventTemplates])
 
   const handleCancel = useCallback(() => {
     setEditing(null)

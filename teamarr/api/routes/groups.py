@@ -116,6 +116,8 @@ class GroupCreate(BaseModel):
     channel_sort_order: str = "time"
     overlap_handling: str = "add_stream"
     enabled: bool = True
+    # Template assignments for multi-league groups (optional, created after group)
+    template_assignments: list["GroupTemplateCreate"] | None = None
 
     @field_validator("channel_profile_ids", mode="before")
     @classmethod
@@ -620,7 +622,12 @@ def list_groups(
 @router.post("", response_model=GroupResponse, status_code=status.HTTP_201_CREATED)
 def create_group(request: GroupCreate):
     """Create a new event EPG group."""
-    from teamarr.database.groups import create_group, get_group, get_group_by_name
+    from teamarr.database.groups import (
+        add_group_template,
+        create_group,
+        get_group,
+        get_group_by_name,
+    )
 
     validate_group_fields(
         duplicate_event_handling=request.duplicate_event_handling,
@@ -688,6 +695,17 @@ def create_group(request: GroupCreate):
             overlap_handling=request.overlap_handling,
             enabled=request.enabled,
         )
+
+        # Create template assignments if provided (for multi-league groups)
+        if request.template_assignments:
+            for assignment in request.template_assignments:
+                add_group_template(
+                    conn,
+                    group_id,
+                    assignment.template_id,
+                    assignment.sports,
+                    assignment.leagues,
+                )
 
         group = get_group(conn, group_id)
 

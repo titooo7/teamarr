@@ -127,6 +127,12 @@ export interface EventGroupCreate {
   channel_sort_order?: string
   overlap_handling?: string
   enabled?: boolean
+  // Template assignments for multi-league groups (created with the group)
+  template_assignments?: Array<{
+    template_id: number
+    sports?: string[] | null
+    leagues?: string[] | null
+  }>
 }
 
 export interface EventGroupUpdate extends Partial<EventGroupCreate> {

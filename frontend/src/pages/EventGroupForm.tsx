@@ -1607,24 +1607,27 @@ export function EventGroupForm() {
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="overlap_handling">Across Other Groups</Label>
-                  <Select
-                    id="overlap_handling"
-                    value={formData.overlap_handling || "add_stream"}
-                    onChange={(e) =>
-                      setFormData({ ...formData, overlap_handling: e.target.value })
-                    }
-                  >
-                    <option value="add_stream">Add streams to other group's channel (if none, create)</option>
-                    <option value="add_only">Add streams only (don't create channel)</option>
-                    <option value="create_all">Keep separate (create own channel)</option>
-                    <option value="skip">Skip (don't add streams or channel)</option>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    When this group's streams match an event that another group already has
-                  </p>
-                </div>
+                {/* Only show for multi-league groups */}
+                {formData.leagues.length > 1 && (
+                  <div className="space-y-2">
+                    <Label htmlFor="overlap_handling">Across Other Groups</Label>
+                    <Select
+                      id="overlap_handling"
+                      value={formData.overlap_handling || "add_stream"}
+                      onChange={(e) =>
+                        setFormData({ ...formData, overlap_handling: e.target.value })
+                      }
+                    >
+                      <option value="add_stream">Add streams to other group's channel (if none, create)</option>
+                      <option value="add_only">Add streams only (don't create channel)</option>
+                      <option value="create_all">Keep separate (create own channel)</option>
+                      <option value="skip">Skip (don't add streams or channel)</option>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      When this group's streams match an event that another group already has
+                    </p>
+                  </div>
+                )}
               </div>
             </CardContent>}
           </Card>}

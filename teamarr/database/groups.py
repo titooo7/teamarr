@@ -20,6 +20,7 @@ class EventEPGGroup:
     name: str
     display_name: str | None = None  # Optional display name override for UI
     leagues: list[str] = field(default_factory=list)
+    soccer_mode: str | None = None  # NULL (non-soccer), 'all', 'teams', 'manual'
     group_mode: str = "single"  # "single" or "multi" - persisted to preserve user intent
     template_id: int | None = None
     channel_start_number: int | None = None
@@ -122,6 +123,7 @@ def _row_to_group(row) -> EventEPGGroup:
         name=row["name"],
         display_name=row["display_name"] if "display_name" in row.keys() else None,
         leagues=leagues,
+        soccer_mode=row["soccer_mode"] if "soccer_mode" in row.keys() else None,
         group_mode=row["group_mode"] if "group_mode" in row.keys() else "single",
         template_id=row["template_id"],
         channel_start_number=row["channel_start_number"],
@@ -304,6 +306,23 @@ def get_groups_for_league(conn: Connection, league: str) -> list[EventEPGGroup]:
             groups.append(_row_to_group(row))
 
     return groups
+
+
+def get_enabled_soccer_leagues(conn: Connection) -> list[str]:
+    """Get all enabled soccer league codes.
+
+    Used by soccer_mode='all' to dynamically include all soccer leagues.
+
+    Args:
+        conn: Database connection
+
+    Returns:
+        List of enabled soccer league codes (e.g., ['eng.1', 'esp.1', 'uefa.champions'])
+    """
+    cursor = conn.execute(
+        "SELECT league_code FROM leagues WHERE sport = 'soccer' AND enabled = 1"
+    )
+    return [row["league_code"] for row in cursor.fetchall()]
 
 
 # =============================================================================

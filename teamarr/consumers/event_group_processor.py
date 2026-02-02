@@ -45,6 +45,7 @@ from teamarr.database.groups import (
     EventEPGGroup,
     get_all_group_xmltv,
     get_all_groups,
+    get_enabled_soccer_leagues,
     get_group,
     update_group_stats,
 )
@@ -348,6 +349,26 @@ class EventGroupProcessor:
         # This avoids redundant API/cache lookups when multiple groups search the same leagues
         # while ensuring groups that need fresh API data can still get it
         self._shared_events: dict[str, tuple[list[Event], bool]] = {}
+
+    def _resolve_effective_leagues(
+        self, conn: Connection, group: EventEPGGroup
+    ) -> list[str]:
+        """Resolve effective leagues for a group based on soccer_mode.
+
+        Args:
+            conn: Database connection
+            group: Event EPG group
+
+        Returns:
+            List of league codes to use for event fetching/matching.
+            - soccer_mode='all': All enabled soccer leagues
+            - soccer_mode='manual' or NULL: group.leagues as-is
+            - soccer_mode='teams': DEFERRED (returns group.leagues for now)
+        """
+        if group.soccer_mode == "all":
+            return get_enabled_soccer_leagues(conn)
+        # 'manual', 'teams' (deferred), or NULL use explicit leagues
+        return group.leagues
 
     def process_group(
         self,
@@ -861,14 +882,14 @@ class EventGroupProcessor:
                 return result
 
             # Step 2: Fetch events (use parent's leagues if child has none)
-            leagues = group.leagues
+            leagues = self._resolve_effective_leagues(conn, group)
             if not leagues:
                 # Inherit from parent - need to look up parent
                 from teamarr.database.groups import get_group
 
                 parent = get_group(conn, group.parent_group_id)
                 if parent:
-                    leagues = parent.leagues
+                    leagues = self._resolve_effective_leagues(conn, parent)
 
             events = self._fetch_events(leagues, target_date)
 
@@ -1186,13 +1207,15 @@ class EventGroupProcessor:
                 return result
 
             # Step 2: Fetch events from data providers
-            events = self._fetch_events(group.leagues, target_date)
+            # Resolve effective leagues based on soccer_mode
+            effective_leagues = self._resolve_effective_leagues(conn, group)
+            events = self._fetch_events(effective_leagues, target_date)
             logger.info(
-                f"Fetched {len(events)} events for group '{group.name}' leagues={group.leagues}"
+                f"Fetched {len(events)} events for group '{group.name}' leagues={effective_leagues}"
             )
 
             if not events:
-                result.errors.append(f"No events found for leagues: {group.leagues}")
+                result.errors.append(f"No events found for leagues: {effective_leagues}")
                 result.completed_at = datetime.now()
                 stats_run.complete(status="completed", error="No events found")
                 save_run(conn, stats_run)
@@ -1218,6 +1241,7 @@ class EventGroupProcessor:
                 target_date,
                 stream_progress_callback=stream_progress_callback,
                 status_callback=status_callback,
+                resolved_leagues=effective_leagues,
             )
             result.streams_matched = match_result.matched_count
             result.streams_unmatched = match_result.unmatched_count

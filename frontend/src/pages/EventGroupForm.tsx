@@ -28,6 +28,7 @@ import { StreamProfileSelector } from "@/components/StreamProfileSelector"
 import { StreamTimezoneSelector } from "@/components/StreamTimezoneSelector"
 import { TestPatternsModal, type PatternState } from "@/components/TestPatternsModal"
 import { TemplateAssignmentModal, type LocalTemplateAssignment } from "@/components/TemplateAssignmentModal"
+import { SoccerModeSelector, type SoccerMode } from "@/components/SoccerModeSelector"
 
 // Group mode
 type GroupMode = "single" | "multi" | null
@@ -105,6 +106,9 @@ export function EventGroupForm() {
   // Multi-league selection
   const [selectedLeagues, setSelectedLeagues] = useState<Set<string>>(new Set())
 
+  // Soccer mode state (for soccer-only groups)
+  const [soccerMode, setSoccerMode] = useState<SoccerMode>(null)
+
   // Fetch existing group if editing
   const { data: group, isLoading: isLoadingGroup } = useGroup(
     isEdit ? Number(groupId) : 0
@@ -123,6 +127,34 @@ export function EventGroupForm() {
     queryFn: () => getLeagues(),
   })
   const cachedLeagues = leaguesResponse?.leagues
+
+  // Get set of soccer league slugs for quick lookup
+  const soccerLeagueSlugs = useMemo(() => {
+    if (!cachedLeagues) return new Set<string>()
+    return new Set(
+      cachedLeagues
+        .filter(l => l.sport?.toLowerCase() === 'soccer')
+        .map(l => l.slug)
+    )
+  }, [cachedLeagues])
+
+  // Detect if current leagues are all soccer (for showing SoccerModeSelector)
+  const isAllSoccer = useMemo(() => {
+    const currentLeagues = isEdit ? formData.leagues : Array.from(selectedLeagues)
+    if (currentLeagues.length === 0) return false
+    return currentLeagues.every(slug => soccerLeagueSlugs.has(slug))
+  }, [formData.leagues, selectedLeagues, soccerLeagueSlugs, isEdit])
+
+  // Show soccer mode UI when:
+  // 1. Editing a group with soccer_mode set, OR
+  // 2. Group has multi-league and all leagues are soccer
+  const showSoccerMode = useMemo(() => {
+    if (groupMode !== 'multi') return false
+    // If soccer_mode is already set, show the selector
+    if (soccerMode) return true
+    // If all leagues are soccer, show the selector
+    return isAllSoccer
+  }, [groupMode, soccerMode, isAllSoccer])
 
   // Fetch channel groups from Dispatcharr
   const { data: channelGroups, refetch: refetchChannelGroups, isError: channelGroupsError, error: channelGroupsErrorMsg } = useQuery({
@@ -265,6 +297,11 @@ export function EventGroupForm() {
         // Multi league mode
         setSelectedLeagues(new Set(group.leagues))
       }
+
+      // Set soccer mode if present
+      if (group.soccer_mode) {
+        setSoccerMode(group.soccer_mode as SoccerMode)
+      }
     }
   }, [group, cachedLeagues])
 
@@ -329,7 +366,8 @@ export function EventGroupForm() {
       }
     }
 
-    if (leagues.length === 0) {
+    // Validate leagues (allow empty for soccer_mode='all' which resolves dynamically)
+    if (leagues.length === 0 && soccerMode !== 'all') {
       toast.error("At least one league is required")
       return
     }
@@ -339,7 +377,9 @@ export function EventGroupForm() {
         ...formData,
         leagues,
         // Only include group_mode if it's set (not null)
-        ...(groupMode && { group_mode: groupMode })
+        ...(groupMode && { group_mode: groupMode }),
+        // Include soccer_mode for soccer groups
+        soccer_mode: soccerMode,
       }
 
       if (isEdit) {
@@ -369,6 +409,9 @@ export function EventGroupForm() {
           }
           if (shouldClear(group.stream_timezone, formData.stream_timezone)) {
             updateData.clear_stream_timezone = true
+          }
+          if (shouldClear(group.soccer_mode, soccerMode)) {
+            updateData.clear_soccer_mode = true
           }
         }
 
@@ -554,6 +597,36 @@ export function EventGroupForm() {
                 {formData.leagues.length > 1 ? "Multi-Sport / Multi-League" : "Single League"}
               </Badge>
             </div>
+          )}
+
+          {/* Soccer Mode Selector - shown for soccer-only multi-league groups */}
+          {showSoccerMode && !isChildGroup && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Soccer League Selection</CardTitle>
+                <CardDescription>
+                  Choose how to select soccer leagues for this group
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <SoccerModeSelector
+                  mode={soccerMode}
+                  onModeChange={(mode) => {
+                    setSoccerMode(mode)
+                    // When switching to 'all' mode, clear the manual leagues selection
+                    if (mode === 'all') {
+                      setSelectedLeagues(new Set())
+                      setFormData(prev => ({ ...prev, leagues: [] }))
+                    }
+                  }}
+                  selectedLeagues={Array.from(selectedLeagues)}
+                  onLeaguesChange={(leagues) => {
+                    setSelectedLeagues(new Set(leagues))
+                    setFormData(prev => ({ ...prev, leagues }))
+                  }}
+                />
+              </CardContent>
+            </Card>
           )}
 
           {/* Child Group Basic Settings - only name and enabled */}

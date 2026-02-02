@@ -13,6 +13,7 @@ export interface EventGroup {
   name: string
   display_name: string | null  // Optional display name override for UI
   leagues: string[]
+  soccer_mode: 'all' | 'teams' | 'manual' | null  // Soccer selection mode (null for non-soccer)
   group_mode: string  // "single" or "multi" - persisted to preserve user intent
   parent_group_id: number | null
   template_id: number | null
@@ -83,6 +84,7 @@ export interface EventGroupCreate {
   name: string
   display_name?: string | null  // Optional display name override
   leagues: string[]
+  soccer_mode?: 'all' | 'teams' | 'manual' | null  // Soccer selection mode (null for non-soccer)
   group_mode?: string  // "single" or "multi" - persisted to preserve user intent
   parent_group_id?: number | null
   template_id?: number | null
@@ -156,6 +158,7 @@ export interface EventGroupUpdate extends Partial<EventGroupCreate> {
   clear_custom_regex_league?: boolean
   clear_include_teams?: boolean
   clear_exclude_teams?: boolean
+  clear_soccer_mode?: boolean
 }
 
 export interface EventGroupListResponse {

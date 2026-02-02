@@ -31,6 +31,8 @@ class Team:
     sport: str  # e.g., "football", "basketball", "soccer"
     logo_url: str | None = None
     color: str | None = None
+    # Combat sports: fighter record (e.g., "8-1-0" for W-L-D)
+    record_summary: str | None = None
 
 
 @dataclass(frozen=True)
@@ -92,6 +94,16 @@ class Event:
 
     # MMA-specific: all bouts on the card (ordered by position)
     bouts: list["Bout"] = field(default_factory=list)
+
+    # MMA-specific: fight result data (headline bout)
+    # Method: 'ko', 'tko', 'submission', 'decision_unanimous', 'decision_split', 'decision_majority'
+    fight_result_method: str | None = None
+    finish_round: int | None = None  # Round fight ended (1-5)
+    finish_time: str | None = None  # Time in round (e.g., "3:48")
+    weight_class: str | None = None  # e.g., "Bantamweight", "Lightweight"
+    # Judge scores for decisions (list of total scores per judge)
+    fighter1_scores: list[int] | None = None  # home_team/fighter1 scores
+    fighter2_scores: list[int] | None = None  # away_team/fighter2 scores
 
 
 @dataclass(frozen=True)

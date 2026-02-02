@@ -3683,6 +3683,40 @@ SAMPLE_DATA: dict[str, dict[str, str]] = {
     "early_prelims_bouts": {
         "UFC": "Mauricio Ruffy vs Jamie Mullarkey\nOtar Kentchadze vs Ismael Bonfim",
     },
+    # Fight result variables (for finished fights)
+    "fight_result": {
+        "UFC": "TKO",
+    },
+    "fight_result_short": {
+        "UFC": "TKO",
+    },
+    "finish_round": {
+        "UFC": "2",
+    },
+    "finish_time": {
+        "UFC": "4:31",
+    },
+    "finish_info": {
+        "UFC": "R2 4:31",
+    },
+    "weight_class": {
+        "UFC": "Featherweight",
+    },
+    "weight_class_short": {
+        "UFC": "FW",
+    },
+    "fighter1_record": {
+        "UFC": "28-4-0",
+    },
+    "fighter2_record": {
+        "UFC": "27-8-0",
+    },
+    "judge_scores": {
+        "UFC": "48-47",
+    },
+    "fight_summary": {
+        "UFC": "TKO R2 4:31",
+    },
 }
 
 

@@ -1,6 +1,47 @@
 """Combat sports template variables (UFC, Boxing, MMA).
 
-Variables for UFC card segments, fighter names, and matchup formatting.
+Variables for UFC card segments, fighter names, matchup formatting, and fight results.
+
+Fighter Identity:
+    fighter1, fighter2: Headline bout fighter names
+    matchup: "Fighter1 vs Fighter2"
+    fighter1_record, fighter2_record: W-L-D records (e.g., "28-4-0")
+
+Event Info:
+    event_number: "325" from "UFC 325"
+    event_title: Full title "UFC 325: Volkanovski vs Lopes"
+    weight_class: "Featherweight", "Lightweight", etc.
+    weight_class_short: "FW", "LW", "HW", etc.
+
+Card Segments:
+    card_segment: "main_card", "prelims", "early_prelims"
+    card_segment_display: "Main Card", "Prelims", "Early Prelims"
+    main_card_time, prelims_time, early_prelims_time: Segment start times
+
+Bout Lists:
+    bout_count: Total bouts on card
+    fight_card: All bouts (newline-separated)
+    main_card_bouts, prelims_bouts, early_prelims_bouts: Segment-specific
+
+Fight Results (finished fights only):
+    fight_result: "TKO", "Submission", "Decision (Unanimous)"
+    fight_result_short: "TKO", "SUB", "UD"
+    finish_round: Round fight ended (e.g., "2")
+    finish_time: Time in round (e.g., "4:31")
+    finish_info: Combined "R2 4:31"
+    judge_scores: For decisions, "48-47" or "48-47, 49-46, 48-47"
+    fight_summary: Complete summary "TKO R2 4:31" or "UD 48-47"
+
+Conditions (for conditional descriptions):
+    is_knockout: KO or TKO finish
+    is_submission: Submission finish
+    is_decision: Went to judges' scorecards
+    is_finish: Any finish (KO/TKO/Submission)
+    went_distance: Fight went all scheduled rounds
+
+Usage example:
+    "{fighter1} defeats {fighter2} by {fight_result} {finish_info}"
+    -> "Volkanovski defeats Lopes by TKO R2 4:31"
 """
 
 from teamarr.templates.context import GameContext, TemplateContext
@@ -360,3 +401,297 @@ def extract_early_prelims_bouts(ctx: TemplateContext, game_ctx: GameContext | No
 
     early_bouts = [b for b in event.bouts if b.segment == "early_prelims"]
     return "\n".join(f"{b.fighter1} vs {b.fighter2}" for b in early_bouts)
+
+
+# =============================================================================
+# Fight Result Variables - Outcome data for finished fights
+# =============================================================================
+
+# Display names for result methods
+RESULT_DISPLAY_NAMES: dict[str, str] = {
+    "ko": "KO",
+    "tko": "TKO",
+    "submission": "Submission",
+    "decision_unanimous": "Decision (Unanimous)",
+    "decision_split": "Decision (Split)",
+    "decision_majority": "Decision (Majority)",
+}
+
+RESULT_SHORT_NAMES: dict[str, str] = {
+    "ko": "KO",
+    "tko": "TKO",
+    "submission": "SUB",
+    "decision_unanimous": "UD",
+    "decision_split": "SD",
+    "decision_majority": "MD",
+}
+
+# Weight class abbreviations
+WEIGHT_CLASS_ABBREV: dict[str, str] = {
+    "Strawweight": "SW",
+    "Flyweight": "FLW",
+    "Bantamweight": "BW",
+    "Featherweight": "FW",
+    "Lightweight": "LW",
+    "Welterweight": "WW",
+    "Middleweight": "MW",
+    "Light Heavyweight": "LHW",
+    "Heavyweight": "HW",
+    "Women's Strawweight": "WSW",
+    "Women's Flyweight": "WFLW",
+    "Women's Bantamweight": "WBW",
+    "Women's Featherweight": "WFW",
+}
+
+
+@register_variable(
+    name="fight_result",
+    category=Category.COMBAT,
+    suffix_rules=SuffixRules.BASE_ONLY,
+    description="Fight result method (e.g., 'TKO', 'Decision (Unanimous)')",
+)
+def extract_fight_result(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    """Extract human-readable fight result method."""
+    if not game_ctx or not game_ctx.event:
+        return ""
+
+    event = game_ctx.event
+    if event.sport != "mma" or not event.fight_result_method:
+        return ""
+
+    return RESULT_DISPLAY_NAMES.get(event.fight_result_method, event.fight_result_method)
+
+
+@register_variable(
+    name="fight_result_short",
+    category=Category.COMBAT,
+    suffix_rules=SuffixRules.BASE_ONLY,
+    description="Fight result abbreviated (e.g., 'TKO', 'UD', 'SUB')",
+)
+def extract_fight_result_short(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    """Extract abbreviated fight result method."""
+    if not game_ctx or not game_ctx.event:
+        return ""
+
+    event = game_ctx.event
+    if event.sport != "mma" or not event.fight_result_method:
+        return ""
+
+    return RESULT_SHORT_NAMES.get(event.fight_result_method, event.fight_result_method.upper())
+
+
+@register_variable(
+    name="finish_round",
+    category=Category.COMBAT,
+    suffix_rules=SuffixRules.BASE_ONLY,
+    description="Round fight ended (e.g., '3')",
+)
+def extract_finish_round(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    """Extract the round number when fight ended."""
+    if not game_ctx or not game_ctx.event:
+        return ""
+
+    event = game_ctx.event
+    if event.sport != "mma" or event.finish_round is None:
+        return ""
+
+    return str(event.finish_round)
+
+
+@register_variable(
+    name="finish_time",
+    category=Category.COMBAT,
+    suffix_rules=SuffixRules.BASE_ONLY,
+    description="Time in round when fight ended (e.g., '3:48')",
+)
+def extract_finish_time(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    """Extract the time in round when fight ended."""
+    if not game_ctx or not game_ctx.event:
+        return ""
+
+    event = game_ctx.event
+    if event.sport != "mma" or not event.finish_time:
+        return ""
+
+    return event.finish_time
+
+
+@register_variable(
+    name="finish_info",
+    category=Category.COMBAT,
+    suffix_rules=SuffixRules.BASE_ONLY,
+    description="Combined finish info (e.g., 'R3 3:48')",
+)
+def extract_finish_info(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    """Extract combined round and time info."""
+    if not game_ctx or not game_ctx.event:
+        return ""
+
+    event = game_ctx.event
+    if event.sport != "mma":
+        return ""
+
+    parts = []
+    if event.finish_round is not None:
+        parts.append(f"R{event.finish_round}")
+    if event.finish_time:
+        parts.append(event.finish_time)
+
+    return " ".join(parts)
+
+
+@register_variable(
+    name="weight_class",
+    category=Category.COMBAT,
+    suffix_rules=SuffixRules.BASE_ONLY,
+    description="Weight class (e.g., 'Featherweight', 'Lightweight')",
+)
+def extract_weight_class(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    """Extract the weight class of the fight."""
+    if not game_ctx or not game_ctx.event:
+        return ""
+
+    event = game_ctx.event
+    if event.sport != "mma" or not event.weight_class:
+        return ""
+
+    return event.weight_class
+
+
+@register_variable(
+    name="weight_class_short",
+    category=Category.COMBAT,
+    suffix_rules=SuffixRules.BASE_ONLY,
+    description="Weight class abbreviated (e.g., 'FW', 'LW', 'HW')",
+)
+def extract_weight_class_short(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    """Extract abbreviated weight class."""
+    if not game_ctx or not game_ctx.event:
+        return ""
+
+    event = game_ctx.event
+    if event.sport != "mma" or not event.weight_class:
+        return ""
+
+    return WEIGHT_CLASS_ABBREV.get(event.weight_class, event.weight_class[:2].upper())
+
+
+@register_variable(
+    name="fighter1_record",
+    category=Category.COMBAT,
+    suffix_rules=SuffixRules.BASE_ONLY,
+    description="Fighter 1's record (e.g., '28-4-0')",
+)
+def extract_fighter1_record(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    """Extract first fighter's win-loss-draw record."""
+    if not game_ctx or not game_ctx.event:
+        return ""
+
+    event = game_ctx.event
+    if event.sport != "mma":
+        return ""
+
+    if event.home_team and event.home_team.record_summary:
+        return event.home_team.record_summary
+
+    return ""
+
+
+@register_variable(
+    name="fighter2_record",
+    category=Category.COMBAT,
+    suffix_rules=SuffixRules.BASE_ONLY,
+    description="Fighter 2's record (e.g., '27-8-0')",
+)
+def extract_fighter2_record(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    """Extract second fighter's win-loss-draw record."""
+    if not game_ctx or not game_ctx.event:
+        return ""
+
+    event = game_ctx.event
+    if event.sport != "mma":
+        return ""
+
+    if event.away_team and event.away_team.record_summary:
+        return event.away_team.record_summary
+
+    return ""
+
+
+@register_variable(
+    name="judge_scores",
+    category=Category.COMBAT,
+    suffix_rules=SuffixRules.BASE_ONLY,
+    description="Judge scores for decisions (e.g., '48-47, 49-46, 48-47')",
+)
+def extract_judge_scores(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    """Extract formatted judge scores for decision results.
+
+    Returns scores in format like '48-47, 49-46, 48-47' showing
+    fighter1 score - fighter2 score for each judge.
+    """
+    if not game_ctx or not game_ctx.event:
+        return ""
+
+    event = game_ctx.event
+    if event.sport != "mma":
+        return ""
+
+    # Only show scores for decisions
+    if not event.fight_result_method or "decision" not in event.fight_result_method:
+        return ""
+
+    scores1 = event.fighter1_scores
+    scores2 = event.fighter2_scores
+
+    if not scores1 or not scores2:
+        return ""
+
+    # Format as "f1-f2, f1-f2, ..." for each judge
+    # ESPN typically provides total scores, so we show them
+    if len(scores1) == 1 and len(scores2) == 1:
+        return f"{scores1[0]}-{scores2[0]}"
+
+    # Multiple judges
+    pairs = []
+    for s1, s2 in zip(scores1, scores2, strict=False):
+        pairs.append(f"{s1}-{s2}")
+    return ", ".join(pairs)
+
+
+@register_variable(
+    name="fight_summary",
+    category=Category.COMBAT,
+    suffix_rules=SuffixRules.BASE_ONLY,
+    description="Full result summary (e.g., 'TKO R2 4:31' or 'UD 48-47')",
+)
+def extract_fight_summary(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    """Extract complete fight result summary.
+
+    For finishes: 'TKO R2 4:31'
+    For decisions: 'UD 48-47'
+    """
+    if not game_ctx or not game_ctx.event:
+        return ""
+
+    event = game_ctx.event
+    if event.sport != "mma" or not event.fight_result_method:
+        return ""
+
+    method = RESULT_SHORT_NAMES.get(event.fight_result_method, event.fight_result_method.upper())
+
+    # For decisions, append judge scores if available
+    if "decision" in event.fight_result_method:
+        scores = extract_judge_scores(ctx, game_ctx)
+        if scores:
+            return f"{method} {scores}"
+        return method
+
+    # For finishes, append round and time
+    parts = [method]
+    if event.finish_round is not None:
+        parts.append(f"R{event.finish_round}")
+    if event.finish_time:
+        parts.append(event.finish_time)
+
+    return " ".join(parts)

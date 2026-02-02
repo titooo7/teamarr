@@ -2278,131 +2278,121 @@ export function Settings() {
         </CardContent>
       </Card>
 
-      {/* Team & League Directory */}
+      {/* Data Caches */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Database className="h-5 w-5" />
-                Team & League Directory
+                Data Caches
               </CardTitle>
-              <CardDescription>Catalog of teams and leagues from ESPN and TheSportsDB</CardDescription>
+              <CardDescription>Team/league directory and cached game data from providers</CardDescription>
             </div>
             {cacheStatus?.is_stale && (
-              <Badge variant="warning">Stale</Badge>
+              <Badge variant="warning">Directory Stale</Badge>
             )}
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-4 gap-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold">{cacheStatus?.leagues_count ?? 0}</div>
-              <div className="text-xs text-muted-foreground">Leagues</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold">{cacheStatus?.teams_count ?? 0}</div>
-              <div className="text-xs text-muted-foreground">Teams</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold">
-                {cacheStatus?.refresh_duration_seconds
-                  ? `${cacheStatus.refresh_duration_seconds.toFixed(1)}s`
-                  : "-"}
+        <CardContent className="space-y-6">
+          {/* Team & League Directory Section */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium">Team & League Directory</h4>
+            <div className="grid grid-cols-4 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold">{cacheStatus?.leagues_count ?? 0}</div>
+                <div className="text-xs text-muted-foreground">Leagues</div>
               </div>
-              <div className="text-xs text-muted-foreground">Last Refresh Duration</div>
-            </div>
-            <div className="text-center">
-              <div className="text-sm font-medium">
-                {formatRelativeTime(cacheStatus?.last_refresh ?? null)}
+              <div className="text-center">
+                <div className="text-2xl font-bold">{cacheStatus?.teams_count ?? 0}</div>
+                <div className="text-xs text-muted-foreground">Teams</div>
               </div>
-              <div className="text-xs text-muted-foreground">Last Refresh</div>
+              <div className="text-center">
+                <div className="text-2xl font-bold">
+                  {cacheStatus?.refresh_duration_seconds
+                    ? `${cacheStatus.refresh_duration_seconds.toFixed(1)}s`
+                    : "-"}
+                </div>
+                <div className="text-xs text-muted-foreground">Last Duration</div>
+              </div>
+              <div className="text-center">
+                <div className="text-sm font-medium">
+                  {formatRelativeTime(cacheStatus?.last_refresh ?? null)}
+                </div>
+                <div className="text-xs text-muted-foreground">Last Refresh</div>
+              </div>
             </div>
-          </div>
 
-          {cacheStatus?.is_empty && (
-            <div className="text-center py-2 text-muted-foreground">
-              Cache is empty. Refresh to populate with teams and leagues.
-            </div>
-          )}
-
-          {cacheStatus?.last_error && (
-            <div className="text-sm text-destructive">
-              Last error: {cacheStatus.last_error}
-            </div>
-          )}
-
-          <Button
-            onClick={handleRefreshCache}
-            disabled={refreshCacheMutation.isPending || cacheStatus?.refresh_in_progress}
-            className="w-full"
-          >
-            {(refreshCacheMutation.isPending || cacheStatus?.refresh_in_progress) && (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            {cacheStatus?.is_empty && (
+              <div className="text-center py-2 text-muted-foreground">
+                Directory is empty. Refresh to populate with teams and leagues.
+              </div>
             )}
-            {cacheStatus?.refresh_in_progress ? "Refreshing..." : "Refresh Directory"}
-          </Button>
-        </CardContent>
-      </Card>
 
-      {/* Game Data Cache */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Game Data Cache</CardTitle>
-          <CardDescription>Cached schedules, scores, and odds from providers</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold">{gameDataCacheStats?.active_entries ?? 0}</div>
-              <div className="text-xs text-muted-foreground">Active Entries</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold">
-                {gameDataCacheStats?.hit_rate !== undefined
-                  ? `${Math.round(gameDataCacheStats.hit_rate * 100)}%`
-                  : "-"}
+            {cacheStatus?.last_error && (
+              <div className="text-sm text-destructive">
+                Last error: {cacheStatus.last_error}
               </div>
-              <div className="text-xs text-muted-foreground">Hit Rate</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold">{gameDataCacheStats?.pending_writes ?? 0}</div>
-              <div className="text-xs text-muted-foreground">Pending Writes</div>
-            </div>
-          </div>
-
-          <div className="rounded-md bg-amber-500/10 border border-amber-500/20 p-3">
-            <div className="flex gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-              <div className="text-sm text-amber-500">
-                <p className="font-medium">Warning</p>
-                <p className="text-xs">
-                  Clearing this cache will force all sports data to be re-fetched from ESPN and TheSportsDB.
-                  The next EPG generation may be slower and could hit rate limits.
-                  Use this if you see incorrect scores or game results.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <Button
-            variant="destructive"
-            onClick={() => {
-              clearGameDataCacheMutation.mutate(undefined, {
-                onSuccess: (data) => toast.success(data.message),
-                onError: () => toast.error("Failed to clear game data cache"),
-              })
-            }}
-            disabled={clearGameDataCacheMutation.isPending}
-            className="w-full"
-          >
-            {clearGameDataCacheMutation.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4 mr-2" />
             )}
-            Clear Game Data Cache
-          </Button>
+
+            <Button
+              onClick={handleRefreshCache}
+              disabled={refreshCacheMutation.isPending || cacheStatus?.refresh_in_progress}
+              className="w-full"
+            >
+              {(refreshCacheMutation.isPending || cacheStatus?.refresh_in_progress) && (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              )}
+              {cacheStatus?.refresh_in_progress ? "Refreshing..." : "Refresh Directory"}
+            </Button>
+          </div>
+
+          <hr className="border-border" />
+
+          {/* Game Data Cache Section */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium">Game Data Cache</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold">{gameDataCacheStats?.active_entries ?? 0}</div>
+                <div className="text-xs text-muted-foreground">Active Entries</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold">{gameDataCacheStats?.pending_writes ?? 0}</div>
+                <div className="text-xs text-muted-foreground">Pending Writes</div>
+              </div>
+            </div>
+
+            <div className="rounded-md bg-amber-500/10 border border-amber-500/20 p-3">
+              <div className="flex gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                <div className="text-sm text-amber-500">
+                  <p className="text-xs">
+                    Clearing forces all sports data to be re-fetched. Use if you see incorrect scores.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <Button
+              variant="destructive"
+              onClick={() => {
+                clearGameDataCacheMutation.mutate(undefined, {
+                  onSuccess: (data) => toast.success(data.message),
+                  onError: () => toast.error("Failed to clear game data cache"),
+                })
+              }}
+              disabled={clearGameDataCacheMutation.isPending}
+              className="w-full"
+            >
+              {clearGameDataCacheMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Clear Game Data Cache
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

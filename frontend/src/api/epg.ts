@@ -150,8 +150,11 @@ export async function refreshCache(): Promise<{ status: string; message: string 
         if (line.startsWith("data: ")) {
           try {
             const data = JSON.parse(line.slice(6))
-            if (data.status === "completed") {
-              lastStatus = { status: "success", message: `Refreshed ${data.result?.teams_count || 0} teams` }
+            if (data.status === "complete") {
+              // Backend sends "complete", not "completed"
+              const teams = data.result?.teams_count || 0
+              const leagues = data.result?.leagues_count || 0
+              lastStatus = { status: "success", message: `Refreshed ${leagues} leagues, ${teams} teams` }
             } else if (data.status === "error") {
               lastStatus = { status: "error", message: data.message || "Refresh failed" }
             }

@@ -1,13 +1,13 @@
 import { useState, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Globe2, ListChecks, Users, Info, Search, Loader2 } from "lucide-react"
+import { ListChecks, Users, Info, Search, Loader2 } from "lucide-react"
 import { LeaguePicker } from "@/components/LeaguePicker"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import { getLeagues, searchTeams } from "@/api/teams"
+import { searchTeams } from "@/api/teams"
 import type { SoccerFollowedTeam } from "@/api/types"
 
-export type SoccerMode = 'all' | 'teams' | 'manual' | null
+export type SoccerMode = 'teams' | 'manual' | null
 
 interface SoccerModeSelectorProps {
   mode: SoccerMode
@@ -30,12 +30,6 @@ export function SoccerModeSelector({
 }: SoccerModeSelectorProps) {
   const [searchQuery, setSearchQuery] = useState("")
 
-  // Fetch all leagues to filter for soccer
-  const { data: leaguesResponse } = useQuery({
-    queryKey: ["cached-leagues"],
-    queryFn: () => getLeagues(),
-  })
-
   // Search for soccer teams
   const { data: searchResults, isLoading: isSearching } = useQuery({
     queryKey: ["soccer-team-search", searchQuery],
@@ -44,23 +38,10 @@ export function SoccerModeSelector({
     staleTime: 30 * 1000, // 30 seconds
   })
 
-  // Get all soccer league slugs for display purposes
-  const allSoccerLeagues = useMemo(() => {
-    if (!leaguesResponse?.leagues) return []
-    return leaguesResponse.leagues
-      .filter(l => l.sport?.toLowerCase() === 'soccer')
-      .map(l => l.slug)
-  }, [leaguesResponse])
-
-  const soccerLeagueCount = allSoccerLeagues.length
-
-  const handleModeChange = (newMode: 'all' | 'teams' | 'manual') => {
+  const handleModeChange = (newMode: 'teams' | 'manual') => {
     onModeChange(newMode)
     // Clear data when switching modes
-    if (newMode === 'all') {
-      onLeaguesChange([])
-      onFollowedTeamsChange([])
-    } else if (newMode === 'teams') {
+    if (newMode === 'teams') {
       onLeaguesChange([])
     } else if (newMode === 'manual') {
       onFollowedTeamsChange([])
@@ -96,27 +77,6 @@ export function SoccerModeSelector({
   return (
     <div className={cn("space-y-4", className)}>
       <div className="flex flex-col gap-3">
-        {/* All Mode */}
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="radio"
-            name="soccer-mode"
-            checked={mode === 'all'}
-            onChange={() => handleModeChange('all')}
-            className="mt-1.5 h-4 w-4 border-muted-foreground text-primary focus:ring-primary"
-          />
-          <div className="flex-1">
-            <span className="flex items-center gap-2 font-medium">
-              <Globe2 className="h-4 w-4 text-muted-foreground" />
-              All Soccer Leagues
-            </span>
-            <p className="text-sm text-muted-foreground mt-1">
-              Automatically include all {soccerLeagueCount} enabled soccer leagues.
-              New leagues are added automatically.
-            </p>
-          </div>
-        </label>
-
         {/* Teams Mode */}
         <label className="flex items-start gap-3 cursor-pointer">
           <input
@@ -270,17 +230,6 @@ export function SoccerModeSelector({
         </div>
       )}
 
-      {/* All mode info */}
-      {mode === 'all' && (
-        <div className="pl-7 border-l-2 border-muted ml-2">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Info className="h-4 w-4" />
-            <span>
-              All {soccerLeagueCount} enabled soccer leagues will be included automatically.
-            </span>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

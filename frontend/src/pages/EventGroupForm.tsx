@@ -1616,7 +1616,7 @@ export function EventGroupForm() {
                       setFormData({ ...formData, overlap_handling: e.target.value })
                     }
                   >
-                    <option value="add_stream">Add streams to other group's channel</option>
+                    <option value="add_stream">Add streams to other group's channel (if none, create)</option>
                     <option value="add_only">Add streams only (don't create channel)</option>
                     <option value="create_all">Keep separate (create own channel)</option>
                     <option value="skip">Skip (don't add streams or channel)</option>

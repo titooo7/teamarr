@@ -65,6 +65,13 @@ from teamarr.services.stream_ordering import (
     StreamWithPriority,
     get_stream_ordering_service,
 )
+from teamarr.services.backup_service import (
+    BackupInfo,
+    BackupResult,
+    BackupService,
+    RotationResult,
+    create_backup_service,
+)
 
 __all__ = [
     # Core services
@@ -117,4 +124,10 @@ __all__ = [
     "get_stream_ordering_service",
     # Detection keyword service
     "DetectionKeywordService",
+    # Backup service
+    "BackupInfo",
+    "BackupResult",
+    "BackupService",
+    "RotationResult",
+    "create_backup_service",
 ]

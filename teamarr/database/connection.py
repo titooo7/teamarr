@@ -1205,6 +1205,25 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("[MIGRATE] Schema upgraded to version 51 (soccer followed teams)")
         current_version = 51
 
+    # v52: Add scheduled backup settings columns
+    # Automatic database backups with rotation and protection
+    if current_version < 52:
+        _add_column_if_not_exists(
+            conn, "settings", "scheduled_backup_enabled", "BOOLEAN DEFAULT 0"
+        )
+        _add_column_if_not_exists(
+            conn, "settings", "scheduled_backup_cron", "TEXT DEFAULT '0 3 * * *'"
+        )
+        _add_column_if_not_exists(
+            conn, "settings", "scheduled_backup_max_count", "INTEGER DEFAULT 7"
+        )
+        _add_column_if_not_exists(
+            conn, "settings", "scheduled_backup_path", "TEXT DEFAULT './data/backups'"
+        )
+        conn.execute("UPDATE settings SET schema_version = 52 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 52 (scheduled backup settings)")
+        current_version = 52
+
 
 # =============================================================================
 # LEGACY MIGRATION HELPER FUNCTIONS

@@ -1419,12 +1419,16 @@ def _migrate_channel_group_mode_to_patterns(conn: sqlite3.Connection) -> None:
 
         # Create new table without CHECK constraint on channel_group_mode
         # Copy the exact schema but remove the CHECK constraint
+        # NOTE: Must include ALL columns from current schema.sql
         conn.execute("""
             CREATE TABLE event_epg_groups_new (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 display_name TEXT,
                 leagues TEXT NOT NULL DEFAULT '[]',
+                soccer_mode TEXT DEFAULT NULL
+                    CHECK(soccer_mode IS NULL OR soccer_mode IN ('all', 'teams', 'manual')),
+                soccer_followed_teams TEXT,
                 group_mode TEXT DEFAULT 'single',
                 parent_group_id INTEGER REFERENCES event_epg_groups(id) ON DELETE SET NULL,
                 template_id INTEGER REFERENCES templates(id) ON DELETE SET NULL,
@@ -1432,6 +1436,8 @@ def _migrate_channel_group_mode_to_patterns(conn: sqlite3.Connection) -> None:
                 channel_group_id INTEGER,
                 channel_group_mode TEXT DEFAULT 'static',
                 channel_profile_ids TEXT,
+                stream_profile_id INTEGER,
+                stream_timezone TEXT,
                 duplicate_event_handling TEXT DEFAULT 'consolidate'
                     CHECK(duplicate_event_handling IN ('consolidate', 'separate', 'ignore')),
                 channel_assignment_mode TEXT DEFAULT 'auto'
@@ -1454,6 +1460,10 @@ def _migrate_channel_group_mode_to_patterns(conn: sqlite3.Connection) -> None:
                 custom_regex_time_enabled BOOLEAN DEFAULT 0,
                 custom_regex_league TEXT,
                 custom_regex_league_enabled BOOLEAN DEFAULT 0,
+                custom_regex_fighters TEXT,
+                custom_regex_fighters_enabled BOOLEAN DEFAULT 0,
+                custom_regex_event_name TEXT,
+                custom_regex_event_name_enabled BOOLEAN DEFAULT 0,
                 skip_builtin_filter BOOLEAN DEFAULT 0,
                 include_teams TEXT,
                 exclude_teams TEXT,

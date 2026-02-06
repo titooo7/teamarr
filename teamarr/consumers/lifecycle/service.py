@@ -1661,8 +1661,11 @@ class ChannelLifecycleService:
                 )
 
         except Exception as e:
-            logger.debug(
-                "[LIFECYCLE] Error syncing settings for channel %s: %s", existing.channel_name, e
+            logger.warning(
+                "[LIFECYCLE] Error syncing settings for channel %s: %s",
+                existing.channel_name,
+                e,
+                exc_info=True,
             )
 
         return result

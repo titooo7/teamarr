@@ -1060,12 +1060,19 @@ export function EventGroups() {
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    // For single selection, open template assignment for that group
-                    // For multi-selection, open for first group (assignments will apply to pattern)
-                    const firstGroupId = Array.from(selectedIds)[0]
-                    const firstGroup = data?.groups?.find(g => g.id === firstGroupId)
-                    if (firstGroup && firstGroup.group_mode === 'multi') {
-                      setTemplateAssignmentGroupId(firstGroupId)
+                    const ids = Array.from(selectedIds)
+                    if (ids.length === 1) {
+                      // Single group — open in database mode
+                      const group = data?.groups?.find(g => g.id === ids[0])
+                      if (group && group.group_mode === 'multi') {
+                        setTemplateAssignmentBulkIds(undefined)
+                        setTemplateAssignmentGroupId(ids[0])
+                        setShowTemplateAssignment(true)
+                      }
+                    } else if (ids.length > 1) {
+                      // Multiple groups — open in bulk mode
+                      setTemplateAssignmentGroupId(undefined)
+                      setTemplateAssignmentBulkIds(ids)
                       setShowTemplateAssignment(true)
                     }
                   }}

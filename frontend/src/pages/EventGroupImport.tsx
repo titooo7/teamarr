@@ -121,7 +121,7 @@ export function EventGroupImport() {
   const [bulkLeagues, setBulkLeagues] = useState<Set<string>>(new Set())
   const [bulkTemplateId, setBulkTemplateId] = useState<number | null>(null)
   const [bulkChannelGroupId, setBulkChannelGroupId] = useState<number | null>(null)
-  const [bulkChannelGroupMode, setBulkChannelGroupMode] = useState<'static' | 'sport' | 'league'>('static')
+  const [bulkChannelGroupMode, setBulkChannelGroupMode] = useState<'static' | '{sport}' | '{league}'>('static')
   const [bulkChannelProfileIds, setBulkChannelProfileIds] = useState<(number | string)[]>([])
   const [bulkStreamProfileId, setBulkStreamProfileId] = useState<number | null>(null)
   const [bulkStreamTimezone, setBulkStreamTimezone] = useState<string | null>(null)
@@ -790,9 +790,9 @@ export function EventGroupImport() {
                         <input
                           type="radio"
                           name="bulk_channel_group_mode"
-                          checked={bulkChannelGroupMode === "sport"}
+                          checked={bulkChannelGroupMode === "{sport}"}
                           onChange={() => {
-                            setBulkChannelGroupMode("sport")
+                            setBulkChannelGroupMode("{sport}")
                             setBulkChannelGroupId(null)
                           }}
                           className="accent-primary"
@@ -806,9 +806,9 @@ export function EventGroupImport() {
                         <input
                           type="radio"
                           name="bulk_channel_group_mode"
-                          checked={bulkChannelGroupMode === "league"}
+                          checked={bulkChannelGroupMode === "{league}"}
                           onChange={() => {
-                            setBulkChannelGroupMode("league")
+                            setBulkChannelGroupMode("{league}")
                             setBulkChannelGroupId(null)
                           }}
                           className="accent-primary"

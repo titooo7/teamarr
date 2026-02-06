@@ -17,11 +17,15 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
-import { Loader2, Tv, Eye, Plus, AlertCircle, Info, Check } from "lucide-react"
+import { Loader2, Tv, Eye, Plus, AlertCircle, Info, Check, Layers } from "lucide-react"
 import { LeaguePicker } from "@/components/LeaguePicker"
 import { ChannelProfileSelector } from "@/components/ChannelProfileSelector"
 import { StreamProfileSelector } from "@/components/StreamProfileSelector"
 import { StreamTimezoneSelector } from "@/components/StreamTimezoneSelector"
+import {
+  TemplateAssignmentModal,
+  type LocalTemplateAssignment,
+} from "@/components/TemplateAssignmentModal"
 
 // Types
 interface M3UAccount {
@@ -125,6 +129,9 @@ export function EventGroupImport() {
   const [bulkOverlapHandling, setBulkOverlapHandling] = useState<string>("add_stream")
   const [bulkEnabled, setBulkEnabled] = useState(true)
   const [bulkImporting, setBulkImporting] = useState(false)
+  // Template assignment state for multi-league groups
+  const [bulkTemplateAssignments, setBulkTemplateAssignments] = useState<LocalTemplateAssignment[]>([])
+  const [showTemplateModal, setShowTemplateModal] = useState(false)
 
   // Queries
   const accountsQuery = useQuery({
@@ -271,7 +278,15 @@ export function EventGroupImport() {
         settings: {
           group_mode: bulkMode,
           leagues: Array.from(bulkLeagues),
-          template_id: bulkTemplateId,
+          // Use template_assignments if configured, otherwise use legacy template_id
+          template_id: bulkTemplateAssignments.length > 0 ? null : bulkTemplateId,
+          template_assignments: bulkTemplateAssignments.length > 0
+            ? bulkTemplateAssignments.map((a) => ({
+                template_id: a.template_id,
+                sports: a.sports,
+                leagues: a.leagues,
+              }))
+            : null,
           channel_group_id: bulkChannelGroupMode === 'static' ? bulkChannelGroupId : null,
           channel_group_mode: bulkChannelGroupMode,
           channel_profile_ids: bulkChannelProfileIds.length > 0 ? bulkChannelProfileIds : null,
@@ -307,6 +322,7 @@ export function EventGroupImport() {
     setBulkMode("single")
     setBulkLeagues(new Set())
     setBulkTemplateId(null)
+    setBulkTemplateAssignments([])
     setBulkChannelGroupId(null)
     setBulkChannelGroupMode('static')
     setBulkChannelProfileIds([])
@@ -703,15 +719,40 @@ export function EventGroupImport() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground">Template</Label>
-                  <Select
-                    value={bulkTemplateId?.toString() || ""}
-                    onChange={(e) => setBulkTemplateId(e.target.value ? parseInt(e.target.value) : null)}
-                  >
-                    <option value="">None</option>
-                    {eventTemplates.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </Select>
+                  {bulkMode === "multi" ? (
+                    <div className="space-y-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full justify-start"
+                        onClick={() => setShowTemplateModal(true)}
+                      >
+                        <Layers className="h-4 w-4 mr-2" />
+                        Manage Templates...
+                        {bulkTemplateAssignments.length > 0 && (
+                          <Badge variant="secondary" className="ml-auto">
+                            {bulkTemplateAssignments.length}
+                          </Badge>
+                        )}
+                      </Button>
+                      <p className="text-xs text-muted-foreground">
+                        {bulkTemplateAssignments.length > 0
+                          ? `${bulkTemplateAssignments.length} template assignment(s)`
+                          : "Assign templates per sport/league"}
+                      </p>
+                    </div>
+                  ) : (
+                    <Select
+                      value={bulkTemplateId?.toString() || ""}
+                      onChange={(e) => setBulkTemplateId(e.target.value ? parseInt(e.target.value) : null)}
+                    >
+                      <option value="">None</option>
+                      {eventTemplates.map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </Select>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground">Channel Group</Label>
@@ -879,6 +920,18 @@ export function EventGroupImport() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Template Assignment Modal (for multi-league groups) */}
+      {showTemplateModal && (
+        <TemplateAssignmentModal
+          open={showTemplateModal}
+          onOpenChange={setShowTemplateModal}
+          groupName="Bulk Import"
+          groupLeagues={Array.from(bulkLeagues)}
+          localAssignments={bulkTemplateAssignments}
+          onLocalChange={setBulkTemplateAssignments}
+        />
+      )}
     </div>
   )
 }

@@ -2474,22 +2474,55 @@ class EventGroupProcessor:
         filler_config: EventFillerConfig | None = None
         template_db = None
 
-        template_id = group.template_id
-        if not template_id:
-            # Try to get default template from group_templates
-            template_id = get_template_for_event(conn, group.id, "", "")
+        # Get default template (fallback when no sport/league-specific template matches)
+        default_template_id = group.template_id
+        if not default_template_id:
+            # Try to get default template from group_templates (sports/leagues both NULL)
+            default_template_id = get_template_for_event(conn, group.id, "", "")
 
-        if template_id:
-            template_config = self._load_event_template(conn, template_id)
+        if default_template_id:
+            template_config = self._load_event_template(conn, default_template_id)
             if template_config:
                 options.template = template_config
 
             # Load raw template for filler config
             from teamarr.database.templates import get_template
 
-            template_db = get_template(conn, template_id)
+            template_db = get_template(conn, default_template_id)
             if template_db and (template_db.pregame_enabled or template_db.postgame_enabled):
                 filler_config = template_to_event_filler_config(template_db)
+
+        # Resolve per-event templates based on sport/league specificity
+        # This allows different templates for different sports/leagues in multi-sport groups
+        template_cache: dict = {}  # {template_id: EventTemplateConfig}
+        for match in matched_streams:
+            event = match.get("event")
+            if not event:
+                continue
+
+            event_sport = getattr(event, "sport", "") or ""
+            event_league = getattr(event, "league", "") or ""
+
+            # Resolve the best template for this specific event
+            event_template_id = get_template_for_event(
+                conn, group.id, event_sport, event_league
+            )
+
+            if event_template_id and event_template_id != default_template_id:
+                # Use cached template if already loaded
+                if event_template_id not in template_cache:
+                    event_template_config = self._load_event_template(conn, event_template_id)
+                    if event_template_config:
+                        template_cache[event_template_id] = event_template_config
+
+                if event_template_id in template_cache:
+                    match["_event_template"] = template_cache[event_template_id]
+                    logger.debug(
+                        "[EVENT_EPG] Using sport/league-specific template %d for %s/%s event",
+                        event_template_id,
+                        event_sport,
+                        event_league,
+                    )
 
         # Load sport durations and lookback from settings
         options.sport_durations = self._load_sport_durations(conn)

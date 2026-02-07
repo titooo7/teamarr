@@ -39,13 +39,8 @@ export function SoccerModeSelector({
   })
 
   const handleModeChange = (newMode: 'teams' | 'manual') => {
+    // Just switch modes - preserve data so users can switch back without losing selections
     onModeChange(newMode)
-    // Clear data when switching modes
-    if (newMode === 'teams') {
-      onLeaguesChange([])
-    } else if (newMode === 'manual') {
-      onFollowedTeamsChange([])
-    }
   }
 
   const handleTeamSelect = (team: { provider: string; team_id: string; name: string }) => {
@@ -75,9 +70,9 @@ export function SoccerModeSelector({
   }, [searchResults, followedTeams])
 
   return (
-    <div className={cn("space-y-4", className)}>
-      <div className="flex flex-col gap-3">
-        {/* Teams Mode */}
+    <div className={cn("space-y-3", className)}>
+      {/* Follow Teams Mode */}
+      <div>
         <label className="flex items-start gap-3 cursor-pointer">
           <input
             type="radio"
@@ -97,30 +92,9 @@ export function SoccerModeSelector({
           </div>
         </label>
 
-        {/* Manual Mode */}
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="radio"
-            name="soccer-mode"
-            checked={mode === 'manual'}
-            onChange={() => handleModeChange('manual')}
-            className="mt-1.5 h-4 w-4 border-muted-foreground text-primary focus:ring-primary"
-          />
-          <div className="flex-1">
-            <span className="flex items-center gap-2 font-medium">
-              <ListChecks className="h-4 w-4 text-muted-foreground" />
-              Select Leagues
-            </span>
-            <p className="text-sm text-muted-foreground mt-1">
-              Choose specific leagues to include. Best for focused coverage.
-            </p>
-          </div>
-        </label>
-      </div>
-
-      {/* Team Search - shown in teams mode */}
-      {mode === 'teams' && (
-        <div className="pl-7 border-l-2 border-muted ml-2 space-y-3">
+        {/* Team Search - shown directly under Follow Teams when selected */}
+        {mode === 'teams' && (
+          <div className="pl-7 border-l-2 border-muted ml-2 mt-3 space-y-3">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Info className="h-4 w-4" />
             <span>
@@ -204,32 +178,54 @@ export function SoccerModeSelector({
               )}
             </div>
           )}
-        </div>
-      )}
-
-      {/* League Picker - only shown in manual mode */}
-      {mode === 'manual' && (
-        <div className="pl-7 border-l-2 border-muted ml-2">
-          <div className="flex items-center gap-2 mb-2 text-sm text-muted-foreground">
-            <Info className="h-4 w-4" />
-            <span>
-              {selectedLeagues.length === 0
-                ? "Select the soccer leagues you want to include"
-                : `${selectedLeagues.length} league${selectedLeagues.length === 1 ? '' : 's'} selected`}
-            </span>
           </div>
-          <LeaguePicker
-            selectedLeagues={selectedLeagues}
-            onSelectionChange={onLeaguesChange}
-            maxHeight="max-h-80"
-            showSearch={true}
-            showSelectedBadges={true}
-            maxBadges={5}
-            sportFilter="soccer"
-          />
-        </div>
-      )}
+        )}
+      </div>
 
+      {/* Select Leagues Mode */}
+      <div>
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="radio"
+            name="soccer-mode"
+            checked={mode === 'manual'}
+            onChange={() => handleModeChange('manual')}
+            className="mt-1.5 h-4 w-4 border-muted-foreground text-primary focus:ring-primary"
+          />
+          <div className="flex-1">
+            <span className="flex items-center gap-2 font-medium">
+              <ListChecks className="h-4 w-4 text-muted-foreground" />
+              Select Leagues
+            </span>
+            <p className="text-sm text-muted-foreground mt-1">
+              Choose specific leagues to include. Best for focused coverage.
+            </p>
+          </div>
+        </label>
+
+        {/* League Picker - shown directly under Select Leagues when selected */}
+        {mode === 'manual' && (
+          <div className="pl-7 border-l-2 border-muted ml-2 mt-3">
+            <div className="flex items-center gap-2 mb-2 text-sm text-muted-foreground">
+              <Info className="h-4 w-4" />
+              <span>
+                {selectedLeagues.length === 0
+                  ? "Select the soccer leagues you want to include"
+                  : `${selectedLeagues.length} league${selectedLeagues.length === 1 ? '' : 's'} selected`}
+              </span>
+            </div>
+            <LeaguePicker
+              selectedLeagues={selectedLeagues}
+              onSelectionChange={onLeaguesChange}
+              maxHeight="max-h-80"
+              showSearch={true}
+              showSelectedBadges={true}
+              maxBadges={5}
+              sportFilter="soccer"
+            />
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -562,7 +562,10 @@ export function EventGroupForm() {
           <CardContent>
             <LeaguePicker
               selectedLeagues={Array.from(selectedLeagues)}
-              onSelectionChange={(leagues) => setSelectedLeagues(new Set(leagues))}
+              onSelectionChange={(leagues) => {
+                setSelectedLeagues(new Set(leagues))
+                setFormData(prev => ({ ...prev, leagues }))
+              }}
               maxHeight="max-h-96"
             />
           </CardContent>

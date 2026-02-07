@@ -25,8 +25,9 @@ import {
   addGroupTemplate,
   updateGroupTemplate,
   deleteGroupTemplate,
+  bulkSetGroupTemplates,
 } from "@/api/groups"
-import type { GroupTemplate } from "@/api/groups"
+import type { GroupTemplate, BulkTemplateAssignment } from "@/api/groups"
 import { useTemplates } from "@/hooks/useTemplates"
 import { useSports } from "@/hooks/useSports"
 import { getLeagues } from "@/api/teams"
@@ -53,6 +54,9 @@ interface TemplateAssignmentModalProps {
   // Local mode props (for new groups before saving)
   localAssignments?: LocalTemplateAssignment[]
   onLocalChange?: (assignments: LocalTemplateAssignment[]) => void
+  // Bulk mode props (for applying to multiple groups)
+  bulkGroupIds?: number[] // If provided, enables bulk mode
+  onBulkComplete?: () => void // Called after bulk apply succeeds
 }
 
 interface EditingAssignment {
@@ -74,16 +78,25 @@ export function TemplateAssignmentModal({
   groupLeagues,
   localAssignments,
   onLocalChange,
+  bulkGroupIds,
+  onBulkComplete,
 }: TemplateAssignmentModalProps) {
   const queryClient = useQueryClient()
 
-  // Determine if we're in local mode (no groupId, managing assignments locally)
-  const isLocalMode = !groupId
+  // Determine mode:
+  // - bulk mode: bulkGroupIds provided (applying to multiple groups)
+  // - local mode: no groupId (new group, not saved yet)
+  // - database mode: groupId provided (editing single existing group)
+  const isBulkMode = bulkGroupIds && bulkGroupIds.length > 0
+  const isLocalMode = !groupId && !isBulkMode
+
+  // Bulk mode uses local state for assignments (starts empty)
+  const [bulkAssignments, setBulkAssignments] = useState<LocalTemplateAssignment[]>([])
 
   // Form state for add/edit
   const [editing, setEditing] = useState<EditingAssignment | null>(null)
 
-  // Fetch current assignments (only when not in local mode)
+  // Fetch current assignments (only in database mode - single group editing)
   const {
     data: dbAssignments,
     isLoading,
@@ -91,11 +104,20 @@ export function TemplateAssignmentModal({
   } = useQuery({
     queryKey: ["groupTemplates", groupId],
     queryFn: () => getGroupTemplates(groupId!),
-    enabled: open && !isLocalMode,
+    enabled: open && !isLocalMode && !isBulkMode,
   })
 
-  // Use local assignments in local mode, otherwise use DB assignments
-  const assignments = isLocalMode
+  // Determine which assignments to show based on mode
+  const assignments = isBulkMode
+    ? bulkAssignments.map((a, idx) => ({
+        id: idx + 1, // Temporary ID for bulk assignments
+        group_id: 0,
+        template_id: a.template_id,
+        sports: a.sports,
+        leagues: a.leagues,
+        template_name: a.template_name ?? null,
+      }))
+    : isLocalMode
     ? localAssignments?.map((a, idx) => ({
         id: idx + 1, // Temporary ID for local assignments
         group_id: 0,
@@ -171,10 +193,29 @@ export function TemplateAssignmentModal({
     },
   })
 
-  // Reset editing state when modal closes
+  // Bulk mutation - apply assignments to all selected groups
+  const bulkMutation = useMutation({
+    mutationFn: (assignments: BulkTemplateAssignment[]) =>
+      bulkSetGroupTemplates({
+        group_ids: bulkGroupIds!,
+        assignments,
+      }),
+    onSuccess: () => {
+      // Invalidate all affected groups
+      bulkGroupIds?.forEach((id) => {
+        queryClient.invalidateQueries({ queryKey: ["groupTemplates", id] })
+      })
+      queryClient.invalidateQueries({ queryKey: ["groups"] })
+      onBulkComplete?.()
+      onOpenChange(false)
+    },
+  })
+
+  // Reset state when modal closes
   useEffect(() => {
     if (!open) {
       setEditing(null)
+      setBulkAssignments([])
     }
   }, [open])
 
@@ -198,7 +239,10 @@ export function TemplateAssignmentModal({
   const handleDelete = useCallback(
     (assignmentId: number) => {
       if (confirm("Delete this template assignment?")) {
-        if (isLocalMode && onLocalChange && localAssignments) {
+        if (isBulkMode) {
+          // In bulk mode, remove from bulk state (assignmentId is index + 1)
+          setBulkAssignments((prev) => prev.filter((_, idx) => idx + 1 !== assignmentId))
+        } else if (isLocalMode && onLocalChange && localAssignments) {
           // In local mode, remove from local state (assignmentId is index + 1)
           const newAssignments = localAssignments.filter((_, idx) => idx + 1 !== assignmentId)
           onLocalChange(newAssignments)
@@ -207,7 +251,7 @@ export function TemplateAssignmentModal({
         }
       }
     },
-    [deleteMutation, isLocalMode, onLocalChange, localAssignments]
+    [deleteMutation, isBulkMode, isLocalMode, onLocalChange, localAssignments]
   )
 
   const handleSave = useCallback(() => {
@@ -215,15 +259,29 @@ export function TemplateAssignmentModal({
 
     const templateName = eventTemplates.find((t) => t.id === editing.template_id)?.name
 
-    if (isLocalMode && onLocalChange) {
-      // In local mode, update local state
-      const newAssignment: LocalTemplateAssignment = {
-        template_id: editing.template_id,
-        sports: editing.sports.length > 0 ? editing.sports : null,
-        leagues: editing.leagues.length > 0 ? editing.leagues : null,
-        template_name: templateName,
-      }
+    const newAssignment: LocalTemplateAssignment = {
+      template_id: editing.template_id,
+      sports: editing.sports.length > 0 ? editing.sports : null,
+      leagues: editing.leagues.length > 0 ? editing.leagues : null,
+      template_name: templateName,
+    }
 
+    if (isBulkMode) {
+      // In bulk mode, update bulk state
+      if (editing.id) {
+        // Edit existing (editing.id is index + 1)
+        setBulkAssignments((prev) => {
+          const updated = [...prev]
+          updated[editing.id! - 1] = newAssignment
+          return updated
+        })
+      } else {
+        // Add new
+        setBulkAssignments((prev) => [...prev, newAssignment])
+      }
+      setEditing(null)
+    } else if (isLocalMode && onLocalChange) {
+      // In local mode, update local state
       if (editing.id && localAssignments) {
         // Edit existing (editing.id is index + 1)
         const newAssignments = [...localAssignments]
@@ -248,11 +306,24 @@ export function TemplateAssignmentModal({
         addMutation.mutate(data)
       }
     }
-  }, [editing, addMutation, updateMutation, isLocalMode, onLocalChange, localAssignments, eventTemplates])
+  }, [editing, addMutation, updateMutation, isBulkMode, isLocalMode, onLocalChange, localAssignments, eventTemplates])
 
   const handleCancel = useCallback(() => {
     setEditing(null)
   }, [])
+
+  // Apply bulk assignments to all selected groups
+  const handleBulkApply = useCallback(() => {
+    if (!isBulkMode || bulkAssignments.length === 0) return
+
+    const assignments: BulkTemplateAssignment[] = bulkAssignments.map((a) => ({
+      template_id: a.template_id,
+      sports: a.sports,
+      leagues: a.leagues,
+    }))
+
+    bulkMutation.mutate(assignments)
+  }, [isBulkMode, bulkAssignments, bulkMutation])
 
   const toggleSport = useCallback((sport: string) => {
     setEditing((prev) =>
@@ -284,14 +355,26 @@ export function TemplateAssignmentModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Layers className="h-4 w-4" />
-            Template Assignments
+            {isBulkMode
+              ? `Template Assignments (${bulkGroupIds?.length} groups)`
+              : "Template Assignments"}
           </DialogTitle>
           <DialogDescription>
-            Assign templates to {groupName} by sport or league. More specific matches take priority.
+            {isBulkMode
+              ? "Configure template assignments to apply to all selected groups. This will replace any existing assignments."
+              : `Assign templates to ${groupName} by sport or league. More specific matches take priority.`}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Bulk mode warning */}
+          {isBulkMode && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-sm text-amber-600 dark:text-amber-400">
+              <strong>Note:</strong> Applying these assignments will replace all existing template
+              assignments on the {bulkGroupIds?.length} selected groups.
+            </div>
+          )}
+
           {/* Current assignments */}
           {isLoading && (
             <div className="flex items-center justify-center py-8">
@@ -477,8 +560,17 @@ export function TemplateAssignmentModal({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Done
+            {isBulkMode ? "Cancel" : "Done"}
           </Button>
+          {isBulkMode && (
+            <Button
+              onClick={handleBulkApply}
+              disabled={bulkAssignments.length === 0 || bulkMutation.isPending}
+            >
+              {bulkMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Apply to {bulkGroupIds?.length} Groups
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -196,3 +196,28 @@ export async function deleteGroupTemplate(
 ): Promise<void> {
   return api.delete(`/groups/${groupId}/templates/${assignmentId}`)
 }
+
+// Bulk template assignment for multiple groups
+export interface BulkTemplateAssignment {
+  template_id: number
+  sports?: string[] | null
+  leagues?: string[] | null
+}
+
+export interface BulkTemplatesRequest {
+  group_ids: number[]
+  assignments: BulkTemplateAssignment[]
+}
+
+export interface BulkTemplatesResponse {
+  success: boolean
+  groups_updated: number
+  assignments_per_group: number
+  message: string
+}
+
+export async function bulkSetGroupTemplates(
+  data: BulkTemplatesRequest
+): Promise<BulkTemplatesResponse> {
+  return api.put("/groups/bulk-templates", data)
+}

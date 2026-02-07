@@ -275,6 +275,7 @@ export function EventGroups() {
   // Template assignment modal for bulk/single selection
   const [showTemplateAssignment, setShowTemplateAssignment] = useState(false)
   const [templateAssignmentGroupId, setTemplateAssignmentGroupId] = useState<number | undefined>(undefined)
+  const [templateAssignmentBulkIds, setTemplateAssignmentBulkIds] = useState<number[] | undefined>(undefined)
 
   // Column sorting state
   type SortColumn = "name" | "sport" | "template" | "matched" | "status" | null
@@ -1521,6 +1522,14 @@ export function EventGroups() {
                         >
                           ↳
                         </Badge>
+                      ) : group.channel_group_mode && group.channel_group_mode !== "static" ? (
+                        <Badge
+                          variant="outline"
+                          className="bg-blue-500/15 text-blue-400 border-blue-500/30 text-xs font-mono"
+                          title="Dynamic channel group"
+                        >
+                          {group.channel_group_mode}
+                        </Badge>
                       ) : group.channel_group_id ? (
                         <Badge variant="secondary" className="text-xs" title={`ID: ${group.channel_group_id}`}>
                           {channelGroupNames[group.channel_group_id] || `#${group.channel_group_id}`}
@@ -1824,19 +1833,19 @@ export function EventGroups() {
             {/* Template */}
             <div className="space-y-2">
               {allMultiMode ? (
-                // Multi-league groups: use template assignments
+                // Multi-league groups: use bulk template assignments
                 <>
                   <span className="text-sm font-medium">Template Assignments</span>
                   <p className="text-xs text-muted-foreground">
-                    Multi-league groups use template assignments for sport/league-specific templates.
+                    Configure template assignments to apply to all {selectedIds.size} selected groups.
                   </p>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      // Open template assignment modal for first selected group
-                      const firstGroupId = Array.from(selectedIds)[0]
-                      setTemplateAssignmentGroupId(firstGroupId)
+                      // Open template assignment modal in bulk mode
+                      setTemplateAssignmentBulkIds(Array.from(selectedIds))
+                      setTemplateAssignmentGroupId(undefined)
                       setShowTemplateAssignment(true)
                     }}
                   >
@@ -2387,16 +2396,37 @@ export function EventGroups() {
       </Dialog>
 
       {/* Template Assignment Modal for bulk/single selection */}
-      {templateAssignmentGroupId && (
+      {(templateAssignmentGroupId || templateAssignmentBulkIds) && (
         <TemplateAssignmentModal
           open={showTemplateAssignment}
           onOpenChange={(open) => {
             setShowTemplateAssignment(open)
-            if (!open) setTemplateAssignmentGroupId(undefined)
+            if (!open) {
+              setTemplateAssignmentGroupId(undefined)
+              setTemplateAssignmentBulkIds(undefined)
+            }
           }}
           groupId={templateAssignmentGroupId}
-          groupName={data?.groups?.find(g => g.id === templateAssignmentGroupId)?.name || "Selected Group"}
-          groupLeagues={data?.groups?.find(g => g.id === templateAssignmentGroupId)?.leagues || []}
+          bulkGroupIds={templateAssignmentBulkIds}
+          groupName={
+            templateAssignmentBulkIds
+              ? `${templateAssignmentBulkIds.length} Groups`
+              : data?.groups?.find(g => g.id === templateAssignmentGroupId)?.name || "Selected Group"
+          }
+          groupLeagues={
+            templateAssignmentBulkIds
+              ? // Combine leagues from all selected groups (deduplicated)
+                [...new Set(
+                  data?.groups
+                    ?.filter(g => templateAssignmentBulkIds.includes(g.id))
+                    .flatMap(g => g.leagues) || []
+                )]
+              : data?.groups?.find(g => g.id === templateAssignmentGroupId)?.leagues || []
+          }
+          onBulkComplete={() => {
+            setShowBulkEdit(false)
+            setSelectedIds(new Set())
+          }}
         />
       )}
     </div>

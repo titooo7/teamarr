@@ -1034,7 +1034,7 @@ class ChannelLifecycleService:
                     f"Channel '{channel_name}' profile assignment: "
                     f"configured={channel_profile_ids}, effective={effective_profile_ids}"
                 )
-                logger.info(
+                logger.debug(
                     "[LIFECYCLE] Creating channel '%s' with stream_profile_id=%s",
                     channel_name,
                     stream_profile_id,
@@ -1615,7 +1615,7 @@ class ChannelLifecycleService:
                 expected_stream_profile = dispatcharr_settings.default_stream_profile_id
 
             current_stream_profile = current_channel.stream_profile_id
-            logger.info(
+            logger.debug(
                 "[LIFECYCLE] Stream profile for '%s': group_config=%s, global_default=%s, "
                 "dispatcharr_current=%s, expected=%s",
                 existing.channel_name,
@@ -1630,7 +1630,7 @@ class ChannelLifecycleService:
                         existing.dispatcharr_channel_id,
                         {"stream_profile_id": expected_stream_profile},
                     )
-                logger.info(
+                logger.debug(
                     "[LIFECYCLE] Stream profile PATCH for '%s': %s → %s (success=%s)",
                     existing.channel_name,
                     current_stream_profile,

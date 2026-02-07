@@ -2399,6 +2399,7 @@ class EventGroupProcessor:
             "leagues": group.leagues,  # len > 1 means multi-league
             "m3u_account_id": group.m3u_account_id,
             "m3u_account_name": group.m3u_account_name,
+            "stream_profile_id": group.stream_profile_id,
         }
 
         # Load template from database if configured

@@ -141,8 +141,8 @@ def get_all_settings(conn: Connection) -> AllSettings:
         ),
         display=_build_display_settings(row),
         api=APISettings(
-            timeout=row["api_timeout"] or 10,
-            retry_count=row["api_retry_count"] or 3,
+            timeout=row["api_timeout"] or 30,
+            retry_count=row["api_retry_count"] or 5,
             soccer_cache_refresh_frequency=(row["soccer_cache_refresh_frequency"] or "weekly"),
             team_cache_refresh_frequency=row["team_cache_refresh_frequency"] or "weekly",
         ),

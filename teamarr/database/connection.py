@@ -1218,6 +1218,17 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("[MIGRATE] Schema upgraded to version 52 (playoff filter bypass)")
         current_version = 52
 
+    # v53: Bump api_timeout default from 10 to 30
+    # The DispatcharrClient always used 30s effectively, but the DB setting
+    # (which was never wired up) defaulted to 10. Now that we wire it up,
+    # bump existing users from 10 → 30 to avoid a timeout regression.
+    if current_version < 53:
+        conn.execute("UPDATE settings SET api_timeout = 30 WHERE api_timeout = 10 AND id = 1")
+        conn.execute("UPDATE settings SET api_retry_count = 5 WHERE api_retry_count = 3 AND id = 1")
+        conn.execute("UPDATE settings SET schema_version = 53 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 53 (api timeout/retry defaults)")
+        current_version = 53
+
 
 # =============================================================================
 # LEGACY MIGRATION HELPER FUNCTIONS

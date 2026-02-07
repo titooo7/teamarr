@@ -208,8 +208,8 @@ CREATE TABLE IF NOT EXISTS settings (
     team_cache_refresh_frequency TEXT DEFAULT 'weekly',
 
     -- API
-    api_timeout INTEGER DEFAULT 10,
-    api_retry_count INTEGER DEFAULT 3,
+    api_timeout INTEGER DEFAULT 30,
+    api_retry_count INTEGER DEFAULT 5,
 
     -- TheSportsDB API (optional premium key for higher limits)
     -- If not set, uses free API key with 30 req/min and 10 result limits
@@ -304,7 +304,7 @@ CREATE TABLE IF NOT EXISTS settings (
     update_auto_detect_branch BOOLEAN DEFAULT 1,         -- Auto-detect branch from version string
 
     -- Schema Version
-    schema_version INTEGER DEFAULT 52
+    schema_version INTEGER DEFAULT 53
 );
 
 -- Insert default settings

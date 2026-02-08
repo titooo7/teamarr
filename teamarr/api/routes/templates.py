@@ -46,7 +46,11 @@ def _parse_json_fields(row: dict) -> dict:
 
 @router.get("/templates", response_model=list[TemplateResponse])
 def list_templates():
-    """List all templates with usage counts."""
+    """List all templates with usage counts.
+
+    TODO: REFACTOR — template CRUD uses direct SQL in routes.
+    Extract to database/templates.py functions. See teamarrv2-5hq.4.
+    """
     with get_db() as conn:
         cursor = conn.execute(
             """

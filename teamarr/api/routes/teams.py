@@ -40,7 +40,10 @@ def _parse_leagues(leagues_str: str | None) -> list[str]:
 
 
 def _get_league_sport(conn, league_code: str) -> str | None:
-    """Get sport for a league from the database."""
+    """Get sport for a league from the database.
+
+    TODO: REFACTOR — move to teamarr/database/. See teamarrv2-5hq.4.
+    """
     cursor = conn.execute(
         "SELECT sport FROM leagues WHERE league_code = ?",
         (league_code,),
@@ -231,6 +234,9 @@ def delete_team(team_id: int):
 @router.post("/teams/bulk-import", response_model=BulkImportResponse)
 def bulk_import_teams(request: BulkImportRequest):
     """Bulk import teams from cache.
+
+    TODO: REFACTOR — 157 lines of business logic (consolidation, indexing).
+    Extract to service + database functions. See teamarrv2-5hq.4.
 
     Key behavior:
     - Soccer: teams play in multiple competitions (EPL + Champions League), so

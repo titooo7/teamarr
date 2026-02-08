@@ -1074,6 +1074,9 @@ class BulkTemplatesResponse(BaseModel):
 def bulk_set_group_templates(request: BulkTemplatesRequest):
     """Replace template assignments for multiple groups.
 
+    TODO: REFACTOR — direct SQL + business logic in route. Extract to
+    service or database function. See teamarrv2-5hq.4.
+
     This replaces ALL existing template assignments for each group
     with the new set of assignments. Useful for applying the same
     template configuration to multiple groups at once.

@@ -46,6 +46,9 @@ def get_stats():
 def get_dashboard_stats():
     """Get aggregated dashboard stats for UI quadrants.
 
+    TODO: REFACTOR — 262 lines of raw SQL aggregation in route handler.
+    Extract to database/stats.py functions. See teamarrv2-5hq.4.
+
     Returns stats organized for the Dashboard's 4 quadrants:
     - Teams: total, active, assigned, leagues breakdown
     - Event Groups: total, streams, match rates, leagues (from latest run)

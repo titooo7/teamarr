@@ -570,13 +570,14 @@ export function EventGroupForm() {
                 setFormData(prev => ({ ...prev, leagues }))
               }}
               maxHeight="max-h-96"
+              maxBadges={10}
             />
           </CardContent>
         </Card>
       )}
 
-      {/* Settings Section - shown when leagues selected or in edit mode */}
-      {(isEdit || formData.leagues.length > 0 || selectedLeague || selectedLeagues.size > 0) && (
+      {/* Settings Section - shown when leagues selected, mode chosen, or in edit mode */}
+      {(isEdit || groupMode !== null || formData.leagues.length > 0 || selectedLeague || selectedLeagues.size > 0) && (
         <div className="space-y-6">
           {/* Child Group Notice */}
           {isChildGroup && (

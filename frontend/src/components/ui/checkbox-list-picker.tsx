@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
+import { RichTooltip } from "@/components/ui/rich-tooltip"
 import { ChevronRight, ChevronDown, X } from "lucide-react"
 
 // ---------------------------------------------------------------------------
@@ -159,7 +160,17 @@ export function CheckboxListPicker({
             </Badge>
           ))}
           {selected.length > maxBadges && (
-            <Badge variant="outline">+{selected.length - maxBadges} more</Badge>
+            <RichTooltip
+              content={
+                <div className="text-xs space-y-0.5 max-h-48 overflow-y-auto">
+                  {selected.slice(maxBadges).map((value) => (
+                    <div key={value}>{labelMap[value] || value}</div>
+                  ))}
+                </div>
+              }
+            >
+              <Badge variant="outline" className="cursor-help">+{selected.length - maxBadges} more</Badge>
+            </RichTooltip>
           )}
         </div>
       )}

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn, getSportDisplayName, getLeagueDisplayName } from "@/lib/utils"
+import { RichTooltip } from "@/components/ui/rich-tooltip"
 import type { CachedLeague } from "@/api/teams"
 import { getLeagues, getSports } from "@/api/teams"
 
@@ -219,7 +220,18 @@ export function LeaguePicker({
             )
           })}
           {selectedSet.size > maxBadges && (
-            <Badge variant="outline">+{selectedSet.size - maxBadges} more</Badge>
+            <RichTooltip
+              content={
+                <div className="text-xs space-y-0.5 max-h-48 overflow-y-auto">
+                  {Array.from(selectedSet).slice(maxBadges).map(slug => {
+                    const league = cachedLeagues?.find(l => l.slug === slug)
+                    return <div key={slug}>{league ? getLeagueDisplayName(league, true) : slug}</div>
+                  })}
+                </div>
+              }
+            >
+              <Badge variant="outline" className="cursor-help">+{selectedSet.size - maxBadges} more</Badge>
+            </RichTooltip>
           )}
         </div>
       )}

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { getLeagueTeams, getTeamPickerLeagues, type CachedTeam } from "@/api/teams"
+import { RichTooltip } from "@/components/ui/rich-tooltip"
 import type { TeamFilterEntry } from "@/api/types"
 
 interface TeamPickerProps {
@@ -316,7 +317,17 @@ export function TeamPicker({
             </Badge>
           ))}
           {selectedTeams.length > 10 && (
-            <Badge variant="outline">+{selectedTeams.length - 10} more</Badge>
+            <RichTooltip
+              content={
+                <div className="text-xs space-y-0.5 max-h-48 overflow-y-auto">
+                  {selectedTeams.slice(10).map((team) => (
+                    <div key={`${team.provider}-${team.team_id}`}>{team.name}</div>
+                  ))}
+                </div>
+              }
+            >
+              <Badge variant="outline" className="cursor-help">+{selectedTeams.length - 10} more</Badge>
+            </RichTooltip>
           )}
         </div>
       )}

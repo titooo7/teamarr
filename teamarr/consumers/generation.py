@@ -116,14 +116,14 @@ def run_full_generation(
         process_all_teams,
     )
     from teamarr.consumers.team_processor import get_all_team_xmltv
-    from teamarr.database.channels import cleanup_old_history, get_reconciliation_settings
+    from teamarr.database.channels import get_reconciliation_settings
     from teamarr.database.groups import get_all_group_xmltv
     from teamarr.database.settings import (
         get_dispatcharr_settings,
         get_display_settings,
         get_epg_settings,
     )
-    from teamarr.database.stats import create_run, save_run
+    from teamarr.database.stats import create_run
     from teamarr.dispatcharr import EPGManager
     from teamarr.services import create_default_service
     from teamarr.utilities.xmltv import merge_xmltv_content
@@ -287,149 +287,13 @@ def run_full_generation(
         result.programmes_total = result.teams_programmes + result.groups_programmes
 
         # Step 3b: Global channel reassignment (if enabled)
-        # Applies when sorting_scope is "global" - interleaves channels by sport/league/time
-        from teamarr.database.channel_numbers import reassign_channels_globally
-        from teamarr.database.settings import get_channel_numbering_settings
-
-        with db_factory() as conn:
-            channel_numbering = get_channel_numbering_settings(conn)
-
-        if channel_numbering.sorting_scope == "global":
-            update_progress(
-                "groups", 94, "Reassigning channels globally by sport/league priority..."
-            )
-            with db_factory() as conn:
-                global_result = reassign_channels_globally(conn)
-                if global_result["channels_moved"] > 0:
-                    logger.info(
-                        "[GENERATION] Global reassignment: %d channels processed, %d moved",
-                        global_result["channels_processed"],
-                        global_result["channels_moved"],
-                    )
-
-                    # Sync moved channel numbers to Dispatcharr
-                    if dispatcharr_client:
-                        synced = 0
-                        for ch in global_result.get("drift_details", []):
-                            disp_id = ch.get("dispatcharr_channel_id")
-                            new_num = ch.get("new_number")
-                            if disp_id and new_num:
-                                try:
-                                    dispatcharr_client.channels.update_channel(
-                                        disp_id,
-                                        {"channel_number": new_num},
-                                    )
-                                    synced += 1
-                                except Exception as e:
-                                    logger.warning(
-                                        "[GENERATION] Failed to sync channel %s to Dispatcharr: %s",
-                                        ch.get("channel_name"),
-                                        e,
-                                    )
-                        if synced:
-                            logger.info(
-                                "[GENERATION] Synced %d channel numbers to Dispatcharr", synced
-                            )
+        _sync_global_channels(db_factory, dispatcharr_client, update_progress)
 
         # Step 3b: Apply stream ordering rules to all channels (93-95%)
         update_progress("ordering", 93, "Applying stream ordering rules...")
-        from teamarr.database.channels import (
-            get_all_managed_channels,
-            get_ordered_stream_ids,
+        result.stream_ordering = _apply_stream_ordering(
+            db_factory, dispatcharr_client, update_progress
         )
-
-        reorder_result = {"channels_reordered": 0, "streams_reordered": 0}
-        try:
-            from teamarr.database.channels import get_channel_streams, update_stream_priority
-            from teamarr.database.settings import get_stream_ordering_settings
-            from teamarr.services.stream_ordering import StreamOrderingService
-
-            with db_factory() as conn:
-                # Load ordering rules once
-                ordering_settings = get_stream_ordering_settings(conn)
-                if not ordering_settings.rules:
-                    logger.debug("[ORDERING] No stream ordering rules configured, skipping")
-                else:
-                    # Create ordering service once with rules
-                    ordering_service = StreamOrderingService(
-                        rules=ordering_settings.rules, conn=conn
-                    )
-                    logger.info(
-                        "[ORDERING] Applying %d ordering rule(s)", len(ordering_settings.rules)
-                    )
-
-                    # Setup Dispatcharr channel manager once if available
-                    channel_mgr = None
-                    if dispatcharr_client:
-                        from teamarr.dispatcharr.factory import DispatcharrConnection
-                        from teamarr.dispatcharr.managers import ChannelManager
-
-                        raw_client = (
-                            dispatcharr_client.client
-                            if isinstance(dispatcharr_client, DispatcharrConnection)
-                            else dispatcharr_client
-                        )
-                        channel_mgr = ChannelManager(raw_client)
-
-                    # Get all active channels
-                    all_channels = get_all_managed_channels(conn, include_deleted=False)
-                    total_channels = len(all_channels)
-
-                    for idx, channel in enumerate(all_channels):
-                        # Get streams for this channel
-                        streams = get_channel_streams(conn, channel.id)
-                        if not streams:
-                            continue
-
-                        # Compute new priorities using the shared ordering service
-                        reordered_count = 0
-                        for stream in streams:
-                            new_priority = ordering_service.compute_priority(stream)
-                            if stream.priority != new_priority:
-                                update_stream_priority(conn, stream.id, new_priority)
-                                reordered_count += 1
-
-                        if reordered_count > 0:
-                            reorder_result["channels_reordered"] += 1
-                            reorder_result["streams_reordered"] += reordered_count
-
-                            # Sync ordered streams to Dispatcharr
-                            if channel_mgr and channel.dispatcharr_channel_id:
-                                ordered_ids = get_ordered_stream_ids(conn, channel.id)
-                                if ordered_ids:
-                                    sync_result = channel_mgr.update_channel(
-                                        channel.dispatcharr_channel_id, {"streams": ordered_ids}
-                                    )
-                                    if not sync_result.success:
-                                        logger.warning(
-                                            "[ORDERING] Failed to sync channel %s to Dispatcharr: %s",  # noqa: E501
-                                            channel.channel_name,
-                                            sync_result.error,
-                                        )
-
-                        # Update progress every 10 channels or at end
-                        if (idx + 1) % 10 == 0 or idx == total_channels - 1:
-                            pct = 93 + int(((idx + 1) / total_channels) * 2)
-                            update_progress(
-                                "ordering",
-                                pct,
-                                f"Ordering streams ({idx + 1}/{total_channels})",
-                                idx + 1,
-                                total_channels,
-                                channel.channel_name,
-                            )
-
-                    if reorder_result["channels_reordered"] > 0:
-                        logger.info(
-                            "[ORDERING] Reordered %d streams across %d channels",
-                            reorder_result["streams_reordered"],
-                            reorder_result["channels_reordered"],
-                        )
-        except Exception as e:
-            logger.warning("[ORDERING] Stream ordering failed: %s", e)
-            reorder_result["error"] = str(e)
-
-        result.stream_ordering = reorder_result
 
         # Step 4: Merge and save XMLTV (95-96%)
         update_progress("saving", 95, "Saving XMLTV...")
@@ -521,86 +385,17 @@ def run_full_generation(
             logger.warning("[RECONCILE] Failed: %s", e)
             result.reconciliation = {"error": str(e)}
 
-        # Cleanup old history (part of step 7)
+        # Cleanup (history, old runs, unused logos — part of step 7)
         update_progress("cleanup", 99, "Cleaning up history...")
-        try:
-            with db_factory() as conn:
-                cleanup_settings = get_reconciliation_settings(conn)
-                retention_days = cleanup_settings.get("channel_history_retention_days", 90)
-                deleted_count = cleanup_old_history(conn, retention_days)
-                result.cleanup = {"deleted_count": deleted_count}
-                if deleted_count > 0:
-                    logger.info("[CLEANUP] Removed %d old history record(s)", deleted_count)
-        except Exception as e:
-            logger.warning("[CLEANUP] History cleanup failed: %s", e)
-            result.cleanup = {"error": str(e)}
+        cleanup_results = _run_cleanup_tasks(db_factory, dispatcharr_client, update_progress)
+        result.cleanup = cleanup_results["history"]
+        result.logo_cleanup = cleanup_results["logos"]
 
-        # Cleanup old processing runs (>30 days)
-        try:
-            from teamarr.database.stats import cleanup_old_runs
-
-            with db_factory() as conn:
-                runs_deleted = cleanup_old_runs(conn, days=30)
-                if runs_deleted > 0:
-                    logger.info("[CLEANUP] Removed %d old processing run(s)", runs_deleted)
-        except Exception as e:
-            logger.warning("[CLEANUP] Run history cleanup failed: %s", e)
-
-        # Cleanup unused logos if enabled (part of step 7)
-        try:
-            from teamarr.database.settings import get_dispatcharr_settings
-
-            with db_factory() as conn:
-                dispatcharr_settings = get_dispatcharr_settings(conn)
-            if dispatcharr_settings.cleanup_unused_logos and dispatcharr_client:
-                update_progress("cleanup", 99, "Cleaning up unused logos...")
-                cleanup_result = dispatcharr_client.logos.cleanup_unused()
-                if cleanup_result.success:
-                    logos_deleted = (
-                        cleanup_result.data.get("deleted_count", 0)
-                        if cleanup_result.data
-                        else 0
-                    )
-                    result.logo_cleanup = {"deleted_count": logos_deleted}
-                    if logos_deleted > 0:
-                        logger.info("[CLEANUP] Removed %d unused logo(s)", logos_deleted)
-                else:
-                    logger.warning("[CLEANUP] Logo cleanup failed: %s", cleanup_result.error)
-                    result.logo_cleanup = {"error": cleanup_result.error}
-        except Exception as e:
-            logger.warning("[CLEANUP] Logo cleanup failed: %s", e)
-            result.logo_cleanup = {"error": str(e)}
-
-        # Update stats run
-        stats_run.programmes_total = result.programmes_total
-        stats_run.programmes_events = team_result.total_events + group_result.total_events
-        stats_run.programmes_pregame = team_result.total_pregame + group_result.total_pregame
-        stats_run.programmes_postgame = team_result.total_postgame + group_result.total_postgame
-        stats_run.programmes_idle = team_result.total_idle  # Event groups don't have idle
-        stats_run.channels_created = group_result.total_channels_created
-        # Combine scheduled deletions + group cleanup deletions
-        stats_run.channels_deleted = channels_deleted_count + group_result.total_channels_deleted
-        stats_run.xmltv_size_bytes = result.file_size
-        # Aggregate stream stats from event groups into full_epg run
-        stats_run.streams_fetched = group_result.total_streams_fetched
-        stats_run.streams_matched = group_result.total_streams_matched
-        stats_run.streams_unmatched = group_result.total_streams_unmatched
-        stats_run.extra_metrics["teams_processed"] = result.teams_processed
-        stats_run.extra_metrics["groups_processed"] = result.groups_processed
-        stats_run.extra_metrics["file_written"] = result.file_written
-
-        # Count total active managed channels
-        from teamarr.database.channels import get_all_managed_channels
-
-        with db_factory() as conn:
-            active_channels = get_all_managed_channels(conn, include_deleted=False)
-            stats_run.channels_active = len(active_channels)
-            logger.info("[GENERATION] %d active managed channels", len(active_channels))
-
-        stats_run.complete(status="completed")
-
-        with db_factory() as conn:
-            save_run(conn, stats_run)
+        # Update and save stats run
+        _finalize_stats_run(
+            stats_run, result, team_result, group_result,
+            channels_deleted_count, db_factory,
+        )
 
         result.completed_at = time.time()
         result.duration_seconds = round(result.completed_at - result.started_at, 1)
@@ -624,9 +419,11 @@ def run_full_generation(
 
         # Save failed run
         try:
+            from teamarr.database.stats import save_run as _save_run
+
             stats_run.complete(status="failed", error=str(e))
             with db_factory() as conn:
-                save_run(conn, stats_run)
+                _save_run(conn, stats_run)
         except Exception as save_err:
             logger.warning("[GENERATION] Failed to save failed run stats: %s", save_err)
 
@@ -687,3 +484,250 @@ def _refresh_m3u_accounts(db_factory: Callable[[], Any], dispatcharr_client: Any
         )
 
     return result
+
+
+def _sync_global_channels(
+    db_factory: Callable[[], Any],
+    dispatcharr_client: Any | None,
+    update_progress: Callable,
+) -> None:
+    """Reassign channel numbers globally by sport/league priority if enabled."""
+    from teamarr.database.channel_numbers import reassign_channels_globally
+    from teamarr.database.settings import get_channel_numbering_settings
+
+    with db_factory() as conn:
+        channel_numbering = get_channel_numbering_settings(conn)
+
+    if channel_numbering.sorting_scope != "global":
+        return
+
+    update_progress("groups", 94, "Reassigning channels globally by sport/league priority...")
+    with db_factory() as conn:
+        global_result = reassign_channels_globally(conn)
+        if global_result["channels_moved"] == 0:
+            return
+
+        logger.info(
+            "[GENERATION] Global reassignment: %d channels processed, %d moved",
+            global_result["channels_processed"],
+            global_result["channels_moved"],
+        )
+
+        if not dispatcharr_client:
+            return
+
+        synced = 0
+        for ch in global_result.get("drift_details", []):
+            disp_id = ch.get("dispatcharr_channel_id")
+            new_num = ch.get("new_number")
+            if disp_id and new_num:
+                try:
+                    dispatcharr_client.channels.update_channel(
+                        disp_id, {"channel_number": new_num}
+                    )
+                    synced += 1
+                except Exception as e:
+                    logger.warning(
+                        "[GENERATION] Failed to sync channel %s to Dispatcharr: %s",
+                        ch.get("channel_name"),
+                        e,
+                    )
+        if synced:
+            logger.info("[GENERATION] Synced %d channel numbers to Dispatcharr", synced)
+
+
+def _apply_stream_ordering(
+    db_factory: Callable[[], Any],
+    dispatcharr_client: Any | None,
+    update_progress: Callable,
+) -> dict:
+    """Apply stream ordering rules to all managed channels."""
+    from teamarr.database.channels import (
+        get_all_managed_channels,
+        get_channel_streams,
+        get_ordered_stream_ids,
+        update_stream_priority,
+    )
+    from teamarr.database.settings import get_stream_ordering_settings
+    from teamarr.services.stream_ordering import StreamOrderingService
+
+    reorder_result: dict = {"channels_reordered": 0, "streams_reordered": 0}
+    try:
+        with db_factory() as conn:
+            ordering_settings = get_stream_ordering_settings(conn)
+            if not ordering_settings.rules:
+                logger.debug("[ORDERING] No stream ordering rules configured, skipping")
+                return reorder_result
+
+            ordering_service = StreamOrderingService(
+                rules=ordering_settings.rules, conn=conn
+            )
+            logger.info(
+                "[ORDERING] Applying %d ordering rule(s)", len(ordering_settings.rules)
+            )
+
+            # Setup Dispatcharr channel manager once if available
+            channel_mgr = None
+            if dispatcharr_client:
+                from teamarr.dispatcharr.factory import DispatcharrConnection
+                from teamarr.dispatcharr.managers import ChannelManager
+
+                raw_client = (
+                    dispatcharr_client.client
+                    if isinstance(dispatcharr_client, DispatcharrConnection)
+                    else dispatcharr_client
+                )
+                channel_mgr = ChannelManager(raw_client)
+
+            all_channels = get_all_managed_channels(conn, include_deleted=False)
+            total_channels = len(all_channels)
+
+            for idx, channel in enumerate(all_channels):
+                streams = get_channel_streams(conn, channel.id)
+                if not streams:
+                    continue
+
+                reordered_count = 0
+                for stream in streams:
+                    new_priority = ordering_service.compute_priority(stream)
+                    if stream.priority != new_priority:
+                        update_stream_priority(conn, stream.id, new_priority)
+                        reordered_count += 1
+
+                if reordered_count > 0:
+                    reorder_result["channels_reordered"] += 1
+                    reorder_result["streams_reordered"] += reordered_count
+
+                    if channel_mgr and channel.dispatcharr_channel_id:
+                        ordered_ids = get_ordered_stream_ids(conn, channel.id)
+                        if ordered_ids:
+                            sync_result = channel_mgr.update_channel(
+                                channel.dispatcharr_channel_id, {"streams": ordered_ids}
+                            )
+                            if not sync_result.success:
+                                logger.warning(
+                                    "[ORDERING] Failed to sync channel %s to Dispatcharr: %s",
+                                    channel.channel_name,
+                                    sync_result.error,
+                                )
+
+                if (idx + 1) % 10 == 0 or idx == total_channels - 1:
+                    pct = 93 + int(((idx + 1) / total_channels) * 2)
+                    update_progress(
+                        "ordering",
+                        pct,
+                        f"Ordering streams ({idx + 1}/{total_channels})",
+                        idx + 1,
+                        total_channels,
+                        channel.channel_name,
+                    )
+
+            if reorder_result["channels_reordered"] > 0:
+                logger.info(
+                    "[ORDERING] Reordered %d streams across %d channels",
+                    reorder_result["streams_reordered"],
+                    reorder_result["channels_reordered"],
+                )
+    except Exception as e:
+        logger.warning("[ORDERING] Stream ordering failed: %s", e)
+        reorder_result["error"] = str(e)
+
+    return reorder_result
+
+
+def _run_cleanup_tasks(
+    db_factory: Callable[[], Any],
+    dispatcharr_client: Any | None,
+    update_progress: Callable,
+) -> dict:
+    """Run all post-generation cleanup: history, old runs, unused logos."""
+    from teamarr.database.channels import cleanup_old_history, get_reconciliation_settings
+
+    results: dict = {"history": {}, "logos": {}}
+
+    # History cleanup
+    try:
+        with db_factory() as conn:
+            cleanup_settings = get_reconciliation_settings(conn)
+            retention_days = cleanup_settings.get("channel_history_retention_days", 90)
+            deleted_count = cleanup_old_history(conn, retention_days)
+            results["history"] = {"deleted_count": deleted_count}
+            if deleted_count > 0:
+                logger.info("[CLEANUP] Removed %d old history record(s)", deleted_count)
+    except Exception as e:
+        logger.warning("[CLEANUP] History cleanup failed: %s", e)
+        results["history"] = {"error": str(e)}
+
+    # Old processing runs (>30 days)
+    try:
+        from teamarr.database.stats import cleanup_old_runs
+
+        with db_factory() as conn:
+            runs_deleted = cleanup_old_runs(conn, days=30)
+            if runs_deleted > 0:
+                logger.info("[CLEANUP] Removed %d old processing run(s)", runs_deleted)
+    except Exception as e:
+        logger.warning("[CLEANUP] Run history cleanup failed: %s", e)
+
+    # Unused logos
+    try:
+        from teamarr.database.settings import get_dispatcharr_settings
+
+        with db_factory() as conn:
+            dispatcharr_settings = get_dispatcharr_settings(conn)
+        if dispatcharr_settings.cleanup_unused_logos and dispatcharr_client:
+            update_progress("cleanup", 99, "Cleaning up unused logos...")
+            cleanup_result = dispatcharr_client.logos.cleanup_unused()
+            if cleanup_result.success:
+                logos_deleted = (
+                    cleanup_result.data.get("deleted_count", 0) if cleanup_result.data else 0
+                )
+                results["logos"] = {"deleted_count": logos_deleted}
+                if logos_deleted > 0:
+                    logger.info("[CLEANUP] Removed %d unused logo(s)", logos_deleted)
+            else:
+                logger.warning("[CLEANUP] Logo cleanup failed: %s", cleanup_result.error)
+                results["logos"] = {"error": cleanup_result.error}
+    except Exception as e:
+        logger.warning("[CLEANUP] Logo cleanup failed: %s", e)
+        results["logos"] = {"error": str(e)}
+
+    return results
+
+
+def _finalize_stats_run(
+    stats_run: Any,
+    result: GenerationResult,
+    team_result: Any,
+    group_result: Any,
+    channels_deleted_count: int,
+    db_factory: Callable[[], Any],
+) -> None:
+    """Populate stats run with generation results and save to database."""
+    from teamarr.database.channels import get_all_managed_channels
+    from teamarr.database.stats import save_run
+
+    stats_run.programmes_total = result.programmes_total
+    stats_run.programmes_events = team_result.total_events + group_result.total_events
+    stats_run.programmes_pregame = team_result.total_pregame + group_result.total_pregame
+    stats_run.programmes_postgame = team_result.total_postgame + group_result.total_postgame
+    stats_run.programmes_idle = team_result.total_idle
+    stats_run.channels_created = group_result.total_channels_created
+    stats_run.channels_deleted = channels_deleted_count + group_result.total_channels_deleted
+    stats_run.xmltv_size_bytes = result.file_size
+    stats_run.streams_fetched = group_result.total_streams_fetched
+    stats_run.streams_matched = group_result.total_streams_matched
+    stats_run.streams_unmatched = group_result.total_streams_unmatched
+    stats_run.extra_metrics["teams_processed"] = result.teams_processed
+    stats_run.extra_metrics["groups_processed"] = result.groups_processed
+    stats_run.extra_metrics["file_written"] = result.file_written
+
+    with db_factory() as conn:
+        active_channels = get_all_managed_channels(conn, include_deleted=False)
+        stats_run.channels_active = len(active_channels)
+        logger.info("[GENERATION] %d active managed channels", len(active_channels))
+
+    stats_run.complete(status="completed")
+
+    with db_factory() as conn:
+        save_run(conn, stats_run)

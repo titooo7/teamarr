@@ -123,7 +123,6 @@ When the user says **"release"**, **"/release"**, or **"version bump"**, execute
 - Never release with failing tests or lint errors
 - Release notes should be human-readable summaries, not raw commit messages
 - Group related commits into single bullet points
-- Always include the `📦 Upgrade` line with docker pull command
 
 ## Changelog Format
 
@@ -171,8 +170,6 @@ Get version from `pyproject.toml` line 7, append `-dev+<short_hash>` of HEAD com
 
 🔧 **Under the Hood**
 - <one-liner>
-
-📦 **Upgrade:** `docker pull ghcr.io/pharaoh-labs/teamarr:v<version>`
 ```
 
 ### Rules

@@ -757,6 +757,13 @@ def cleanup_old_runs(conn: Connection, days: int = 30) -> int:
     return cursor.rowcount
 
 
+def clear_all_runs(conn: Connection) -> int:
+    """Delete all processing runs."""
+    cursor = conn.execute("DELETE FROM processing_runs")
+    conn.commit()
+    return cursor.rowcount
+
+
 # =============================================================================
 # MATCHED/FAILED STREAM DETAILS
 # =============================================================================

@@ -318,8 +318,7 @@ def cleanup_runs(
     """Delete old processing runs.
 
     Cleans up historical run data to manage database size.
-
-    TODO: No UI yet — needs Settings page control. See teamarrv2-3bn.
+    Called automatically after each generation run (30 days).
     """
     from teamarr.database.stats import cleanup_old_runs
 
@@ -328,4 +327,20 @@ def cleanup_runs(
         return {
             "deleted": deleted,
             "message": f"Deleted {deleted} runs older than {days} days",
+        }
+
+
+@router.delete("/runs")
+def clear_all_runs():
+    """Delete all processing runs.
+
+    Used by the Settings UI to clear all run history.
+    """
+    from teamarr.database.stats import clear_all_runs
+
+    with get_db() as conn:
+        deleted = clear_all_runs(conn)
+        return {
+            "deleted": deleted,
+            "message": f"Cleared {deleted} run(s) from history",
         }

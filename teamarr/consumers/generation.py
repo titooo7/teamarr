@@ -535,6 +535,17 @@ def run_full_generation(
             logger.warning("[CLEANUP] History cleanup failed: %s", e)
             result.cleanup = {"error": str(e)}
 
+        # Cleanup old processing runs (>30 days)
+        try:
+            from teamarr.database.stats import cleanup_old_runs
+
+            with db_factory() as conn:
+                runs_deleted = cleanup_old_runs(conn, days=30)
+                if runs_deleted > 0:
+                    logger.info("[CLEANUP] Removed %d old processing run(s)", runs_deleted)
+        except Exception as e:
+            logger.warning("[CLEANUP] Run history cleanup failed: %s", e)
+
         # Cleanup unused logos if enabled (part of step 7)
         try:
             from teamarr.database.settings import get_dispatcharr_settings

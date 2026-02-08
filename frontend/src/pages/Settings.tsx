@@ -67,7 +67,7 @@ import { StreamOrderingManager } from "@/components/StreamOrderingManager"
 import { getLeagues, getSports } from "@/api/teams"
 import { downloadBackup, restoreBackup } from "@/api/backup"
 import { useQuery } from "@tanstack/react-query"
-import { useCacheStatus, useRefreshCache, useGameDataCacheStats, useClearGameDataCache } from "@/hooks/useEPG"
+import { useCacheStatus, useRefreshCache, useGameDataCacheStats, useClearGameDataCache, useClearAllRuns } from "@/hooks/useEPG"
 import { useDateFormat } from "@/hooks/useDateFormat"
 import type {
   DispatcharrSettings,
@@ -156,6 +156,7 @@ export function Settings() {
   const refreshCacheMutation = useRefreshCache()
   const { data: gameDataCacheStats } = useGameDataCacheStats()
   const clearGameDataCacheMutation = useClearGameDataCache()
+  const clearAllRunsMutation = useClearAllRuns()
   const { startGeneration, isGenerating } = useGenerationProgress()
 
   const updateDispatcharr = useUpdateDispatcharrSettings()
@@ -2311,7 +2312,7 @@ export function Settings() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-3 gap-6">
             {/* Team & League Directory Section */}
             <div className="space-y-4">
               <h4 className="text-sm font-medium">Team & League Directory</h4>
@@ -2390,6 +2391,39 @@ export function Settings() {
                   <Trash2 className="h-4 w-4 mr-2" />
                 )}
                 Clear Game Data Cache
+              </Button>
+            </div>
+
+            {/* Run History Cleanup Section */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium">Run History</h4>
+              <div className="text-center">
+                <div className="text-xs text-muted-foreground">
+                  Processing run logs and statistics
+                </div>
+              </div>
+              <div className="text-center text-xs text-muted-foreground">
+                Auto-cleaned to 30 days after each run
+              </div>
+
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  clearAllRunsMutation.mutate(undefined, {
+                    onSuccess: (data) => toast.success(data.message),
+                    onError: () => toast.error("Failed to clear run history"),
+                  })
+                }}
+                disabled={clearAllRunsMutation.isPending}
+                className="w-full"
+              >
+                {clearAllRunsMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4 mr-2" />
+                )}
+                Clear All Run History
               </Button>
             </div>
           </div>

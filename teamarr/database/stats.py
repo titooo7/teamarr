@@ -1151,6 +1151,77 @@ def clear_run_details(conn: Connection, run_id: int) -> None:
     conn.commit()
 
 
+def get_live_xmltv_content(conn: Connection) -> dict[str, list[str]]:
+    """Get XMLTV content for live stats calculation.
+
+    Returns team and event XMLTV content separately for the live stats
+    endpoint to parse.
+
+    Args:
+        conn: Database connection
+
+    Returns:
+        Dict with 'team' and 'event' keys, each containing list of XMLTV content strings
+    """
+    team_content = []
+    cursor = conn.execute("""
+        SELECT x.xmltv_content
+        FROM team_epg_xmltv x
+        JOIN teams t ON x.team_id = t.id
+        WHERE t.active = 1
+        AND x.xmltv_content IS NOT NULL AND x.xmltv_content != ''
+    """)
+    for row in cursor.fetchall():
+        if row["xmltv_content"]:
+            team_content.append(row["xmltv_content"])
+
+    event_content = []
+    cursor = conn.execute("""
+        SELECT x.xmltv_content FROM event_epg_xmltv x
+        JOIN event_epg_groups g ON x.group_id = g.id
+        WHERE g.enabled = 1
+        AND x.xmltv_content IS NOT NULL AND x.xmltv_content != ''
+    """)
+    for row in cursor.fetchall():
+        if row["xmltv_content"]:
+            event_content.append(row["xmltv_content"])
+
+    return {"team": team_content, "event": event_content}
+
+
+def get_epg_analysis_stats(conn: Connection) -> dict | None:
+    """Get programme counts from the latest full_epg run.
+
+    Used by the EPG analysis endpoint to override XML-parsed counts
+    with more accurate DB stats.
+
+    Args:
+        conn: Database connection
+
+    Returns:
+        Dict with programme counts or None if no completed run
+    """
+    row = conn.execute(
+        """
+        SELECT programmes_total, programmes_events, programmes_pregame,
+               programmes_postgame, programmes_idle
+        FROM processing_runs
+        WHERE status = 'completed' AND run_type = 'full_epg'
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    if not row:
+        return None
+    return {
+        "programmes_total": row["programmes_total"],
+        "programmes_events": row["programmes_events"],
+        "programmes_pregame": row["programmes_pregame"],
+        "programmes_postgame": row["programmes_postgame"],
+        "programmes_idle": row["programmes_idle"],
+    }
+
+
 def cleanup_stuck_runs(conn: Connection) -> int:
     """Mark stuck 'running' runs as failed.
 

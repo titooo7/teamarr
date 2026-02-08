@@ -84,38 +84,27 @@ def get_live_stats(
             "event": {"games_today": 0, "live_now": 0, "by_league": {}, "live_events": []},
         }
 
-        # Fetch team EPG XMLTV content (only for active teams)
+        from teamarr.database.stats import get_live_xmltv_content
+
+        xmltv = get_live_xmltv_content(conn)
+
+        # Parse team EPG XMLTV content
         # Use a shared seen set to dedupe games that appear in multiple teams' XMLTV
         # (e.g., when both Pacers and Bulls are tracked, their game appears in both)
         if epg_type is None or epg_type == "team":
             team_seen: set[tuple[str, str, str]] = set()
-            cursor = conn.execute("""
-                SELECT x.xmltv_content
-                FROM team_epg_xmltv x
-                JOIN teams t ON x.team_id = t.id
-                WHERE t.active = 1
-                AND x.xmltv_content IS NOT NULL AND x.xmltv_content != ''
-            """)
-            for row in cursor.fetchall():
-                if row["xmltv_content"]:
-                    _parse_xmltv_for_live_stats(
-                        row["xmltv_content"], stats["team"], now, today, user_tz, team_seen
-                    )
+            for content in xmltv["team"]:
+                _parse_xmltv_for_live_stats(
+                    content, stats["team"], now, today, user_tz, team_seen
+                )
 
-        # Fetch event EPG XMLTV content (only enabled groups)
+        # Parse event EPG XMLTV content
         if epg_type is None or epg_type == "event":
             event_seen: set[tuple[str, str, str]] = set()
-            cursor = conn.execute("""
-                SELECT x.xmltv_content FROM event_epg_xmltv x
-                JOIN event_epg_groups g ON x.group_id = g.id
-                WHERE g.enabled = 1
-                AND x.xmltv_content IS NOT NULL AND x.xmltv_content != ''
-            """)
-            for row in cursor.fetchall():
-                if row["xmltv_content"]:
-                    _parse_xmltv_for_live_stats(
-                        row["xmltv_content"], stats["event"], now, today, user_tz, event_seen
-                    )
+            for content in xmltv["event"]:
+                _parse_xmltv_for_live_stats(
+                    content, stats["event"], now, today, user_tz, event_seen
+                )
 
         # Convert by_league dict to sorted list
         for key in ["team", "event"]:

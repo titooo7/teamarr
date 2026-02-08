@@ -183,6 +183,20 @@ def get_all_settings(conn: Connection) -> AllSettings:
     )
 
 
+def get_tsdb_api_key(conn: Connection) -> str | None:
+    """Get the TSDB API key from settings.
+
+    Args:
+        conn: Database connection
+
+    Returns:
+        TSDB API key string or None if not set
+    """
+    cursor = conn.execute("SELECT tsdb_api_key FROM settings WHERE id = 1")
+    row = cursor.fetchone()
+    return row["tsdb_api_key"] if row else None
+
+
 def get_dispatcharr_settings(conn: Connection) -> DispatcharrSettings:
     """Get Dispatcharr integration settings.
 

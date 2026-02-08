@@ -488,7 +488,7 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
             abbreviation=team_data.get("abbreviation", ""),
             league=league,
             sport=sport,
-            logo_url=team_data.get("logo"),
+            logo_url=self._extract_logo(team_data),
             color=team_data.get("color"),
         )
 

@@ -7,7 +7,7 @@ the built-in patterns in DetectionKeywordService.
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from teamarr.database.connection import get_db
@@ -131,16 +131,16 @@ def _invalidate_detection_cache():
 def list_keywords(
     category: CategoryType | None = None,
     enabled_only: bool = False,
-    conn=Depends(get_db),
 ):
     """List all detection keywords, optionally filtered by category."""
     from teamarr.database.detection_keywords import list_keywords as db_list
 
-    rows = db_list(conn, category=category, enabled_only=enabled_only)
-    return DetectionKeywordListResponse(
-        total=len(rows),
-        keywords=[_row_to_response(r) for r in rows],
-    )
+    with get_db() as conn:
+        rows = db_list(conn, category=category, enabled_only=enabled_only)
+        return DetectionKeywordListResponse(
+            total=len(rows),
+            keywords=[_row_to_response(r) for r in rows],
+        )
 
 
 @router.get("/categories")
@@ -202,37 +202,37 @@ def list_categories():
 def list_by_category(
     category: CategoryType,
     enabled_only: bool = False,
-    conn=Depends(get_db),
 ):
     """List detection keywords for a specific category."""
     from teamarr.database.detection_keywords import list_keywords as db_list
 
-    rows = db_list(conn, category=category, enabled_only=enabled_only)
-    return DetectionKeywordListResponse(
-        total=len(rows),
-        keywords=[_row_to_response(r) for r in rows],
-    )
+    with get_db() as conn:
+        rows = db_list(conn, category=category, enabled_only=enabled_only)
+        return DetectionKeywordListResponse(
+            total=len(rows),
+            keywords=[_row_to_response(r) for r in rows],
+        )
 
 
 @router.post("", response_model=DetectionKeywordResponse, status_code=201)
 def create_keyword(
     request: DetectionKeywordCreate,
-    conn=Depends(get_db),
 ):
     """Create a new detection keyword."""
     from teamarr.database.detection_keywords import create_keyword as db_create
 
     try:
-        row = db_create(
-            conn,
-            category=request.category,
-            keyword=request.keyword,
-            is_regex=request.is_regex,
-            target_value=request.target_value,
-            enabled=request.enabled,
-            priority=request.priority,
-            description=request.description,
-        )
+        with get_db() as conn:
+            row = db_create(
+                conn,
+                category=request.category,
+                keyword=request.keyword,
+                is_regex=request.is_regex,
+                target_value=request.target_value,
+                enabled=request.enabled,
+                priority=request.priority,
+                description=request.description,
+            )
         _invalidate_detection_cache()
         return _row_to_response(row)
     except Exception as e:
@@ -248,40 +248,40 @@ def create_keyword(
 @router.get("/id/{keyword_id}", response_model=DetectionKeywordResponse)
 def get_keyword(
     keyword_id: int,
-    conn=Depends(get_db),
 ):
     """Get a specific detection keyword by ID."""
     from teamarr.database.detection_keywords import get_keyword as db_get
 
-    row = db_get(conn, keyword_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Keyword not found")
-    return _row_to_response(row)
+    with get_db() as conn:
+        row = db_get(conn, keyword_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Keyword not found")
+        return _row_to_response(row)
 
 
 @router.put("/id/{keyword_id}", response_model=DetectionKeywordResponse)
 def update_keyword(
     keyword_id: int,
     request: DetectionKeywordUpdate,
-    conn=Depends(get_db),
 ):
     """Update a detection keyword."""
     from teamarr.database.detection_keywords import update_keyword as db_update
 
-    row = db_update(
-        conn,
-        keyword_id,
-        keyword=request.keyword,
-        is_regex=request.is_regex,
-        target_value=request.target_value,
-        clear_target_value=request.clear_target_value,
-        enabled=request.enabled,
-        priority=request.priority,
-        description=request.description,
-        clear_description=request.clear_description,
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="Keyword not found")
+    with get_db() as conn:
+        row = db_update(
+            conn,
+            keyword_id,
+            keyword=request.keyword,
+            is_regex=request.is_regex,
+            target_value=request.target_value,
+            clear_target_value=request.clear_target_value,
+            enabled=request.enabled,
+            priority=request.priority,
+            description=request.description,
+            clear_description=request.clear_description,
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Keyword not found")
     _invalidate_detection_cache()
     return _row_to_response(row)
 
@@ -289,21 +289,20 @@ def update_keyword(
 @router.delete("/id/{keyword_id}", status_code=204)
 def delete_keyword(
     keyword_id: int,
-    conn=Depends(get_db),
 ):
     """Delete a detection keyword."""
     from teamarr.database.detection_keywords import delete_keyword as db_delete
 
-    result = db_delete(conn, keyword_id)
-    if not result:
-        raise HTTPException(status_code=404, detail="Keyword not found")
+    with get_db() as conn:
+        result = db_delete(conn, keyword_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="Keyword not found")
     _invalidate_detection_cache()
 
 
 @router.post("/import", response_model=BulkImportResponse)
 def bulk_import(
     request: BulkImportRequest,
-    conn=Depends(get_db),
 ):
     """Bulk import detection keywords."""
     from teamarr.database.detection_keywords import bulk_import_keywords
@@ -321,9 +320,10 @@ def bulk_import(
         for kw in request.keywords
     ]
 
-    created, updated, failed, errors = bulk_import_keywords(
-        conn, keyword_dicts, replace_category=request.replace_category
-    )
+    with get_db() as conn:
+        created, updated, failed, errors = bulk_import_keywords(
+            conn, keyword_dicts, replace_category=request.replace_category
+        )
     _invalidate_detection_cache()
 
     return BulkImportResponse(
@@ -337,14 +337,14 @@ def bulk_import(
 @router.get("/export")
 def bulk_export(
     category: CategoryType | None = None,
-    conn=Depends(get_db),
 ):
     """Export detection keywords as JSON."""
     from teamarr.database.detection_keywords import export_keywords
 
-    keywords = export_keywords(conn, category=category)
-    return {
-        "exported_at": datetime.now().isoformat(),
-        "count": len(keywords),
-        "keywords": keywords,
-    }
+    with get_db() as conn:
+        keywords = export_keywords(conn, category=category)
+        return {
+            "exported_at": datetime.now().isoformat(),
+            "count": len(keywords),
+            "keywords": keywords,
+        }

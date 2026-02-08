@@ -2372,15 +2372,6 @@ export function Settings() {
                 Schedules, scores, and odds
               </div>
 
-              <div className="rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
-                <div className="flex gap-2">
-                  <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-500">
-                    Clear if scores appear incorrect
-                  </p>
-                </div>
-              </div>
-
               <Button
                 variant="destructive"
                 size="sm"

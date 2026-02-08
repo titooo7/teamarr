@@ -194,11 +194,9 @@ export function LeaguePicker({
             <Button variant="ghost" size="sm" onClick={selectAllLeagues}>
               Select All
             </Button>
-            {selectedSet.size > 0 && (
-              <Button variant="ghost" size="sm" onClick={clearAllLeagues}>
-                Clear All
-              </Button>
-            )}
+            <Button variant="ghost" size="sm" onClick={clearAllLeagues} disabled={selectedSet.size === 0}>
+              Clear All
+            </Button>
           </div>
         </div>
       )}

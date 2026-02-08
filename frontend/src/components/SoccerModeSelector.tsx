@@ -219,8 +219,7 @@ export function SoccerModeSelector({
               onSelectionChange={onLeaguesChange}
               maxHeight="max-h-80"
               showSearch={true}
-              showSelectedBadges={true}
-              maxBadges={5}
+              showSelectedBadges={false}
               sportFilter="soccer"
             />
           </div>

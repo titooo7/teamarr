@@ -121,7 +121,7 @@ export function EventGroupImport() {
   const [bulkLeagues, setBulkLeagues] = useState<Set<string>>(new Set())
   const [bulkTemplateId, setBulkTemplateId] = useState<number | null>(null)
   const [bulkChannelGroupId, setBulkChannelGroupId] = useState<number | null>(null)
-  const [bulkChannelGroupMode, setBulkChannelGroupMode] = useState<'static' | '{sport}' | '{league}'>('static')
+  const [bulkChannelGroupMode, setBulkChannelGroupMode] = useState<string>('static')
   const [bulkChannelProfileIds, setBulkChannelProfileIds] = useState<(number | string)[]>([])
   const [bulkStreamProfileId, setBulkStreamProfileId] = useState<number | null>(null)
   const [bulkStreamTimezone, setBulkStreamTimezone] = useState<string | null>(null)
@@ -784,40 +784,74 @@ export function EventGroupImport() {
                     </div>
 
                     {/* Dynamic group options */}
-                    <div className="border-t pt-2 mt-2">
-                      <div className="text-xs font-medium text-muted-foreground mb-1">Dynamic Groups</div>
-                      <label className="flex items-center gap-2 cursor-pointer py-1">
-                        <input
-                          type="radio"
-                          name="bulk_channel_group_mode"
-                          checked={bulkChannelGroupMode === "{sport}"}
-                          onChange={() => {
-                            setBulkChannelGroupMode("{sport}")
-                            setBulkChannelGroupId(null)
-                          }}
-                          className="accent-primary"
-                        />
-                        <div>
-                          <code className="text-xs font-medium bg-muted px-1 rounded">{"{sport}"}</code>
-                          <span className="text-xs text-muted-foreground ml-1">by sport name</span>
-                        </div>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer py-1">
-                        <input
-                          type="radio"
-                          name="bulk_channel_group_mode"
-                          checked={bulkChannelGroupMode === "{league}"}
-                          onChange={() => {
-                            setBulkChannelGroupMode("{league}")
-                            setBulkChannelGroupId(null)
-                          }}
-                          className="accent-primary"
-                        />
-                        <div>
-                          <code className="text-xs font-medium bg-muted px-1 rounded">{"{league}"}</code>
-                          <span className="text-xs text-muted-foreground ml-1">by league name</span>
-                        </div>
-                      </label>
+                    <div className="border rounded-md bg-muted/30">
+                      <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Dynamic Groups
+                      </div>
+                      <div className="divide-y">
+                        <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-accent">
+                          <input
+                            type="radio"
+                            name="bulk_channel_group_mode"
+                            checked={bulkChannelGroupMode === "{sport}"}
+                            onChange={() => {
+                              setBulkChannelGroupMode("{sport}")
+                              setBulkChannelGroupId(null)
+                            }}
+                            className="accent-primary"
+                          />
+                          <div className="flex-1">
+                            <code className="text-sm font-medium bg-muted px-1 rounded">{"{sport}"}</code>
+                            <p className="text-xs text-muted-foreground mt-0.5">Assign channels to a group by sport name (e.g., Basketball). Group created if it doesn't exist.</p>
+                          </div>
+                        </label>
+                        <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-accent">
+                          <input
+                            type="radio"
+                            name="bulk_channel_group_mode"
+                            checked={bulkChannelGroupMode === "{league}"}
+                            onChange={() => {
+                              setBulkChannelGroupMode("{league}")
+                              setBulkChannelGroupId(null)
+                            }}
+                            className="accent-primary"
+                          />
+                          <div className="flex-1">
+                            <code className="text-sm font-medium bg-muted px-1 rounded">{"{league}"}</code>
+                            <p className="text-xs text-muted-foreground mt-0.5">Assign channels to a group by league name (e.g., NBA, NFL). Group created if it doesn't exist.</p>
+                          </div>
+                        </label>
+                        <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-accent">
+                          <input
+                            type="radio"
+                            name="bulk_channel_group_mode"
+                            value="custom"
+                            checked={bulkChannelGroupMode !== "static" && bulkChannelGroupMode !== "{sport}" && bulkChannelGroupMode !== "{league}"}
+                            onChange={() => {
+                              setBulkChannelGroupMode("{sport} | {league}")
+                              setBulkChannelGroupId(null)
+                            }}
+                            className="accent-primary"
+                          />
+                          <div className="flex-1">
+                            <span className="text-sm font-medium">Custom</span>
+                            <p className="text-xs text-muted-foreground mt-0.5">Define a custom pattern with variables.</p>
+                          </div>
+                        </label>
+                        {bulkChannelGroupMode !== "static" && bulkChannelGroupMode !== "{sport}" && bulkChannelGroupMode !== "{league}" && (
+                          <div className="p-3 space-y-2">
+                            <Input
+                              value={bulkChannelGroupMode}
+                              onChange={(e) => setBulkChannelGroupMode(e.target.value)}
+                              placeholder="Sports | {sport} | {league}"
+                              className="font-mono text-sm"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Available: <code className="bg-muted px-1 rounded">{"{sport}"}</code>, <code className="bg-muted px-1 rounded">{"{league}"}</code>
+                            </p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

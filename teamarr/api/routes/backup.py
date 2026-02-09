@@ -1,6 +1,7 @@
 """Backup and restore API endpoints."""
 
 import logging
+import os
 import shutil
 import sqlite3
 import tempfile
@@ -332,6 +333,30 @@ async def update_backup_settings(update: BackupSettingsUpdate):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="max_count must be at least 1",
         )
+
+    # Validate backup path if provided
+    if update.path is not None:
+        resolved = Path(update.path).resolve()
+        # Block obvious system paths
+        blocked = ("/etc", "/proc", "/sys", "/dev", "/bin", "/sbin", "/usr")
+        if any(str(resolved).startswith(b) for b in blocked):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Backup path cannot be a system directory",
+            )
+        # Check if directory is writable (or can be created)
+        try:
+            resolved.mkdir(parents=True, exist_ok=True)
+            if not os.access(resolved, os.W_OK):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Backup path is not writable: {update.path}",
+                )
+        except OSError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot create backup path: {e}",
+            ) from None
 
     with get_db() as conn:
         update_backup_settings(

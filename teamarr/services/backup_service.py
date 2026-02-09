@@ -9,8 +9,7 @@ Provides functionality for:
 """
 
 import logging
-import os
-import shutil
+import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -175,8 +174,14 @@ class BackupService:
                     error=f"Database file not found: {db_path}",
                 )
 
-            # Copy database file
-            shutil.copy2(db_path, backup_filepath)
+            # Use sqlite3.backup() for safe copy of live database
+            src = sqlite3.connect(str(db_path))
+            dst = sqlite3.connect(str(backup_filepath))
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+                src.close()
 
             # Get file size
             size_bytes = backup_filepath.stat().st_size
@@ -371,6 +376,65 @@ class BackupService:
             )
 
         return result
+
+    def restore_backup(self, filename: str) -> tuple[bool, str, str | None]:
+        """Restore database from a backup file.
+
+        Creates a pre-restore backup in the configured backup directory,
+        validates the backup file is valid SQLite, then replaces the active DB.
+
+        Args:
+            filename: Backup filename to restore from
+
+        Returns:
+            Tuple of (success, message, pre_restore_backup_path)
+        """
+        backup_path = self._backup_path / filename
+        if not backup_path.exists():
+            return False, "Backup not found", None
+
+        # Validate the backup is a valid SQLite database
+        try:
+            conn = sqlite3.connect(str(backup_path))
+            result = conn.execute("PRAGMA integrity_check").fetchone()
+            conn.close()
+            if result[0] != "ok":
+                return False, f"Backup file failed integrity check: {result[0]}", None
+        except sqlite3.DatabaseError as e:
+            return False, f"Backup file is not a valid SQLite database: {e}", None
+
+        db_path = self._get_db_path()
+
+        # Create pre-restore backup in the configured backup directory
+        pre_restore_path = None
+        if db_path.exists():
+            self._ensure_backup_dir()
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            pre_restore_path = self._backup_path / f"teamarr_pre_restore_{timestamp}.db"
+            src = sqlite3.connect(str(db_path))
+            dst = sqlite3.connect(str(pre_restore_path))
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+                src.close()
+            logger.info("[RESTORE] Created pre-restore backup at %s", pre_restore_path)
+
+        # Validate passes — copy backup to active DB path
+        src = sqlite3.connect(str(backup_path))
+        dst = sqlite3.connect(str(db_path))
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+            src.close()
+
+        logger.info("[RESTORE] Database restored from %s", filename)
+        return (
+            True,
+            "Database restored. Please restart the application for changes to take effect.",
+            str(pre_restore_path) if pre_restore_path else None,
+        )
 
     def get_backup_filepath(self, filename: str) -> Path | None:
         """Get full path to a backup file.

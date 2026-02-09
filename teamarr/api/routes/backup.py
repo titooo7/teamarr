@@ -246,30 +246,18 @@ async def restore_from_backup(filename: str):
     _validate_backup_filename(filename)
 
     backup_service = create_backup_service(get_db)
-    backup_path = backup_service.get_backup_filepath(filename)
+    success, message, pre_restore_path = backup_service.restore_backup(filename)
 
-    if not backup_path:
+    if not success:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Backup not found",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=message,
         )
-
-    # Create backup of current database before restoring
-    pre_restore_backup = None
-    if DEFAULT_DB_PATH.exists():
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        pre_restore_backup = DEFAULT_DB_PATH.parent / f"teamarr_pre_restore_{timestamp}.db"
-        shutil.copy2(DEFAULT_DB_PATH, pre_restore_backup)
-        logger.info("[RESTORE] Created pre-restore backup at %s", pre_restore_backup)
-
-    # Replace database with the backup file
-    shutil.copy2(backup_path, DEFAULT_DB_PATH)
-    logger.info("[RESTORE] Database restored from %s", filename)
 
     return RestoreResponse(
         success=True,
-        message="Database restored. Please restart the application for changes to take effect.",
-        backup_path=str(pre_restore_backup) if pre_restore_backup else None,
+        message=message,
+        backup_path=pre_restore_path,
     )
 
 

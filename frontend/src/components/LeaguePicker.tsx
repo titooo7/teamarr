@@ -70,9 +70,9 @@ export function LeaguePicker({
       if (!grouped[sport]) grouped[sport] = []
       grouped[sport].push(league)
     }
-    // Sort leagues within each sport
+    // Sort leagues within each sport (guard against null names from bad cache data)
     for (const sport of Object.keys(grouped)) {
-      grouped[sport].sort((a, b) => a.name.localeCompare(b.name))
+      grouped[sport].sort((a, b) => (a.name || a.slug).localeCompare(b.name || b.slug))
     }
     return grouped
   }, [cachedLeagues, sportFilter, excludeSport])
@@ -222,7 +222,7 @@ export function LeaguePicker({
             sport.toLowerCase().includes(search.toLowerCase()) ||
             leaguesBySport[sport].some(l =>
               l.slug.toLowerCase().includes(search.toLowerCase()) ||
-              l.name.toLowerCase().includes(search.toLowerCase())
+              (l.name || "").toLowerCase().includes(search.toLowerCase())
             )
           )
           .map((sport) => {
@@ -230,7 +230,7 @@ export function LeaguePicker({
             const filteredLeagues = search
               ? leagues.filter(l =>
                   l.slug.toLowerCase().includes(search.toLowerCase()) ||
-                  l.name.toLowerCase().includes(search.toLowerCase())
+                  (l.name || "").toLowerCase().includes(search.toLowerCase())
                 )
               : leagues
 

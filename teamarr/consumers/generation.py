@@ -930,16 +930,28 @@ def _process_gold_zone(
 
     # Register as managed channel so standard EPG association picks it up
     if dispatcharr_channel_id and first_event_group_id:
+        from teamarr.utilities.tz import now_user
+
+        # Default deletion to end of today (same-day lifecycle)
+        today_end = now_user().replace(hour=23, minute=59, second=59)
+        delete_at = today_end.isoformat()
+
+        mc_fields = {
+            "dispatcharr_channel_id": dispatcharr_channel_id,
+            "channel_name": _GOLD_ZONE_CHANNEL_NAME,
+            "channel_group_id": channel_group_id,
+            "channel_profile_ids": profile_ids or [],
+            "event_name": _GOLD_ZONE_CHANNEL_NAME,
+            "league": "Special - Winter Olympics",
+            "sync_status": "in_sync",
+            "scheduled_delete_at": delete_at,
+        }
+
         try:
             with db_factory() as conn:
                 existing_mc = get_managed_channel_by_tvg_id(conn, _GOLD_ZONE_TVG_ID)
                 if existing_mc:
-                    update_managed_channel(conn, existing_mc.id, {
-                        "dispatcharr_channel_id": dispatcharr_channel_id,
-                        "channel_name": _GOLD_ZONE_CHANNEL_NAME,
-                        "channel_group_id": channel_group_id,
-                        "channel_profile_ids": profile_ids or [],
-                    })
+                    update_managed_channel(conn, existing_mc.id, mc_fields)
                     logger.info("[GOLD_ZONE] Updated managed channel %d", existing_mc.id)
                 else:
                     mc_id = create_managed_channel(
@@ -954,6 +966,10 @@ def _process_gold_zone(
                         channel_profile_ids=profile_ids or [],
                         logo_url=_GOLD_ZONE_LOGO,
                         sport="olympics",
+                        event_name=_GOLD_ZONE_CHANNEL_NAME,
+                        league="Special - Winter Olympics",
+                        sync_status="in_sync",
+                        scheduled_delete_at=delete_at,
                     )
                     logger.info("[GOLD_ZONE] Created managed channel %d", mc_id)
         except Exception as e:

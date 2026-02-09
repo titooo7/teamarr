@@ -795,17 +795,17 @@ def _process_gold_zone(
     # Build combined regex pattern for Gold Zone keywords
     pattern = re.compile("|".join(re.escape(p) for p in _GOLD_ZONE_PATTERNS), re.IGNORECASE)
 
-    # Get M3U account IDs from enabled event groups — scope search
-    # to the same IPTV accounts (not the entire Dispatcharr universe)
+    # Get M3U group IDs from enabled event groups — only search streams
+    # in M3U groups that are configured as event groups
     with db_factory() as conn:
         groups = get_all_groups(conn, include_disabled=False)
 
-    account_ids = {g.m3u_account_id for g in groups if g.m3u_account_id is not None}
-    if not account_ids:
-        logger.info("[GOLD_ZONE] No event groups with M3U accounts configured")
+    m3u_group_ids = {g.m3u_group_id for g in groups if g.m3u_group_id is not None}
+    if not m3u_group_ids:
+        logger.info("[GOLD_ZONE] No event groups with M3U groups configured")
         return None
 
-    # Fetch all streams once, filter by account + keywords + stale
+    # Fetch all streams once, filter by M3U group + keywords + stale
     try:
         all_streams = dispatcharr_client.m3u.list_streams()
     except Exception as e:
@@ -814,21 +814,21 @@ def _process_gold_zone(
 
     gold_zone_stream_ids: list[int] = [
         s.id for s in all_streams
-        if s.m3u_account_id in account_ids
+        if s.channel_group in m3u_group_ids
         and not s.is_stale
         and pattern.search(s.name)
     ]
 
     if not gold_zone_stream_ids:
         logger.info(
-            "[GOLD_ZONE] No matching streams found across %d M3U accounts",
-            len(account_ids),
+            "[GOLD_ZONE] No matching streams found across %d M3U groups",
+            len(m3u_group_ids),
         )
         return None
 
     logger.info(
-        "[GOLD_ZONE] Found %d matching streams (non-stale) across %d M3U accounts",
-        len(gold_zone_stream_ids), len(account_ids),
+        "[GOLD_ZONE] Found %d matching streams (non-stale) across %d M3U groups",
+        len(gold_zone_stream_ids), len(m3u_group_ids),
     )
 
     # Create or update the Gold Zone channel in Dispatcharr

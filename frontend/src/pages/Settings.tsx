@@ -636,6 +636,8 @@ export function Settings() {
   const updateGoldZone = useUpdateGoldZoneSettings()
   const [goldZoneChannelDraft, setGoldZoneChannelDraft] = useState<string>("")
   const [goldZoneProfileIds, setGoldZoneProfileIds] = useState<(number | string)[]>([])
+  const [goldZoneGroupDraft, setGoldZoneGroupDraft] = useState<string>("")
+  const [goldZoneStreamProfileDraft, setGoldZoneStreamProfileDraft] = useState<number | null>(null)
   const channelGroupsQuery = useQuery({
     queryKey: ["dispatcharr-channel-groups"],
     queryFn: async () => {
@@ -654,11 +656,33 @@ export function Settings() {
     }
   }, [goldZoneData?.channel_number])
   useEffect(() => {
+    if (goldZoneData) {
+      setGoldZoneGroupDraft(goldZoneData.channel_group_id != null ? String(goldZoneData.channel_group_id) : "")
+      setGoldZoneStreamProfileDraft(goldZoneData.stream_profile_id ?? null)
+    }
+  }, [goldZoneData])
+  useEffect(() => {
     if (channelProfilesQuery.data && goldZoneData) {
       const allProfileIds = channelProfilesQuery.data.map(p => p.id)
       setGoldZoneProfileIds(apiToProfileIds(goldZoneData.channel_profile_ids, allProfileIds))
     }
   }, [channelProfilesQuery.data, goldZoneData])
+
+  const handleSaveGoldZone = async () => {
+    try {
+      const allProfileIds = channelProfilesQuery.data?.map(p => p.id) ?? []
+      const apiIds = profileIdsToApi(goldZoneProfileIds, allProfileIds)
+      await updateGoldZone.mutateAsync({
+        channel_number: goldZoneChannelDraft ? parseInt(goldZoneChannelDraft) : null,
+        channel_group_id: goldZoneGroupDraft ? parseInt(goldZoneGroupDraft) : null,
+        channel_profile_ids: apiIds,
+        stream_profile_id: goldZoneStreamProfileDraft,
+      })
+      toast.success("Gold Zone settings saved")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save")
+    }
+  }
 
   const { data: leaguesData } = useQuery({
     queryKey: ["cache", "leagues"],
@@ -2937,15 +2961,6 @@ export function Settings() {
                       placeholder="999"
                       value={goldZoneChannelDraft}
                       onChange={(e) => setGoldZoneChannelDraft(e.target.value)}
-                      onBlur={() => {
-                        const val = goldZoneChannelDraft ? parseInt(goldZoneChannelDraft) : null
-                        if (val !== goldZoneData?.channel_number) {
-                          updateGoldZone.mutate(
-                            { channel_number: val },
-                            { onSuccess: () => toast.success("Channel number updated") }
-                          )
-                        }
-                      }}
                     />
                   </div>
                 </div>
@@ -2954,14 +2969,8 @@ export function Settings() {
                   <Label>Channel Group</Label>
                   <Select
                     className="max-w-xs"
-                    value={goldZoneData?.channel_group_id ?? ""}
-                    onChange={(e) => {
-                      const val = e.target.value ? parseInt(e.target.value) : null
-                      updateGoldZone.mutate(
-                        { channel_group_id: val },
-                        { onSuccess: () => toast.success("Channel group updated") }
-                      )
-                    }}
+                    value={goldZoneGroupDraft}
+                    onChange={(e) => setGoldZoneGroupDraft(e.target.value)}
                   >
                     <option value="">None (no group)</option>
                     {channelGroupsQuery.data?.map((g) => (
@@ -2974,29 +2983,17 @@ export function Settings() {
                   <Label>Channel Profiles</Label>
                   <ChannelProfileSelector
                     selectedIds={goldZoneProfileIds}
-                    onChange={(ids) => {
-                      setGoldZoneProfileIds(ids)
-                      const allProfileIds = channelProfilesQuery.data?.map(p => p.id) ?? []
-                      const apiIds = profileIdsToApi(ids, allProfileIds)
-                      updateGoldZone.mutate(
-                        { channel_profile_ids: apiIds },
-                        { onSuccess: () => toast.success("Channel profiles updated") }
-                      )
-                    }}
+                    onChange={(ids) => setGoldZoneProfileIds(ids)}
                     disabled={!dispatcharrStatus.data?.connected}
+                    showWildcards={false}
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label>Stream Profile</Label>
                   <StreamProfileSelector
-                    value={goldZoneData?.stream_profile_id ?? null}
-                    onChange={(id) => {
-                      updateGoldZone.mutate(
-                        { stream_profile_id: id },
-                        { onSuccess: () => toast.success("Stream profile updated") }
-                      )
-                    }}
+                    value={goldZoneStreamProfileDraft}
+                    onChange={(id) => setGoldZoneStreamProfileDraft(id)}
                     disabled={!dispatcharrStatus.data?.connected}
                     isGlobalDefault
                   />
@@ -3006,6 +3003,15 @@ export function Settings() {
                   All streams matching "Gold Zone" / "GoldZone" will be consolidated into a single channel.
                   EPG data is fetched from an external source automatically during generation.
                 </p>
+
+                <Button onClick={handleSaveGoldZone} disabled={updateGoldZone.isPending}>
+                  {updateGoldZone.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-1" />
+                  )}
+                  Save
+                </Button>
               </div>
             )}
           </CardContent>

@@ -1040,8 +1040,8 @@ class ChannelLifecycleService:
         # For segments, use segment-aware event_id for DB storage
         effective_event_id = f"{event_id}-{segment}" if segment else event_id
 
-        # Generate tvg_id with segment suffix
-        tvg_id = generate_event_tvg_id(event_id, event_provider, segment)
+        # Generate tvg_id with segment and exception keyword suffixes
+        tvg_id = generate_event_tvg_id(event_id, event_provider, segment, matched_keyword)
 
         # Generate channel name (segment resolved via {card_segment_display} template variable)
         channel_name = self._generate_channel_name(event, template, matched_keyword, segment)
@@ -1513,8 +1513,14 @@ class ChannelLifecycleService:
             # See generation.py Step 3b - this ensures all streams from all groups
             # are considered together when computing final order
 
-            # 5. Check tvg_id
-            expected_tvg_id = existing.tvg_id
+            # 5. Check tvg_id (regenerate with keyword to migrate old-format tvg_ids)
+            event_id = getattr(event, "id", None)
+            event_provider = getattr(event, "provider", "espn")
+            expected_tvg_id = generate_event_tvg_id(
+                event_id, event_provider, segment, matched_keyword
+            )
+            if expected_tvg_id != existing.tvg_id:
+                db_updates["tvg_id"] = expected_tvg_id
             if expected_tvg_id != current_channel.tvg_id:
                 update_data["tvg_id"] = expected_tvg_id
                 changes_made.append(f"tvg_id: {current_channel.tvg_id} → {expected_tvg_id}")

@@ -394,31 +394,33 @@ class EventEPGGenerator:
             # Use per-event template if provided (sport/league-specific), otherwise use default
             event_template = match.get("_event_template") or options.template
 
+            # Resolve {exception_keyword} if annotated (parity with lifecycle path)
+            exception_keyword = match.get("_exception_keyword")
+
             # Generate consistent tvg_id matching what ChannelLifecycleService uses
             # This ensures XMLTV channel IDs match managed_channels.tvg_id for EPG association
+            # Include exception_keyword so each keyword variant gets its own EPG programmes
             from teamarr.consumers.lifecycle import generate_event_tvg_id
 
-            tvg_id = generate_event_tvg_id(event.id, event.provider, segment)
+            tvg_id = generate_event_tvg_id(event.id, event.provider, segment, exception_keyword)
             stream_name = stream.get("name", "")
 
             # Build context using home team perspective
+            # Inject exception_keyword into extra_vars so it resolves in all template fields
+            keyword_value = exception_keyword.title() if exception_keyword else ""
             context = self._context_builder.build_for_event(
                 event=event,
                 team_id=event.home_team.id,
                 league=event.league,
                 card_segment=segment,
             )
-
-            # Resolve {exception_keyword} if annotated (parity with lifecycle path)
-            exception_keyword = match.get("_exception_keyword")
-            keyword_value = exception_keyword.title() if exception_keyword else ""
+            context.extra_vars = {"exception_keyword": keyword_value}
 
             # Generate channel name from template
             # Unknown variables stay literal (e.g., {bad_var}) so user can identify issues
-            name_format = event_template.channel_name_format.replace(
-                "{exception_keyword}", keyword_value
+            channel_name = self._resolver.resolve(
+                event_template.channel_name_format, context
             )
-            channel_name = self._resolver.resolve(name_format, context)
 
             # Auto-append keyword if template doesn't use {exception_keyword} variable
             uses_keyword_var = "{exception_keyword}" in event_template.channel_name_format
@@ -433,10 +435,9 @@ class EventEPGGenerator:
             # Resolve template variables in logo URL (e.g., {league_id}, {home_team_pascal})
             channel_icon = None
             if event_template.event_channel_logo_url:
-                logo_format = event_template.event_channel_logo_url.replace(
-                    "{exception_keyword}", keyword_value
+                channel_icon = self._resolver.resolve(
+                    event_template.event_channel_logo_url, context
                 )
-                channel_icon = self._resolver.resolve(logo_format, context)
 
             channel_info = EventChannelInfo(
                 channel_id=tvg_id,

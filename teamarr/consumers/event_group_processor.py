@@ -2747,9 +2747,11 @@ class EventGroupProcessor:
             segment_end = stream_match.get("segment_end")
 
             # Use consistent tvg_id matching EventEPGGenerator and ChannelLifecycleService
+            # Include exception_keyword for keyword-unique EPG channels
             from teamarr.consumers.lifecycle import generate_event_tvg_id
 
-            channel_id = generate_event_tvg_id(event.id, event.provider, segment)
+            exception_keyword = stream_match.get("_exception_keyword")
+            channel_id = generate_event_tvg_id(event.id, event.provider, segment, exception_keyword)
 
             # For UFC segments, override event times with segment-specific times
             if segment_start and segment_end:

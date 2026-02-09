@@ -710,6 +710,14 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("[MIGRATE] Schema upgraded to version 55 (gold zone)")
         current_version = 55
 
+    if current_version < 56:
+        _add_column_if_not_exists(conn, "settings", "gold_zone_channel_group_id", "INTEGER")
+        _add_column_if_not_exists(conn, "settings", "gold_zone_channel_profile_ids", "TEXT")
+        _add_column_if_not_exists(conn, "settings", "gold_zone_stream_profile_id", "INTEGER")
+        conn.execute("UPDATE settings SET schema_version = 56 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 56 (gold zone profiles)")
+        current_version = 56
+
 
 # =============================================================================
 # LEGACY MIGRATION HELPER FUNCTIONS

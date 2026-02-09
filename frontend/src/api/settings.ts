@@ -409,11 +409,17 @@ export async function checkForUpdates(force: boolean = false): Promise<UpdateInf
 export interface GoldZoneSettings {
   enabled: boolean
   channel_number: number | null
+  channel_group_id: number | null
+  channel_profile_ids: (number | string)[] | null
+  stream_profile_id: number | null
 }
 
 export interface GoldZoneSettingsUpdate {
   enabled?: boolean
   channel_number?: number | null
+  channel_group_id?: number | null
+  channel_profile_ids?: (number | string)[] | null
+  stream_profile_id?: number | null
 }
 
 export async function getGoldZoneSettings(): Promise<GoldZoneSettings> {

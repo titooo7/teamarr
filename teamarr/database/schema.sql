@@ -314,9 +314,12 @@ CREATE TABLE IF NOT EXISTS settings (
     -- Consolidates all "Gold Zone" streams into a single channel with external EPG
     gold_zone_enabled BOOLEAN DEFAULT 0,
     gold_zone_channel_number INTEGER,
+    gold_zone_channel_group_id INTEGER,
+    gold_zone_channel_profile_ids TEXT,    -- JSON array of profile IDs
+    gold_zone_stream_profile_id INTEGER,
 
     -- Schema Version
-    schema_version INTEGER DEFAULT 55
+    schema_version INTEGER DEFAULT 56
 );
 
 -- Insert default settings

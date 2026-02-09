@@ -239,6 +239,9 @@ class GoldZoneSettings:
 
     enabled: bool = False
     channel_number: int | None = None
+    channel_group_id: int | None = None
+    channel_profile_ids: list[int | str] | None = None  # null = all profiles
+    stream_profile_id: int | None = None
 
 
 @dataclass

@@ -341,6 +341,9 @@ class GoldZoneSettingsModel(BaseModel):
 
     enabled: bool = False
     channel_number: int | None = None
+    channel_group_id: int | None = None
+    channel_profile_ids: list[int | str] | None = None
+    stream_profile_id: int | None = None
 
 
 class GoldZoneSettingsUpdate(BaseModel):
@@ -348,6 +351,9 @@ class GoldZoneSettingsUpdate(BaseModel):
 
     enabled: bool | None = None
     channel_number: int | None = None
+    channel_group_id: int | None = None
+    channel_profile_ids: list[int | str] | None = None
+    stream_profile_id: int | None = None
 
 
 # =============================================================================

@@ -707,6 +707,9 @@ def update_gold_zone_settings(
     conn: Connection,
     enabled: bool | None = None,
     channel_number: int | None | object = _NOT_PROVIDED,
+    channel_group_id: int | None | object = _NOT_PROVIDED,
+    channel_profile_ids: list | None | object = _NOT_PROVIDED,
+    stream_profile_id: int | None | object = _NOT_PROVIDED,
 ) -> bool:
     """Update Gold Zone settings.
 
@@ -714,6 +717,9 @@ def update_gold_zone_settings(
         conn: Database connection
         enabled: Enable/disable Gold Zone feature
         channel_number: Channel number for the unified Gold Zone channel (None = clear)
+        channel_group_id: Dispatcharr channel group ID (None = clear)
+        channel_profile_ids: JSON-serializable list of profile IDs (None = all profiles)
+        stream_profile_id: Dispatcharr stream profile ID (None = clear)
 
     Returns:
         True if updated
@@ -727,6 +733,15 @@ def update_gold_zone_settings(
     if channel_number is not _NOT_PROVIDED:
         updates.append("gold_zone_channel_number = ?")
         values.append(channel_number)
+    if channel_group_id is not _NOT_PROVIDED:
+        updates.append("gold_zone_channel_group_id = ?")
+        values.append(channel_group_id)
+    if channel_profile_ids is not _NOT_PROVIDED:
+        updates.append("gold_zone_channel_profile_ids = ?")
+        values.append(json.dumps(channel_profile_ids) if channel_profile_ids is not None else None)
+    if stream_profile_id is not _NOT_PROVIDED:
+        updates.append("gold_zone_stream_profile_id = ?")
+        values.append(stream_profile_id)
 
     if not updates:
         return False

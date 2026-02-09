@@ -635,6 +635,17 @@ export function Settings() {
   const { data: goldZoneData } = useGoldZoneSettings()
   const updateGoldZone = useUpdateGoldZoneSettings()
   const [goldZoneChannelDraft, setGoldZoneChannelDraft] = useState<string>("")
+  const [goldZoneProfileIds, setGoldZoneProfileIds] = useState<(number | string)[]>([])
+  const channelGroupsQuery = useQuery({
+    queryKey: ["dispatcharr-channel-groups"],
+    queryFn: async () => {
+      const response = await fetch("/api/v1/dispatcharr/channel-groups?exclude_m3u=true")
+      if (!response.ok) return []
+      return response.json() as Promise<{ id: number; name: string }[]>
+    },
+    enabled: dispatcharrStatus.data?.connected ?? false,
+    retry: false,
+  })
   useEffect(() => {
     if (goldZoneData?.channel_number != null) {
       setGoldZoneChannelDraft(String(goldZoneData.channel_number))
@@ -642,6 +653,12 @@ export function Settings() {
       setGoldZoneChannelDraft("")
     }
   }, [goldZoneData?.channel_number])
+  useEffect(() => {
+    if (channelProfilesQuery.data && goldZoneData) {
+      const allProfileIds = channelProfilesQuery.data.map(p => p.id)
+      setGoldZoneProfileIds(apiToProfileIds(goldZoneData.channel_profile_ids, allProfileIds))
+    }
+  }, [channelProfilesQuery.data, goldZoneData])
 
   const { data: leaguesData } = useQuery({
     queryKey: ["cache", "leagues"],
@@ -2909,31 +2926,83 @@ export function Settings() {
             </div>
 
             {goldZoneData?.enabled && (
-              <div className="space-y-2 pl-1">
-                <Label htmlFor="gold-zone-channel">Channel Number</Label>
-                <div className="flex items-center gap-2 max-w-xs">
-                  <Input
-                    id="gold-zone-channel"
-                    type="number"
-                    min={1}
-                    placeholder="999"
-                    value={goldZoneChannelDraft}
-                    onChange={(e) => setGoldZoneChannelDraft(e.target.value)}
-                    onBlur={() => {
-                      const val = goldZoneChannelDraft ? parseInt(goldZoneChannelDraft) : null
-                      if (val !== goldZoneData?.channel_number) {
-                        updateGoldZone.mutate(
-                          { channel_number: val },
-                          {
-                            onSuccess: () => {
-                              toast.success("Channel number updated")
-                            },
-                          }
-                        )
-                      }
+              <div className="space-y-4 pl-1">
+                <div className="space-y-2">
+                  <Label htmlFor="gold-zone-channel">Channel Number</Label>
+                  <div className="flex items-center gap-2 max-w-xs">
+                    <Input
+                      id="gold-zone-channel"
+                      type="number"
+                      min={1}
+                      placeholder="999"
+                      value={goldZoneChannelDraft}
+                      onChange={(e) => setGoldZoneChannelDraft(e.target.value)}
+                      onBlur={() => {
+                        const val = goldZoneChannelDraft ? parseInt(goldZoneChannelDraft) : null
+                        if (val !== goldZoneData?.channel_number) {
+                          updateGoldZone.mutate(
+                            { channel_number: val },
+                            { onSuccess: () => toast.success("Channel number updated") }
+                          )
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Channel Group</Label>
+                  <Select
+                    className="max-w-xs"
+                    value={goldZoneData?.channel_group_id ?? ""}
+                    onChange={(e) => {
+                      const val = e.target.value ? parseInt(e.target.value) : null
+                      updateGoldZone.mutate(
+                        { channel_group_id: val },
+                        { onSuccess: () => toast.success("Channel group updated") }
+                      )
                     }}
+                  >
+                    <option value="">None (no group)</option>
+                    {channelGroupsQuery.data?.map((g) => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Channel Profiles</Label>
+                  <ChannelProfileSelector
+                    selectedIds={goldZoneProfileIds}
+                    onChange={(ids) => {
+                      setGoldZoneProfileIds(ids)
+                      const allProfileIds = channelProfilesQuery.data?.map(p => p.id) ?? []
+                      const apiIds = profileIdsToApi(ids, allProfileIds)
+                      updateGoldZone.mutate(
+                        { channel_profile_ids: apiIds },
+                        { onSuccess: () => toast.success("Channel profiles updated") }
+                      )
+                    }}
+                    disabled={!dispatcharrStatus.data?.connected}
+                    showWildcards={false}
                   />
                 </div>
+
+                <div className="space-y-2">
+                  <Label>Stream Profile</Label>
+                  <StreamProfileSelector
+                    value={goldZoneData?.stream_profile_id ?? null}
+                    onChange={(id) => {
+                      updateGoldZone.mutate(
+                        { stream_profile_id: id },
+                        { onSuccess: () => toast.success("Stream profile updated") }
+                      )
+                    }}
+                    disabled={!dispatcharrStatus.data?.connected}
+                    isGlobalDefault
+                  />
+                </div>
+
                 <p className="text-xs text-muted-foreground">
                   All streams matching "Gold Zone" / "GoldZone" will be consolidated into a single channel.
                   EPG data is fetched from an external source automatically during generation.

@@ -298,10 +298,10 @@ def run_full_generation(
         )
 
         # Step 3c: Gold Zone channel (if enabled)
-        gold_zone_epg_xml: str | None = None
+        gold_zone_result: GoldZoneResult | None = None
         if gold_zone_settings.enabled and dispatcharr_client:
             update_progress("gold_zone", 94, "Processing Gold Zone...")
-            gold_zone_epg_xml = _process_gold_zone(
+            gold_zone_result = _process_gold_zone(
                 db_factory, dispatcharr_client, gold_zone_settings,
                 settings, update_progress,
             )
@@ -317,8 +317,8 @@ def run_full_generation(
             xmltv_contents.extend(group_xmltv)
 
         # Inject Gold Zone external EPG if available
-        if gold_zone_epg_xml:
-            xmltv_contents.append(gold_zone_epg_xml)
+        if gold_zone_result and gold_zone_result.epg_xml:
+            xmltv_contents.append(gold_zone_result.epg_xml)
 
         output_path = settings.epg_output_path
         if xmltv_contents and output_path:
@@ -368,6 +368,14 @@ def run_full_generation(
             result.epg_association = lifecycle_service.associate_epg_with_channels(
                 dispatcharr_settings.epg_id
             )
+
+            # Associate Gold Zone EPG (not in managed_channels, handled separately)
+            if gold_zone_result and gold_zone_result.dispatcharr_channel_id:
+                _associate_gold_zone_epg(
+                    dispatcharr_client.channels,
+                    gold_zone_result.dispatcharr_channel_id,
+                    dispatcharr_settings.epg_id,
+                )
 
         # Step 6: Process scheduled deletions (98-99%)
         update_progress("lifecycle", 98, "Processing scheduled deletions...")
@@ -764,13 +772,21 @@ _GOLD_ZONE_CHANNEL_NAME = "Gold Zone"
 _GOLD_ZONE_LOGO = "https://emby.tmsimg.com/assets/p32146358_b_h9_ab.jpg"
 
 
+@dataclass
+class GoldZoneResult:
+    """Result of Gold Zone processing."""
+
+    epg_xml: str | None = None
+    dispatcharr_channel_id: int | None = None
+
+
 def _process_gold_zone(
     db_factory: Callable[[], Any],
     dispatcharr_client: Any,
     gold_zone_settings: Any,
     epg_settings: Any,
     update_progress: Callable,
-) -> str | None:
+) -> GoldZoneResult | None:
     """Process Gold Zone: find matching streams in event groups, create channel, fetch EPG.
 
     Only searches streams within imported event groups (not all providers).
@@ -784,7 +800,7 @@ def _process_gold_zone(
         update_progress: Progress callback
 
     Returns:
-        External EPG XML string to inject, or None if nothing to do
+        GoldZoneResult with EPG XML and channel ID, or None if nothing to do
     """
     import re
 
@@ -833,22 +849,40 @@ def _process_gold_zone(
 
     # Create or update the Gold Zone channel in Dispatcharr
     channel_number = gold_zone_settings.channel_number or 999
+    channel_group_id = gold_zone_settings.channel_group_id
+    stream_profile_id = gold_zone_settings.stream_profile_id
+
+    # Convert profile IDs: null = all profiles → [0] sentinel for Dispatcharr
+    profile_ids = gold_zone_settings.channel_profile_ids
+    if profile_ids is None:
+        disp_profile_ids = [0]  # All profiles
+    else:
+        disp_profile_ids = [int(p) for p in profile_ids if not isinstance(p, str)]
+
+    dispatcharr_channel_id: int | None = None
+
     try:
         channel_manager = dispatcharr_client.channels
 
         # Check if channel already exists by tvg_id
         existing = channel_manager.find_by_tvg_id(_GOLD_ZONE_TVG_ID)
         if existing:
-            # Update existing channel with current streams + ensure tvg_id
-            channel_manager.update_channel(
-                existing.id,
-                data={
-                    "name": _GOLD_ZONE_CHANNEL_NAME,
-                    "channel_number": channel_number,
-                    "streams": gold_zone_stream_ids,
-                    "tvg_id": _GOLD_ZONE_TVG_ID,
-                },
-            )
+            dispatcharr_channel_id = existing.id
+            # Update existing channel with current streams + settings
+            update_data: dict = {
+                "name": _GOLD_ZONE_CHANNEL_NAME,
+                "channel_number": channel_number,
+                "streams": gold_zone_stream_ids,
+                "tvg_id": _GOLD_ZONE_TVG_ID,
+            }
+            if channel_group_id is not None:
+                update_data["channel_group_id"] = channel_group_id
+            if disp_profile_ids:
+                update_data["channel_profile_ids"] = disp_profile_ids
+            if stream_profile_id is not None:
+                update_data["stream_profile_id"] = stream_profile_id
+
+            channel_manager.update_channel(existing.id, data=update_data)
             logger.info(
                 "[GOLD_ZONE] Updated channel %d with %d streams",
                 existing.id,
@@ -871,15 +905,23 @@ def _process_gold_zone(
                 stream_ids=gold_zone_stream_ids,
                 tvg_id=_GOLD_ZONE_TVG_ID,
                 logo_id=logo_id,
+                channel_group_id=channel_group_id,
+                channel_profile_ids=disp_profile_ids or None,
+                stream_profile_id=stream_profile_id,
             )
             if create_result.success:
+                dispatcharr_channel_id = (create_result.data or {}).get("id")
                 logger.info(
-                    "[GOLD_ZONE] Created channel with %d streams", len(gold_zone_stream_ids)
+                    "[GOLD_ZONE] Created channel %s with %d streams",
+                    dispatcharr_channel_id,
+                    len(gold_zone_stream_ids),
                 )
             else:
                 logger.error("[GOLD_ZONE] Failed to create channel: %s", create_result.error)
     except Exception as e:
         logger.error("[GOLD_ZONE] Channel operation failed: %s", e)
+
+    gz_result = GoldZoneResult(dispatcharr_channel_id=dispatcharr_channel_id)
 
     # Fetch external EPG XML and filter by date window
     try:
@@ -889,15 +931,53 @@ def _process_gold_zone(
         logger.info("[GOLD_ZONE] Fetched external EPG (%d bytes)", len(raw_xml))
     except Exception as e:
         logger.error("[GOLD_ZONE] Failed to fetch external EPG: %s", e)
-        return None
+        return gz_result  # Return with channel ID but no EPG
 
     # Filter programmes to EPG date window
     try:
-        epg_xml = _filter_gold_zone_epg(raw_xml, epg_settings)
-        return epg_xml
+        gz_result.epg_xml = _filter_gold_zone_epg(raw_xml, epg_settings)
     except Exception as e:
         logger.error("[GOLD_ZONE] Failed to filter EPG: %s", e)
-        return raw_xml  # Fall back to unfiltered
+        gz_result.epg_xml = raw_xml  # Fall back to unfiltered
+
+    return gz_result
+
+
+def _associate_gold_zone_epg(
+    channel_manager: Any,
+    dispatcharr_channel_id: int,
+    epg_source_id: int,
+) -> None:
+    """Associate Gold Zone EPG data with the Gold Zone channel in Dispatcharr.
+
+    Looks up the GoldZone.us tvg_id in Dispatcharr's EPG data and links it
+    to the Gold Zone channel. This runs after the Dispatcharr EPG refresh
+    so the external Gold Zone EPG data is available.
+    """
+    try:
+        epg_data = channel_manager.find_epg_data_by_tvg_id(
+            _GOLD_ZONE_TVG_ID, epg_source_id
+        )
+        if not epg_data:
+            logger.warning(
+                "[GOLD_ZONE] EPG data for tvg_id=%s not found in Dispatcharr",
+                _GOLD_ZONE_TVG_ID,
+            )
+            return
+
+        epg_data_id = epg_data.get("id")
+        if not epg_data_id:
+            logger.warning("[GOLD_ZONE] EPG data entry has no ID")
+            return
+
+        channel_manager.set_channel_epg(dispatcharr_channel_id, epg_data_id)
+        logger.info(
+            "[GOLD_ZONE] Associated EPG data %d with channel %d",
+            epg_data_id,
+            dispatcharr_channel_id,
+        )
+    except Exception as e:
+        logger.error("[GOLD_ZONE] Failed to associate EPG: %s", e)
 
 
 def _filter_gold_zone_epg(raw_xml: str, epg_settings: Any) -> str:

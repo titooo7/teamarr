@@ -18,6 +18,8 @@ dependencies = [
     "croniter>=2.0.0",
     "unidecode>=1.3.0",
     "euroleague-api>=0.0.21",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.1.0",
 ]
 
 [project.optional-dependencies]

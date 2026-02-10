@@ -446,5 +446,11 @@ class SportsDataService:
                 target_date = today + timedelta(days=i)
                 # Use get_events which goes through provider → client cache
                 tsdb_provider.get_events(league, target_date)
+                # Small delay between days to stay under free tier limit
+                import time
+                time.sleep(2)
 
             logger.debug("[PREWARM] TSDB league %s: %d days", league, days_ahead)
+            # Extra delay between leagues
+            import time
+            time.sleep(5)

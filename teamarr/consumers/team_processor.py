@@ -220,16 +220,20 @@ class TeamProcessor:
 
         # Separate teams by provider
         espn_teams = [t for t in teams if t.provider == "espn"]
+        euro_teams = [t for t in teams if t.provider == "euroleague"]
+        api_basket_teams = [t for t in teams if t.provider == "apibasketball"]
         tsdb_teams = [t for t in teams if t.provider == "tsdb"]
 
         channels: list[dict] = []
 
-        # Process ESPN teams in parallel
-        if espn_teams:
-            num_workers = min(MAX_WORKERS, len(espn_teams))
+        # Process ESPN, Euroleague and API-Basketball teams in parallel (non-rate-limited APIs)
+        parallel_teams = espn_teams + euro_teams + api_basket_teams
+        if parallel_teams:
+            num_workers = min(MAX_WORKERS, len(parallel_teams))
             logger.info(
-                "[TEAM_BATCH] ESPN: %d teams, %d workers",
-                len(espn_teams),
+                "[TEAM_BATCH] Parallel (%s): %d teams, %d workers",
+                ", ".join(set(t.provider for t in parallel_teams)),
+                len(parallel_teams),
                 num_workers,
             )
 
@@ -256,7 +260,7 @@ class TeamProcessor:
 
             with ThreadPoolExecutor(max_workers=num_workers) as executor:
                 future_to_team = {
-                    executor.submit(process_with_tracking, team): team for team in espn_teams
+                    executor.submit(process_with_tracking, team): team for team in parallel_teams
                 }
 
                 for future in as_completed(future_to_team):

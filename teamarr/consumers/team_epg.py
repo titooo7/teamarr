@@ -122,10 +122,10 @@ class TeamEPGGenerator:
         """
         additional_leagues: list[str] = []
 
-        # Multi-league discovery ONLY for soccer
+        # Multi-league discovery for soccer and basketball
         # Soccer teams play same competitions across leagues (EPL + Champions League + FA Cup)
-        # US sports have unrelated team IDs across leagues (NBA vs NCAAM vs WNBA)
-        if sport == "soccer":
+        # Basketball teams can also play in multiple leagues (e.g. domestic + Euroleague)
+        if sport in ["soccer", "basketball"]:
             from teamarr.consumers.cache import get_cache
 
             cache = get_cache()

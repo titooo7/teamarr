@@ -159,6 +159,7 @@ class EuroleagueProvider(SportsProvider):
         league: str,
         days_ahead: int = 14,
     ) -> List[Event]:
+        logger.debug(f"[Euroleague] Fetching schedule for team {team_id} in {league}")
         client = self._get_client(league)
         season = self._get_current_season()
         df = client.get_season_games(season)

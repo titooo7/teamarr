@@ -216,6 +216,9 @@ CREATE TABLE IF NOT EXISTS settings (
     -- Premium key ($9/mo) gives 100 req/min and higher limits
     tsdb_api_key TEXT,
 
+    -- API-Basketball (API-SPORTS) key
+    api_basketball_key TEXT,
+
     -- Channel ID Format
     channel_id_format TEXT DEFAULT '{team_name_pascal}.{league_id}',
 

@@ -726,7 +726,7 @@ INSERT OR REPLACE INTO leagues (league_code, provider, provider_league_id, provi
 
     -- Basketball (TSDB) - Leagues not on ESPN
     ('acb', 'tsdb', '4408', 'Spanish Liga ACB', 'Liga Endesa', 'basketball', 'https://www.acb.com/docs/descarga/logos/logo_acb/PNG/acb_positivo.png', NULL, 1, 'ACB', 'acb', 'team_vs_team', 'ACB Basketball', NULL, NULL),
-    ('euroleague', 'tsdb', '4546', 'EuroLeague Basketball', 'Euroleague Basketball', 'basketball', 'https://brandcenter.euroleague.net/front/brandcenter/assets/images/eball.svg', NULL, 1, 'Euroleague', 'euroleague', 'team_vs_team', 'Euroleague Basketball', NULL, NULL),                                                                                                                                         │
+    ('euroleague', 'tsdb', '4546', 'EuroLeague Basketball', 'Euroleague Basketball', 'basketball', 'https://brandcenter.euroleague.net/front/brandcenter/assets/images/eball.svg', NULL, 1, 'Euroleague', 'euroleague', 'team_vs_team', 'Euroleague Basketball', NULL, NULL),
     ('unrivaled', 'tsdb', '5622', 'Unrivaled Basketball', 'Unrivaled', 'basketball', 'https://r2.thesportsdb.com/images/media/league/badge/71mier1746291561.png', NULL, 1, NULL, 'unrivaled', 'team_vs_team', 'Unrivaled Basketball', NULL, NULL),
 
     -- Hockey (ESPN)

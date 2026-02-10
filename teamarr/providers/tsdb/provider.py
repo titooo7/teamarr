@@ -133,47 +133,27 @@ class TSDBProvider(SportsProvider):
         Uses eventsday.php across multiple days to get both HOME and AWAY
         games (eventsnext.php only returns HOME on free tier).
 
-        Scans:
-        - Past DAYS_BACK days for .last variable resolution (cached indefinitely)
-        - Future days_ahead days for upcoming games
-
-        Note: days_ahead is capped at TSDB_MAX_DAYS_AHEAD (14) to reduce
-        API calls. TSDB data is sparse for far-future dates anyway.
+        For ACB, uses get_all_league_events() for a full deep scan.
         """
-        # Cap days_ahead for rate limit optimization
-        days_ahead = min(days_ahead, self.TSDB_MAX_DAYS_AHEAD)
-
         # First, get team name from league teams
         team_name = self._get_team_name(team_id, league)
         if not team_name:
             logger.debug("[TSDB] Could not find team name for ID %s", team_id)
             return []
 
-        events = []
-        today = date.today()
-        seen_ids: set[str] = set()
-
-        # 1. Scan past days for .last variable resolution
-        for i in range(self.DAYS_BACK, 0, -1):
-            target_date = today - timedelta(days=i)
-            team_events = self._get_events_for_team(league, target_date, team_name)
-            for event in team_events:
-                if event.id not in seen_ids:
-                    seen_ids.add(event.id)
+        # For ACB, use the full deep scan
+        if league == "acb":
+            all_game_data = self._client.get_all_league_events(league)
+            events = []
+            for game_data in all_game_data:
+                event = self._parse_event(game_data, league)
+                if event and self._team_in_event(team_name, event):
                     events.append(event)
+            events.sort(key=lambda e: e.start_time)
+            return events
 
-        # 2. Scan future days (including today)
-        for i in range(days_ahead):
-            target_date = today + timedelta(days=i)
-            team_events = self._get_events_for_team(league, target_date, team_name)
-            for event in team_events:
-                if event.id not in seen_ids:
-                    seen_ids.add(event.id)
-                    events.append(event)
-
-        # Sort by start time
-        events.sort(key=lambda e: e.start_time)
-        return events
+        # Cap days_ahead for other leagues (rate limit optimization)
+        days_ahead = min(days_ahead, self.TSDB_MAX_DAYS_AHEAD)
 
     def _get_events_for_team(
         self,
@@ -330,18 +310,64 @@ class TSDBProvider(SportsProvider):
     def get_teams_in_league(self, league: str) -> list[Team]:
         """Get all teams in a league.
 
-        Uses search_all_teams.php which works on free tier.
+        Uses search_all_teams.php (capped at 10) and supplements by finding
+        teams in the full season schedule (deep scan for ACB).
         """
-        data = self._client.get_teams_in_league(league)
-
-        if not data:
+        league_name = self._client.get_league_name(league)
+        if not league_name:
             return []
 
-        teams = []
-        for team_data in data.get("teams") or []:
-            teams.append(self._parse_team(team_data, league))
+        teams_by_id: dict[str, Team] = {}
 
-        return teams
+        # Phase 1: search_all_teams.php (capped at 10 on free tier)
+        data = self._client.get_teams_in_league(league)
+        if data and data.get("teams"):
+            for team_data in data["teams"]:
+                team = self._parse_team(team_data, league)
+                if team.id:
+                    teams_by_id[team.id] = team
+
+        # Phase 2: Supplement from full season schedule (Deep scan for ACB)
+        # This bypasses the 10-team limit by finding teams in scheduled games
+        if league == "acb":
+            all_game_data = self._client.get_all_league_events(league)
+            for game_data in all_game_data:
+                # Extract home team
+                home_id = str(game_data.get("idHomeTeam", ""))
+                if home_id and home_id not in teams_by_id:
+                    home_team = Team(
+                        id=home_id,
+                        provider=self.name,
+                        name=game_data.get("strHomeTeam", ""),
+                        short_name=game_data.get("strHomeTeam", ""),
+                        abbreviation=self._make_abbrev(game_data.get("strHomeTeam", "")),
+                        league=league,
+                        sport="basketball",
+                        logo_url=game_data.get("strHomeTeamBadge"),
+                    )
+                    teams_by_id[home_id] = home_team
+
+                # Extract away team
+                away_id = str(game_data.get("idAwayTeam", ""))
+                if away_id and away_id not in teams_by_id:
+                    away_team = Team(
+                        id=away_id,
+                        provider=self.name,
+                        name=game_data.get("strAwayTeam", ""),
+                        short_name=game_data.get("strAwayTeam", ""),
+                        abbreviation=self._make_abbrev(game_data.get("strAwayTeam", "")),
+                        league=league,
+                        sport="basketball",
+                        logo_url=game_data.get("strAwayTeamBadge"),
+                    )
+                    teams_by_id[away_id] = away_team
+        else:
+            # For other leagues, use the standard eventsseason.php (capped at 15)
+            # This is already partially handled by get_teams_in_league in the client
+            # but we've already done the basic 10-team search above.
+            pass
+
+        return list(teams_by_id.values())
 
     def get_league_teams(self, league: str) -> list[Team]:
         """Get all teams in a league.

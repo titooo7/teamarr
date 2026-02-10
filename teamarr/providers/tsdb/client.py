@@ -492,8 +492,17 @@ class TSDBClient:
             return None
 
         if not season:
-            # Use current year for calendar-year leagues
-            season = str(date.today().year)
+            # Determine season string based on sport
+            year = date.today().year
+            month = date.today().month
+            sport = self.get_sport(league).lower()
+            if sport in ("cricket", "boxing"):
+                season = str(year)
+            else:
+                if month < 8:
+                    season = f"{year - 1}-{year}"
+                else:
+                    season = f"{year}-{year + 1}"
 
         cache_key = make_cache_key("tsdb", "eventsround", league, round_num, season)
         cached = self._cache.get(cache_key)
@@ -506,6 +515,50 @@ class TSDBClient:
             # Cache for 2 hours (same as eventsday)
             self._cache.set(cache_key, result, 2 * 60 * 60)
         return result
+
+    def get_all_league_events(self, league: str, season: str | None = None) -> list[dict]:
+        """Fetch all events for a league season by iterating through rounds.
+
+        Deep scan: loops through rounds 1-34 (for ACB) or uses eventsseason (others).
+        Results cached for 24 hours.
+        """
+        cache_key = make_cache_key("tsdb", "allevents", league, season or "current")
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        all_events = []
+        league_id = self.get_league_id(league)
+        if not league_id:
+            return []
+
+        # Determine season if not provided
+        if not season:
+            year = date.today().year
+            month = date.today().month
+            sport = self.get_sport(league).lower()
+            if sport in ("cricket", "boxing"):
+                season = str(year)
+            else:
+                season = f"{year - 1}-{year}" if month < 8 else f"{year}-{year + 1}"
+
+        # Special handling for ACB - deep scan 34 rounds
+        if league == "acb":
+            logger.info("[TSDB] Starting deep scan for ACB season %s (34 rounds)", season)
+            for r in range(1, 35):
+                data = self.get_events_by_round(league, r, season)
+                if data and data.get("events"):
+                    all_events.extend(data["events"])
+                # Small delay between rounds to stay under rate limit
+                time.sleep(1.0)
+        else:
+            # Fallback to eventsseason.php (capped at 15 on free tier)
+            data = self._request("eventsseason.php", {"id": league_id, "s": season})
+            if data and data.get("events"):
+                all_events.extend(data["events"])
+
+        self._cache.set(cache_key, all_events, 24 * 60 * 60)
+        return all_events
 
     def get_team_next_events(self, team_id: str) -> dict | None:
         """Fetch upcoming events for a team.

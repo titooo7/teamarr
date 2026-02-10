@@ -592,11 +592,11 @@ CREATE TABLE IF NOT EXISTS sports (
 -- Seed sports with proper display names
 INSERT OR REPLACE INTO sports (sport_code, display_name) VALUES
     ('football', 'Football'),
-    ('basketball', 'Basketball'),
+    ('basketball', 'BALONCESTO EN DIRECTO'),
     ('hockey', 'Hockey'),
     ('baseball', 'Baseball'),
     ('softball', 'Softball'),
-    ('soccer', 'Soccer'),
+    ('soccer', 'FÚTBOL EN DIRECTO'),
     ('mma', 'MMA'),
     ('volleyball', 'Volleyball'),
     ('lacrosse', 'Lacrosse'),

@@ -18,6 +18,7 @@ to inject the LeagueMappingSource into providers.
 from teamarr.providers.cricbuzz import CricbuzzClient, CricbuzzProvider
 from teamarr.providers.cricket_hybrid import CricketHybridProvider
 from teamarr.providers.espn import ESPNClient, ESPNProvider
+from teamarr.providers.euroleague import EuroleagueClient, EuroleagueProvider
 from teamarr.providers.hockeytech import HockeyTechClient, HockeyTechProvider
 from teamarr.providers.registry import ProviderConfig, ProviderRegistry
 from teamarr.providers.tsdb import RateLimitStats, TSDBClient, TSDBProvider
@@ -31,6 +32,13 @@ from teamarr.providers.tsdb import RateLimitStats, TSDBClient, TSDBProvider
 def _create_espn_provider() -> ESPNProvider:
     """Factory for ESPN provider with injected dependencies."""
     return ESPNProvider(
+        league_mapping_source=ProviderRegistry.get_league_mapping_source(),
+    )
+
+
+def _create_euroleague_provider() -> EuroleagueProvider:
+    """Factory for Euroleague provider with injected dependencies."""
+    return EuroleagueProvider(
         league_mapping_source=ProviderRegistry.get_league_mapping_source(),
     )
 
@@ -125,6 +133,14 @@ ProviderRegistry.register(
 )
 
 ProviderRegistry.register(
+    name="euroleague",
+    provider_class=EuroleagueProvider,
+    factory=_create_euroleague_provider,
+    priority=40,  # Euroleague/Eurocup
+    enabled=True,
+)
+
+ProviderRegistry.register(
     name="hockeytech",
     provider_class=HockeyTechProvider,
     factory=_create_hockeytech_provider,
@@ -168,6 +184,9 @@ __all__ = [
     # ESPN
     "ESPNClient",
     "ESPNProvider",
+    # Euroleague
+    "EuroleagueClient",
+    "EuroleagueProvider",
     # HockeyTech
     "HockeyTechClient",
     "HockeyTechProvider",

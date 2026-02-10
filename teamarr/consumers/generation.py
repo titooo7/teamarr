@@ -834,7 +834,7 @@ def _process_gold_zone(
     # Build M3U group → event group mapping for managed channel registration
     m3u_to_event_group = {g.m3u_group_id: g.id for g in groups if g.m3u_group_id is not None}
 
-    gold_zone_stream_ids: list[int] = []
+    matched_streams = []
     first_event_group_id: int | None = None
     skipped_date = 0
     for s in all_streams:
@@ -847,19 +847,24 @@ def _process_gold_zone(
                     "[GOLD_ZONE] Skipping '%s' — date %s is not today", s.name, parsed_date
                 )
                 continue
-            gold_zone_stream_ids.append(s.id)
+            matched_streams.append(s)
             if first_event_group_id is None:
                 first_event_group_id = m3u_to_event_group.get(s.channel_group)
 
     if skipped_date:
         logger.info("[GOLD_ZONE] Skipped %d streams with non-today dates", skipped_date)
 
-    if not gold_zone_stream_ids:
+    if not matched_streams:
         logger.info(
             "[GOLD_ZONE] No matching streams found across %d M3U groups",
             len(m3u_group_ids),
         )
         return None
+
+    # Apply stream ordering rules (same priority system as regular channels)
+    gold_zone_stream_ids = _order_gold_zone_streams(
+        matched_streams, m3u_to_event_group, db_factory,
+    )
 
     logger.info(
         "[GOLD_ZONE] Found %d matching streams (non-stale) across %d M3U groups",
@@ -1095,6 +1100,63 @@ def _parse_xmltv_datetime(dt_str: str):
     tz_offset = timedelta(hours=tz_hours, minutes=tz_minutes) * tz_sign
 
     return dt.replace(tzinfo=timezone(tz_offset))
+
+
+def _order_gold_zone_streams(
+    streams: list,
+    m3u_to_event_group: dict[int, int],
+    db_factory: Callable[[], Any],
+) -> list[int]:
+    """Apply stream ordering rules to Gold Zone streams.
+
+    Creates lightweight ManagedChannelStream adapters from DispatcharrStream
+    objects so the existing StreamOrderingService can sort them.
+
+    Args:
+        streams: Matched DispatcharrStream objects
+        m3u_to_event_group: Mapping of M3U group ID → event group ID
+        db_factory: Database connection factory
+
+    Returns:
+        Sorted list of Dispatcharr stream IDs
+    """
+    from teamarr.database.channels.types import ManagedChannelStream
+    from teamarr.database.settings import get_stream_ordering_settings
+    from teamarr.services.stream_ordering import StreamOrderingService
+
+    with db_factory() as conn:
+        ordering_settings = get_stream_ordering_settings(conn)
+
+    if not ordering_settings.rules:
+        return [s.id for s in streams]
+
+    # Build adapters so StreamOrderingService can evaluate its rules
+    adapters: list[ManagedChannelStream] = []
+    for s in streams:
+        event_group_id = m3u_to_event_group.get(s.channel_group)
+        adapters.append(ManagedChannelStream(
+            id=0,
+            managed_channel_id=0,
+            dispatcharr_stream_id=s.id,
+            stream_name=s.name,
+            source_group_id=event_group_id,
+            m3u_account_id=s.m3u_account_id,
+            m3u_account_name=s.m3u_account_name,
+        ))
+
+    with db_factory() as conn:
+        service = StreamOrderingService(rules=ordering_settings.rules, conn=conn)
+        sorted_adapters = service.sort_streams(adapters)
+
+    sorted_ids = [a.dispatcharr_stream_id for a in sorted_adapters]
+
+    if sorted_ids != [s.id for s in streams]:
+        logger.info(
+            "[GOLD_ZONE] Reordered %d streams by %d ordering rules",
+            len(sorted_ids), len(ordering_settings.rules),
+        )
+
+    return sorted_ids
 
 
 def _gold_zone_stream_date_check(stream_name: str) -> tuple[bool, str | None]:

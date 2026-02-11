@@ -1878,10 +1878,19 @@ class EventGroupProcessor:
             # Get event's league
             event_league = event.league if event else None
 
-            # If no teams from this league are in the filter, pass through unfiltered
+            # If no teams from this league are in the filter, and we are in include mode,
+            # then NO teams from this league should be included (strict filter).
+            # If we are in exclude mode, they pass through (nothing to exclude).
             if event_league and event_league not in filter_leagues:
-                filtered.append(match)
-                continue
+                if mode == "include":
+                    filtered_count += 1
+                    logger.debug(
+                        f"Team filter excluded (league not in include list): {event.name}"
+                    )
+                    continue
+                else:
+                    filtered.append(match)
+                    continue
 
             # Check if either team matches filter
             home_match = self._team_matches_filter(event.home_team, filter_list)

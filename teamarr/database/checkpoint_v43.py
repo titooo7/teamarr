@@ -70,7 +70,6 @@ SETTINGS_COLUMNS_V43: dict[str, str] = {
     "api_timeout": "INTEGER DEFAULT 30",
     "api_retry_count": "INTEGER DEFAULT 5",
     "tsdb_api_key": "TEXT",
-    "api_basketball_key": "TEXT",
     "channel_id_format": "TEXT DEFAULT '{team_name_pascal}.{league_id}'",
     "epg_generation_counter": "INTEGER DEFAULT 0",
     "dispatcharr_enabled": "BOOLEAN DEFAULT 0",

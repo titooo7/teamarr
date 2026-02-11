@@ -19,7 +19,6 @@ from teamarr.providers.cricbuzz import CricbuzzClient, CricbuzzProvider
 from teamarr.providers.cricket_hybrid import CricketHybridProvider
 from teamarr.providers.espn import ESPNClient, ESPNProvider
 from teamarr.providers.euroleague import EuroleagueClient, EuroleagueProvider
-from teamarr.providers.apibasketball import APIBasketballClient, APIBasketballProvider
 from teamarr.providers.hockeytech import HockeyTechClient, HockeyTechProvider
 from teamarr.providers.registry import ProviderConfig, ProviderRegistry
 from teamarr.providers.tsdb import RateLimitStats, TSDBClient, TSDBProvider
@@ -44,14 +43,6 @@ def _create_euroleague_provider() -> EuroleagueProvider:
     )
 
 
-def _create_apibasketball_provider() -> APIBasketballProvider:
-    """Factory for APIBasketball provider with injected dependencies."""
-    return APIBasketballProvider(
-        api_key=_get_apibasketball_key(),
-        league_mapping_source=ProviderRegistry.get_league_mapping_source(),
-    )
-
-
 def _get_tsdb_api_key() -> str | None:
     """Fetch TSDB API key from database settings.
 
@@ -69,21 +60,6 @@ def _get_tsdb_api_key() -> str | None:
     except Exception:
         # Database not available or column doesn't exist yet - expected during startup
         # No logging here to avoid noise during initialization
-        pass
-    return None
-
-
-def _get_apibasketball_key() -> str | None:
-    """Fetch API-Basketball key from database settings."""
-    try:
-        from teamarr.database import get_db
-
-        with get_db() as conn:
-            cursor = conn.execute("SELECT api_basketball_key FROM settings WHERE id = 1")
-            row = cursor.fetchone()
-            if row and row["api_basketball_key"]:
-                return row["api_basketball_key"]
-    except Exception:
         pass
     return None
 
@@ -165,14 +141,6 @@ ProviderRegistry.register(
 )
 
 ProviderRegistry.register(
-    name="apibasketball",
-    provider_class=APIBasketballProvider,
-    factory=_create_apibasketball_provider,
-    priority=45,  # Liga ACB
-    enabled=True,
-)
-
-ProviderRegistry.register(
     name="hockeytech",
     provider_class=HockeyTechProvider,
     factory=_create_hockeytech_provider,
@@ -219,9 +187,6 @@ __all__ = [
     # Euroleague
     "EuroleagueClient",
     "EuroleagueProvider",
-    # API-Basketball
-    "APIBasketballClient",
-    "APIBasketballProvider",
     # HockeyTech
     "HockeyTechClient",
     "HockeyTechProvider",

@@ -68,71 +68,90 @@ class EuroleagueProvider(SportsProvider):
             return []
 
         events = []
-        # Filter games by date
-        # Date format in df is "Sep 30, 2025"
         for _, row in df.iterrows():
             try:
-                game_date_str = row.get("date")
-                if not game_date_str:
-                    continue
-                
-                game_date = datetime.strptime(game_date_str, "%b %d, %Y").date()
-                if game_date == target_date:
-                    event = self._parse_event_row(row, league, season)
-                    if event:
-                        events.append(event)
+                event = self._parse_event_row(row, league, season)
+                if event and event.start_time.date() == target_date:
+                    events.append(event)
             except Exception as e:
-                logger.warning(f"[Euroleague] Failed to parse game date {game_date_str}: {e}")
+                logger.warning(f"[Euroleague] Failed to parse event: {e}")
                 continue
                 
         return events
 
     def _parse_event_row(self, row: dict, league: str, season: int) -> Optional[Event]:
         try:
-            game_code = int(row.get("gameCode"))
-            game_id = str(row.get("gamecode")) # E2025_1
+            game_code = row.get("gameCode")
+            game_id = str(row.get("identifier") or row.get("gamecode")) # E2025_1
             
             client = self._get_client(league)
             
-            # Teams
-            home_code = row.get("homecode")
-            away_code = row.get("awaycode")
+            # Teams - handles both formats
+            home_code = row.get("homecode") or row.get("local.club.code")
+            away_code = row.get("awaycode") or row.get("road.club.code")
+            
+            home_name = row.get("hometeam") or row.get("local.club.name", "")
+            away_name = row.get("awayteam") or row.get("road.club.name", "")
+
+            home_logo = row.get("local.club.images.crest") or client.get_team_logo(home_code, season)
+            away_logo = row.get("road.club.images.crest") or client.get_team_logo(away_code, season)
             
             home_team = Team(
                 id=home_code,
                 provider=self.name,
-                name=row.get("hometeam", ""),
+                name=home_name,
                 short_name=home_code,
                 abbreviation=home_code,
                 league=league,
                 sport="basketball",
-                logo_url=client.get_team_logo(home_code, season)
+                logo_url=home_logo
             )
             
             away_team = Team(
                 id=away_code,
                 provider=self.name,
-                name=row.get("awayteam", ""),
+                name=away_name,
                 short_name=away_code,
                 abbreviation=away_code,
                 league=league,
                 sport="basketball",
-                logo_url=client.get_team_logo(away_code, season)
+                logo_url=away_logo
             )
             
-            # Start Time
-            date_str = row.get("date")
+            # Start Time - handles multiple formats
+            start_time = None
+            utc_date_str = row.get("utcDate") # 2026-02-12T17:30:00Z
+            date_str = row.get("date") # 2026-02-12T18:30:00 OR Sep 30, 2025
             time_str = row.get("time", "00:00")
-            # "Sep 30, 2025 19:45"
-            dt_str = f"{date_str} {time_str}"
-            start_time = datetime.strptime(dt_str, "%b %d, %Y %H:%M")
-            # Euroleague times are usually Central European Time (CET/CEST)
-            # Use UTC for core Event to match Teamarr conventions.
-            start_time = start_time.replace(tzinfo=UTC)
+            
+            if utc_date_str:
+                try:
+                    # Remove Z and replace with UTC offset
+                    cleaned_utc = str(utc_date_str).replace("Z", "+00:00")
+                    start_time = datetime.fromisoformat(cleaned_utc)
+                except: pass
+                
+            if not start_time and date_str:
+                if "T" in str(date_str):
+                    try:
+                        start_time = datetime.fromisoformat(str(date_str)).replace(tzinfo=UTC)
+                    except: pass
+                else:
+                    try:
+                        dt_str = f"{date_str} {time_str}"
+                        start_time = datetime.strptime(dt_str, "%b %d, %Y %H:%M").replace(tzinfo=UTC)
+                    except: pass
+            
+            if not start_time:
+                return None
 
             # Status
             played = row.get("played", False)
             state = "final" if played else "scheduled"
+            
+            # Scores
+            home_score = row.get("homescore") or row.get("local.score")
+            away_score = row.get("awayscore") or row.get("road.score")
             
             return Event(
                 id=game_id,
@@ -145,8 +164,8 @@ class EuroleagueProvider(SportsProvider):
                 status=EventStatus(state=state),
                 league=league,
                 sport="basketball",
-                home_score=int(row.get("homescore")) if played else None,
-                away_score=int(row.get("awayscore")) if played else None,
+                home_score=int(home_score) if played and home_score is not None else None,
+                away_score=int(away_score) if played and away_score is not None else None,
                 season_year=season
             )
         except Exception as e:
@@ -172,7 +191,10 @@ class EuroleagueProvider(SportsProvider):
         end_date = now + timedelta(days=days_ahead)
 
         for _, row in df.iterrows():
-            if str(row.get("homecode")) == str(team_id) or str(row.get("awaycode")) == str(team_id):
+            home_code = row.get("homecode") or row.get("local.club.code")
+            away_code = row.get("awaycode") or row.get("road.club.code")
+            
+            if str(home_code) == str(team_id) or str(away_code) == str(team_id):
                 event = self._parse_event_row(row, league, season)
                 if event:
                     # Include past games and upcoming within days_ahead
@@ -210,22 +232,33 @@ class EuroleagueProvider(SportsProvider):
         return None
 
     def get_event(self, event_id: str, league: str) -> Optional[Event]:
-        # event_id is E2025_1
+        # event_id is E2025_1 or similar
         try:
             parts = event_id.split("_")
             if len(parts) != 2:
                 return None
             
-            season = int(parts[0][1:]) # remove 'E' or 'U'
-            game_code = int(parts[1])
+            season = int(parts[0][1:])
+            game_code_str = parts[1]
             
+            # Try to find in season games first (more reliable for upcoming games)
             client = self._get_client(league)
+            df = client.get_season_games(season)
+            if not df.empty:
+                # gameCode in DF matches the integer part of game_id
+                match = df[df['gameCode'].astype(str) == game_code_str]
+                if not match.empty:
+                    return self._parse_event_row(match.iloc[0].to_dict(), league, season)
+
+            # Fallback to single event lookup if not found in season list
+            # (though get_season_games now fetches all rounds, so this is unlikely)
+            game_code = int(game_code_str)
             details = client.get_game_details(season, game_code)
             
             if not details:
                 return None
             
-            # Map details to Event
+            # Legacy mapping for get_game_details (metadata API)
             home_code = details.get("CodeTeamA")
             away_code = details.get("CodeTeamB")
             
@@ -254,8 +287,7 @@ class EuroleagueProvider(SportsProvider):
             date_str = details.get("Date") # 30/09/2025
             time_str = details.get("Hour", "00:00").strip()
             dt_str = f"{date_str} {time_str}"
-            start_time = datetime.strptime(dt_str, "%d/%m/%Y %H:%M")
-            start_time = start_time.replace(tzinfo=UTC)
+            start_time = datetime.strptime(dt_str, "%d/%m/%Y %H:%M").replace(tzinfo=UTC)
             
             played = details.get("Live") == False and (details.get("ScoreA") or details.get("ScoreB"))
             state = "final" if played else "scheduled"

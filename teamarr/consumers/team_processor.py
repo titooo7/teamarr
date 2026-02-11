@@ -221,13 +221,12 @@ class TeamProcessor:
         # Separate teams by provider
         espn_teams = [t for t in teams if t.provider == "espn"]
         euro_teams = [t for t in teams if t.provider == "euroleague"]
-        api_basket_teams = [t for t in teams if t.provider == "apibasketball"]
         tsdb_teams = [t for t in teams if t.provider == "tsdb"]
 
         channels: list[dict] = []
 
-        # Process ESPN, Euroleague and API-Basketball teams in parallel (non-rate-limited APIs)
-        parallel_teams = espn_teams + euro_teams + api_basket_teams
+        # Process ESPN and Euroleague teams in parallel (non-rate-limited APIs)
+        parallel_teams = espn_teams + euro_teams
         if parallel_teams:
             num_workers = min(MAX_WORKERS, len(parallel_teams))
             logger.info(

@@ -190,6 +190,7 @@ def _run_startup_tasks():
             set_display_settings(
                 time_format=display.time_format,
                 show_timezone=display.show_timezone,
+                date_format=display.date_format,
                 channel_id_format=display.channel_id_format,
                 xmltv_generator_name=display.xmltv_generator_name,
                 xmltv_generator_url=display.xmltv_generator_url,

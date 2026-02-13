@@ -33,12 +33,18 @@ _DISPLAY_DEFAULTS = DisplaySettings()
 def _build_display_settings(row) -> DisplaySettings:
     """Build DisplaySettings from DB row, using dataclass defaults for NULL values."""
     d = _DISPLAY_DEFAULTS
+    
+    # Handle date_format safely if column doesn't exist yet
+    date_format = d.date_format
+    if "date_format" in row.keys() and row["date_format"]:
+        date_format = row["date_format"]
+
     return DisplaySettings(
         time_format=row["time_format"] or d.time_format,
         show_timezone=bool(row["show_timezone"])
         if row["show_timezone"] is not None
         else d.show_timezone,
-        date_format=row.get("date_format") or d.date_format,
+        date_format=date_format,
         channel_id_format=row["channel_id_format"] or d.channel_id_format,
         xmltv_generator_name=row["xmltv_generator_name"] or d.xmltv_generator_name,
         xmltv_generator_url=row["xmltv_generator_url"] or d.xmltv_generator_url,

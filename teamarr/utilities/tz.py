@@ -125,7 +125,7 @@ def format_time(dt: datetime, include_tz: bool | None = None) -> str:
 
 
 def format_date(dt: datetime) -> str:
-    """Format date for display (e.g., 'December 14, 2025').
+    """Format date for display (e.g., '14 de diciembre de 2025').
 
     Args:
         dt: Datetime to format (will be converted to user tz)
@@ -133,12 +133,15 @@ def format_date(dt: datetime) -> str:
     Returns:
         Formatted date string
     """
+    from teamarr.utilities.localization import translate_date
+
     local_dt = to_user_tz(dt)
-    return strftime_compat(local_dt, "%B %-d, %Y")
+    date_str = strftime_compat(local_dt, "%-d de %B de %Y")
+    return translate_date(date_str)
 
 
 def format_date_short(dt: datetime) -> str:
-    """Format short date for display (e.g., 'Dec 14').
+    """Format short date for display (e.g., '14 dic').
 
     Args:
         dt: Datetime to format (will be converted to user tz)
@@ -146,8 +149,11 @@ def format_date_short(dt: datetime) -> str:
     Returns:
         Formatted short date string
     """
+    from teamarr.utilities.localization import translate_date
+
     local_dt = to_user_tz(dt)
-    return strftime_compat(local_dt, "%b %-d")
+    date_str = strftime_compat(local_dt, "%-d %b")
+    return translate_date(date_str)
 
 
 def format_datetime_xmltv(dt: datetime) -> str:

@@ -9,6 +9,7 @@ from teamarr.templates.variables.registry import (
     SuffixRules,
     register_variable,
 )
+from teamarr.utilities.localization import t
 
 
 def _get_result(ctx: TemplateContext, game_ctx: GameContext | None) -> str | None:
@@ -39,11 +40,11 @@ def _get_result(ctx: TemplateContext, game_ctx: GameContext | None) -> str | Non
 def extract_result(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     result = _get_result(ctx, game_ctx)
     if result == "win":
-        return "W"
+        return "V" # Victoria
     elif result == "loss":
-        return "L"
+        return "D" # Derrota
     elif result == "tie":
-        return "T"
+        return "E" # Empate
     return ""
 
 
@@ -56,11 +57,11 @@ def extract_result(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
 def extract_result_lower(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     result = _get_result(ctx, game_ctx)
     if result == "win":
-        return "w"
+        return "v"
     elif result == "loss":
-        return "l"
+        return "d"
     elif result == "tie":
-        return "t"
+        return "e"
     return ""
 
 
@@ -73,11 +74,28 @@ def extract_result_lower(ctx: TemplateContext, game_ctx: GameContext | None) -> 
 def extract_result_text(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     result = _get_result(ctx, game_ctx)
     if result == "win":
-        return "defeated"
+        return t("win")
     elif result == "loss":
-        return "lost to"
+        return t("loss")
     elif result == "tie":
-        return "tied"
+        return t("tie")
+    return ""
+
+
+@register_variable(
+    name="result_text_past",
+    category=Category.OUTCOME,
+    suffix_rules=SuffixRules.ALL,
+    description="Game result as past text ('venció a', 'perdió contra', 'empató con')",
+)
+def extract_result_text_past(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    result = _get_result(ctx, game_ctx)
+    if result == "win":
+        return t("defeated")
+    elif result == "loss":
+        return t("lost to")
+    elif result == "tie":
+        return t("tied")
     return ""
 
 
@@ -85,7 +103,7 @@ def extract_result_text(ctx: TemplateContext, game_ctx: GameContext | None) -> s
     name="overtime_text",
     category=Category.OUTCOME,
     suffix_rules=SuffixRules.ALL,  # Works for event channels without suffix
-    description="'in overtime' if game went to overtime, empty otherwise",
+    description="'en la prórroga' if game went to overtime, empty otherwise",
 )
 def extract_overtime_text(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     if not game_ctx or not game_ctx.event:
@@ -94,8 +112,8 @@ def extract_overtime_text(ctx: TemplateContext, game_ctx: GameContext | None) ->
     status = game_ctx.event.status
     if status.detail:
         detail_lower = status.detail.lower()
-        if "ot" in detail_lower or "overtime" in detail_lower:
-            return "in overtime"
+        if "ot" in detail_lower or "overtime" in detail_lower or "prórroga" in detail_lower:
+            return t("in overtime")
     return ""
 
 
@@ -103,7 +121,7 @@ def extract_overtime_text(ctx: TemplateContext, game_ctx: GameContext | None) ->
     name="overtime_short",
     category=Category.OUTCOME,
     suffix_rules=SuffixRules.ALL,  # Works for event channels without suffix
-    description="'OT' if game went to overtime, empty otherwise",
+    description="'PR' if game went to overtime, empty otherwise",
 )
 def extract_overtime_short(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     if not game_ctx or not game_ctx.event:
@@ -111,6 +129,6 @@ def extract_overtime_short(ctx: TemplateContext, game_ctx: GameContext | None) -
     status = game_ctx.event.status
     if status.detail:
         detail_lower = status.detail.lower()
-        if "ot" in detail_lower or "overtime" in detail_lower:
-            return "OT"
+        if "ot" in detail_lower or "overtime" in detail_lower or "prórroga" in detail_lower:
+            return t("OT")
     return ""

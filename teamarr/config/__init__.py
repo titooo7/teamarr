@@ -151,6 +151,7 @@ class Config:
     _DEFAULT_DISPLAY_SETTINGS: dict = {
         "time_format": "12h",
         "show_timezone": True,
+        "date_format": "US",
         "channel_id_format": "{team_name_pascal}.{league_id}",
         "xmltv_generator_name": "Teamarr",
         "xmltv_generator_url": "https://github.com/Pharaoh-Labs/teamarr",
@@ -232,6 +233,7 @@ class Config:
         cls,
         time_format: str,
         show_timezone: bool,
+        date_format: str,
         channel_id_format: str,
         xmltv_generator_name: str,
         xmltv_generator_url: str,
@@ -240,6 +242,7 @@ class Config:
         cls._display_settings_cache = {
             "time_format": time_format,
             "show_timezone": show_timezone,
+            "date_format": date_format,
             "channel_id_format": channel_id_format,
             "xmltv_generator_name": xmltv_generator_name,
             "xmltv_generator_url": xmltv_generator_url,
@@ -334,6 +337,7 @@ def get_display_settings() -> dict:
 def set_display_settings(
     time_format: str,
     show_timezone: bool,
+    date_format: str,
     channel_id_format: str,
     xmltv_generator_name: str,
     xmltv_generator_url: str,
@@ -342,6 +346,7 @@ def set_display_settings(
     Config.set_display_settings(
         time_format=time_format,
         show_timezone=show_timezone,
+        date_format=date_format,
         channel_id_format=channel_id_format,
         xmltv_generator_name=xmltv_generator_name,
         xmltv_generator_url=xmltv_generator_url,
@@ -356,6 +361,11 @@ def get_time_format() -> str:
 def get_show_timezone() -> bool:
     """Get show timezone setting."""
     return Config.get_display_settings().get("show_timezone", True)
+
+
+def get_date_format() -> str:
+    """Get date format setting ('US' or 'EU')."""
+    return Config.get_display_settings().get("date_format", "US")
 
 
 def clear_display_cache() -> None:

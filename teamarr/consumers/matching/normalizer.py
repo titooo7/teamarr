@@ -403,10 +403,19 @@ def _parse_date_match(match: re.Match, is_iso: bool = False, no_year: bool = Fal
                 month = int(groups[1])
                 day = int(groups[2])
             else:
-                # US format: MM/DD/YY or MM/DD/YYYY
-                month = int(groups[0])
-                day = int(groups[1])
-                year = int(groups[2])
+                from teamarr.config import get_date_format
+                date_pref = get_date_format() # 'US' or 'EU'
+
+                if date_pref == "EU":
+                    # European format: DD/MM/YY or DD/MM/YYYY
+                    day = int(groups[0])
+                    month = int(groups[1])
+                    year = int(groups[2])
+                else:
+                    # US format: MM/DD/YY or MM/DD/YYYY
+                    month = int(groups[0])
+                    day = int(groups[1])
+                    year = int(groups[2])
 
                 # Handle 2-digit year
                 if year < 100:

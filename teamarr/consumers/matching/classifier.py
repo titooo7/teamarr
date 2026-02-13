@@ -392,20 +392,37 @@ def _parse_month(month_str: str) -> int:
 def _parse_date_string(date_str: str) -> date | None:
     """Parse various date string formats."""
     from datetime import datetime
+    from teamarr.config import get_date_format
+
+    date_pref = get_date_format() # 'US' or 'EU'
 
     # Common formats to try
-    formats = [
+    # We prioritize based on user preference for ambiguous cases like 01/02
+    if date_pref == "EU":
+        formats = [
+            "%d/%m/%Y",  # 14/01/2026
+            "%d/%m/%y",  # 14/01/26
+            "%d-%m-%Y",  # 14-01-2026
+            "%m/%d/%Y",  # Fallback to US
+            "%m/%d/%y",
+        ]
+    else:
+        formats = [
+            "%m/%d/%Y",  # 01/14/2026
+            "%m/%d/%y",  # 01/14/26
+            "%d/%m/%Y",  # Fallback to EU
+            "%d/%m/%y",
+            "%d-%m-%Y",
+        ]
+    
+    # Generic formats added after prioritized ones
+    formats.extend([
         "%d %b",  # 14 Jan
         "%d %B",  # 14 January
         "%b %d",  # Jan 14
         "%B %d",  # January 14
-        "%m/%d/%Y",  # 01/14/2026
-        "%m/%d/%y",  # 01/14/26
-        "%d/%m/%Y",  # 14/01/2026
-        "%d/%m/%y",  # 14/01/26
         "%Y-%m-%d",  # 2026-01-14
-        "%d-%m-%Y",  # 14-01-2026
-    ]
+    ])
 
     # Clean up ordinal suffixes (1st, 2nd, 3rd, 4th)
     date_str = re.sub(r"(\d+)(st|nd|rd|th)", r"\1", date_str, flags=re.IGNORECASE)

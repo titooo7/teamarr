@@ -57,6 +57,7 @@ SETTINGS_COLUMNS_V43: dict[str, str] = {
     "xmltv_generator_url": "TEXT DEFAULT 'https://github.com/Pharaoh-Labs/teamarr'",
     "time_format": "TEXT DEFAULT '12h'",
     "show_timezone": "BOOLEAN DEFAULT 1",
+    "date_format": "TEXT DEFAULT 'US'",
     "include_final_events": "BOOLEAN DEFAULT 0",
     "channel_range_start": "INTEGER DEFAULT 101",
     "channel_range_end": "INTEGER",

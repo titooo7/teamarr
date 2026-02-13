@@ -187,6 +187,7 @@ CREATE TABLE IF NOT EXISTS settings (
     -- Display Preferences
     time_format TEXT DEFAULT '12h' CHECK(time_format IN ('12h', '24h')),
     show_timezone BOOLEAN DEFAULT 1,
+    date_format TEXT DEFAULT 'US' CHECK(date_format IN ('US', 'EU')),
 
     -- Event-Based EPG Options
     include_final_events BOOLEAN DEFAULT 0,      -- Include completed events for today

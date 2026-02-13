@@ -12,6 +12,7 @@ from teamarr.templates.variables.registry import (
     SuffixRules,
     register_variable,
 )
+from teamarr.utilities.localization import t, translate_date
 from teamarr.utilities.tz import (
     format_time,
     now_user,
@@ -37,7 +38,9 @@ def extract_game_date(ctx: TemplateContext, game_ctx: GameContext | None) -> str
     dt = _get_local_time(game_ctx)
     if not dt:
         return ""
-    return strftime_compat(dt, "%A, %B %-d, %Y")
+    # Format with custom pattern for Spanish: "día, d de mes de año"
+    date_str = strftime_compat(dt, "%A, %-d de %B de %Y")
+    return translate_date(date_str)
 
 
 @register_variable(
@@ -50,7 +53,9 @@ def extract_game_date_short(ctx: TemplateContext, game_ctx: GameContext | None) 
     dt = _get_local_time(game_ctx)
     if not dt:
         return ""
-    return strftime_compat(dt, "%b %-d")
+    # "10 dic"
+    date_str = strftime_compat(dt, "%-d %b")
+    return translate_date(date_str)
 
 
 @register_variable(
@@ -63,7 +68,7 @@ def extract_game_day(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     dt = _get_local_time(game_ctx)
     if not dt:
         return ""
-    return dt.strftime("%A")
+    return translate_date(dt.strftime("%A"))
 
 
 @register_variable(
@@ -76,7 +81,7 @@ def extract_game_day_short(ctx: TemplateContext, game_ctx: GameContext | None) -
     dt = _get_local_time(game_ctx)
     if not dt:
         return ""
-    return dt.strftime("%a")
+    return translate_date(dt.strftime("%a"))
 
 
 @register_variable(
@@ -102,7 +107,7 @@ def extract_today_tonight(ctx: TemplateContext, game_ctx: GameContext | None) ->
     dt = _get_local_time(game_ctx)
     if not dt:
         return ""
-    return "tonight" if dt.hour >= 17 else "today"
+    return t("tonight") if dt.hour >= 17 else t("today")
 
 
 @register_variable(
@@ -115,7 +120,7 @@ def extract_today_tonight_title(ctx: TemplateContext, game_ctx: GameContext | No
     dt = _get_local_time(game_ctx)
     if not dt:
         return ""
-    return "Tonight" if dt.hour >= 17 else "Today"
+    return t("Tonight") if dt.hour >= 17 else t("Today")
 
 
 @register_variable(
@@ -155,13 +160,13 @@ def extract_relative_day(ctx: TemplateContext, game_ctx: GameContext | None) -> 
     delta = (dt.date() - now.date()).days
 
     if delta <= 0:
-        return "tonight" if dt.hour >= 17 else "today"
+        return t("tonight") if dt.hour >= 17 else t("today")
     elif delta == 1:
-        return "tomorrow"
+        return t("tomorrow")
     elif delta <= 6:
-        return dt.strftime("%A").lower()
+        return translate_date(dt.strftime("%A")).lower()
     else:
-        return strftime_compat(dt, "%b %-d")  # Keep month title case (Jan 25)
+        return translate_date(strftime_compat(dt, "%-d %b"))
 
 
 @register_variable(
@@ -179,10 +184,10 @@ def extract_relative_day_title(ctx: TemplateContext, game_ctx: GameContext | Non
     delta = (dt.date() - now.date()).days
 
     if delta <= 0:
-        return "Tonight" if dt.hour >= 17 else "Today"
+        return t("Tonight") if dt.hour >= 17 else t("Today")
     elif delta == 1:
-        return "Tomorrow"
+        return t("Tomorrow")
     elif delta <= 6:
-        return dt.strftime("%A")
+        return translate_date(dt.strftime("%A"))
     else:
-        return strftime_compat(dt, "%b %-d")
+        return translate_date(strftime_compat(dt, "%-d %b"))

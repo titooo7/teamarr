@@ -38,6 +38,7 @@ def _build_display_settings(row) -> DisplaySettings:
         show_timezone=bool(row["show_timezone"])
         if row["show_timezone"] is not None
         else d.show_timezone,
+        date_format=row.get("date_format") or d.date_format,
         channel_id_format=row["channel_id_format"] or d.channel_id_format,
         xmltv_generator_name=row["xmltv_generator_name"] or d.xmltv_generator_name,
         xmltv_generator_url=row["xmltv_generator_url"] or d.xmltv_generator_url,
@@ -347,7 +348,7 @@ def get_display_settings(conn: Connection) -> DisplaySettings:
     """
     cursor = conn.cursor()
     cursor.execute(
-        """SELECT time_format, show_timezone, channel_id_format,
+        """SELECT time_format, show_timezone, date_format, channel_id_format,
                   xmltv_generator_name, xmltv_generator_url
            FROM settings WHERE id = 1"""
     )

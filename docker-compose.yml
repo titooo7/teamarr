@@ -1,15 +1,19 @@
 services:
   teamarr:
-    image: ghcr.io/pharaoh-labs/teamarr:latest
+    #image: ghcr.io/pharaoh-labs/teamarr:latest
+    build: .
     container_name: teamarr
     restart: unless-stopped
-    ports:
-      - 9195:9195
+#ports commented out to prevent access from ipaddress:6100, and now i expose the port so it still works from ecm.wethebest.net
+    #ports:
+    #  - 9195:9195
+    expose:
+      - "9195"
     volumes:
       - ./data:/app/data
     environment:
       # Timezone for all date/time display and XMLTV output
-      - TZ=America/Detroit
+      - TZ=Europe/Paris
 
       # Console log level: DEBUG, INFO, WARNING, ERROR (default: INFO)
       # Note: File logging (data/logs/) always captures DEBUG regardless of this setting
@@ -29,3 +33,27 @@ services:
       # - ESPN_MAX_CONNECTIONS=100   # HTTP connection pool size
       # - ESPN_TIMEOUT=10            # Request timeout in seconds
       # - ESPN_RETRY_COUNT=3         # Number of retry attempts
+    networks:
+      - saltbox
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=saltbox"
+      # HTTPS Router
+      - "traefik.http.routers.teamarr-https.rule=Host(`teamarr.wethebest.net`)"
+      - "traefik.http.routers.teamarr-https.entrypoints=websecure"
+      - "traefik.http.routers.teamarr-https.tls=true"
+      # now i dont use zerossl so i comment below, i use cloudflare own cert as detailed at the end of chat https://gemini.google.com/app/59c435f6c55386cc
+      - "traefik.http.routers.teamarr-https.tls.certresolver=zerossl"
+      #- "traefik.http.routers.teamarr-https.tls=true"
+      - "traefik.http.routers.teamarr-https.middlewares=authelia@docker"
+      # HTTP Router (Redirection)
+      - "traefik.http.routers.teamarr-http.rule=Host(`teamarr.wethebest.net`)"
+      - "traefik.http.routers.teamarr-http.entrypoints=web"
+      - "traefik.http.routers.teamarr-http.middlewares=teamarr-redirect-scheme"
+      - "traefik.http.middlewares.teamarr-redirect-scheme.redirectscheme.scheme=https"
+      # Connection to App Port
+      - "traefik.http.services.teamarr.loadbalancer.server.port=9195"
+
+networks:
+  saltbox:
+    external: true

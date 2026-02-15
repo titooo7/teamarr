@@ -15,6 +15,7 @@ import {
   EventGroupImport,
   EPG,
   Channels,
+  LinearEpg,
   Settings,
   V1UpgradePage,
 } from "@/pages"
@@ -94,6 +95,7 @@ function AppContent() {
             <Route path="detection-library" element={<DetectionLibrary />} />
             <Route path="epg" element={<EPG />} />
             <Route path="channels" element={<Channels />} />
+            <Route path="linear-epg" element={<LinearEpg />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>

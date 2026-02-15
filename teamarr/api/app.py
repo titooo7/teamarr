@@ -21,6 +21,7 @@ from teamarr.api.routes import (
     groups,
     health,
     keywords,
+    linear_epg,
     migration,
     presets,
     settings,
@@ -350,6 +351,7 @@ def create_app() -> FastAPI:
     app.include_router(aliases.router, prefix="/api/v1", tags=["Team Aliases"])
     app.include_router(epg.router, prefix="/api/v1", tags=["EPG"])
     app.include_router(keywords.router, prefix="/api/v1/keywords", tags=["Exception Keywords"])
+    app.include_router(linear_epg.router, prefix="/api/v1/linear-epg", tags=["Linear EPG"])
     app.include_router(cache.router, prefix="/api/v1", tags=["Cache"])
     app.include_router(channels.router, prefix="/api/v1/channels", tags=["Channels"])
     app.include_router(settings.router, prefix="/api/v1", tags=["Settings"])

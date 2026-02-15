@@ -90,6 +90,7 @@ export function EventGroupForm() {
     // Multi-sport enhancements (Phase 3)
     channel_sort_order: "time",
     overlap_handling: "add_stream",
+    include_linear_discovery: false,
     enabled: true,
     // Team filtering
     include_teams: null,
@@ -259,6 +260,7 @@ export function EventGroupForm() {
         // Multi-sport enhancements (Phase 3)
         channel_sort_order: group.channel_sort_order || "time",
         overlap_handling: group.overlap_handling || "add_stream",
+        include_linear_discovery: group.include_linear_discovery || false,
         enabled: group.enabled,
       })
 
@@ -670,6 +672,23 @@ export function EventGroupForm() {
                     If set, this name will be shown instead of the M3U group name
                   </p>
                 </div>
+                <div className="flex items-center gap-3 cursor-pointer py-2 border-t">
+                  <Checkbox
+                    id="include_linear_discovery_child"
+                    checked={formData.include_linear_discovery || false}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, include_linear_discovery: !!checked })
+                    }
+                  />
+                  <div className="grid gap-1.5 leading-none">
+                    <Label htmlFor="include_linear_discovery_child" className="font-normal">
+                      Include Linear EPG Discovery
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Search for events in linear channel XMLTV schedules.
+                    </p>
+                  </div>
+                </div>
                 <div className="flex items-center gap-2">
                   <Switch
                     checked={formData.enabled}
@@ -855,6 +874,26 @@ export function EventGroupForm() {
                   <div>Group: {formData.m3u_group_name} (#{formData.m3u_group_id})</div>
                 </div>
               )}
+
+              <div className="space-y-4 pt-2 border-t">
+                <div className="flex items-center gap-3 cursor-pointer">
+                  <Checkbox
+                    id="include_linear_discovery"
+                    checked={formData.include_linear_discovery || false}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, include_linear_discovery: !!checked })
+                    }
+                  />
+                  <div className="grid gap-1.5 leading-none">
+                    <Label htmlFor="include_linear_discovery" className="font-normal">
+                      Include Linear EPG Discovery
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Search for events in linear channel XMLTV schedules (configured in Linear EPG page).
+                    </p>
+                  </div>
+                </div>
+              </div>
 
               <div className="flex items-center gap-2">
                 <Switch

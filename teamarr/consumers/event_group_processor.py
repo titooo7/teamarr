@@ -1298,6 +1298,54 @@ class EventGroupProcessor:
                 streams, match_result, stream_timezone=group.stream_timezone
             )
 
+            # Step 4.5: Linear EPG Discovery (if enabled for group)
+            logger.debug(f"[LINEAR_DISCOVERY] Checking group '{group.name}' (enabled={getattr(group, 'include_linear_discovery', 'MISSING')})")
+            if bool(getattr(group, "include_linear_discovery", False)):
+                try:
+                    logger.info(f"[LINEAR_DISCOVERY] Starting discovery for group '{group.name}'")
+                    from teamarr.services.linear_epg_service import LinearEpgService
+                    linear_service = LinearEpgService()
+                    # target_date is already provided as a date object
+                    target_dt = datetime.combine(target_date, datetime.min.time())
+                    linear_matches = linear_service.discover_linear_events(target_dt, events, leagues=effective_leagues)
+                    
+                    if linear_matches:
+                        logger.info(f"[LINEAR_DISCOVERY] Found {len(linear_matches)} potential linear matches for group '{group.name}'")
+                        
+                        # Build tvg_id -> [streams] map from the current group
+                        tvg_id_map = {}
+                        for s in streams:
+                            tid = getattr(s, "tvg_id", None) or s.get("tvg_id")
+                            if tid:
+                                if tid not in tvg_id_map:
+                                    tvg_id_map[tid] = []
+                                tvg_id_map[tid].append(s)
+
+                        for lm in linear_matches:
+                            tid = lm["tvg_id"]
+                            if tid in tvg_id_map:
+                                for actual_stream in tvg_id_map[tid]:
+                                    logger.info(f"[LINEAR_DISCOVERY] Mapping {actual_stream.get('name')} -> {lm['matched_event'].name}")
+                                    
+                                    # Check if already matched to this event to avoid duplicates
+                                    already_matched = any(
+                                        m.get("event").id == lm["matched_event"].id and 
+                                        m.get("stream", {}).get("id") == actual_stream.get("id")
+                                        for m in matched_streams
+                                    )
+                                    
+                                    if not already_matched:
+                                        matched_streams.append({
+                                            "stream": actual_stream,
+                                            "event": lm["matched_event"],
+                                            "card_segment": None,
+                                            "is_linear": True # Flag for later filtering if needed
+                                        })
+                    else:
+                        logger.info(f"[LINEAR_DISCOVERY] No linear matches found for group '{group.name}'")
+                except Exception as le:
+                    logger.error(f"[LINEAR_DISCOVERY] Error during discovery for group '{group.name}': {le}", exc_info=True)
+
             # Sort channels based on global channel numbering sort_by setting
             from teamarr.database.settings import get_channel_numbering_settings
 

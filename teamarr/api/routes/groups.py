@@ -128,6 +128,7 @@ class GroupCreate(BaseModel):
     # Multi-sport enhancements (Phase 3)
     channel_sort_order: str = "time"
     overlap_handling: str = "add_stream"
+    include_linear_discovery: bool = False
     enabled: bool = True
     # Template assignments for multi-league groups (optional, created after group)
     template_assignments: list["GroupTemplateCreate"] | None = None
@@ -189,6 +190,7 @@ class GroupUpdate(BaseModel):
     # Multi-sport enhancements (Phase 3)
     channel_sort_order: str | None = None
     overlap_handling: str | None = None
+    include_linear_discovery: bool | None = None
     enabled: bool | None = None
 
     # Clear flags for nullable fields
@@ -293,6 +295,7 @@ class GroupResponse(BaseModel):
     # Multi-sport enhancements (Phase 3)
     channel_sort_order: str = "time"
     overlap_handling: str = "add_stream"
+    include_linear_discovery: bool = False
     enabled: bool = True
     created_at: str | None = None
     updated_at: str | None = None
@@ -371,6 +374,7 @@ class BulkGroupSettings(BaseModel):
     duplicate_event_handling: str = "consolidate"
     channel_sort_order: str = "time"
     overlap_handling: str = "add_stream"
+    include_linear_discovery: bool = False
     enabled: bool = True
 
     @field_validator("channel_profile_ids", mode="before")
@@ -654,6 +658,7 @@ def list_groups(
                 excluded_league_not_included=g.excluded_league_not_included,
                 channel_sort_order=g.channel_sort_order,
                 overlap_handling=g.overlap_handling,
+                include_linear_discovery=g.include_linear_discovery,
                 enabled=g.enabled,
                 created_at=g.created_at.isoformat() if g.created_at else None,
                 updated_at=g.updated_at.isoformat() if g.updated_at else None,
@@ -743,6 +748,7 @@ def create_group(request: GroupCreate):
             team_filter_mode=request.team_filter_mode,
             channel_sort_order=request.channel_sort_order,
             overlap_handling=request.overlap_handling,
+            include_linear_discovery=request.include_linear_discovery,
             enabled=request.enabled,
         )
 
@@ -821,6 +827,7 @@ def create_group(request: GroupCreate):
         excluded_league_not_included=group.excluded_league_not_included,
         channel_sort_order=group.channel_sort_order,
         overlap_handling=group.overlap_handling,
+        include_linear_discovery=group.include_linear_discovery,
         enabled=group.enabled,
         created_at=group.created_at.isoformat() if group.created_at else None,
         updated_at=group.updated_at.isoformat() if group.updated_at else None,
@@ -1234,6 +1241,7 @@ def get_group_by_id(group_id: int):
         excluded_league_not_included=group.excluded_league_not_included,
         channel_sort_order=group.channel_sort_order,
         overlap_handling=group.overlap_handling,
+        include_linear_discovery=group.include_linear_discovery,
         enabled=group.enabled,
         created_at=group.created_at.isoformat() if group.created_at else None,
         updated_at=group.updated_at.isoformat() if group.updated_at else None,
@@ -1338,6 +1346,7 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
                 team_filter_mode=request.team_filter_mode,
                 channel_sort_order=request.channel_sort_order,
                 overlap_handling=request.overlap_handling,
+                include_linear_discovery=request.include_linear_discovery,
                 enabled=request.enabled,
                 clear_display_name=request.clear_display_name,
                 clear_parent_group_id=request.clear_parent_group_id,
@@ -1441,6 +1450,7 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
         excluded_league_not_included=group.excluded_league_not_included,
         channel_sort_order=group.channel_sort_order,
         overlap_handling=group.overlap_handling,
+        include_linear_discovery=group.include_linear_discovery,
         enabled=group.enabled,
         created_at=group.created_at.isoformat() if group.created_at else None,
         updated_at=group.updated_at.isoformat() if group.updated_at else None,

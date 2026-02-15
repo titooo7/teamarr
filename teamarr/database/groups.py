@@ -83,6 +83,7 @@ class EventEPGGroup:
     # Multi-sport enhancements (Phase 3)
     channel_sort_order: str = "time"
     overlap_handling: str = "add_stream"
+    include_linear_discovery: bool = False
     enabled: bool = True
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -226,6 +227,9 @@ def _row_to_group(row) -> EventEPGGroup:
         # Multi-sport enhancements
         channel_sort_order=row["channel_sort_order"] or "time",
         overlap_handling=row["overlap_handling"] or "add_stream",
+        include_linear_discovery=bool(row["include_linear_discovery"])
+        if "include_linear_discovery" in row.keys()
+        else False,
         enabled=bool(row["enabled"]),
         created_at=created_at,
         updated_at=updated_at,
@@ -391,6 +395,7 @@ def create_group(
     # Multi-sport enhancements (Phase 3)
     channel_sort_order: str = "time",
     overlap_handling: str = "add_stream",
+    include_linear_discovery: bool = False,
     enabled: bool = True,
 ) -> int:
     """Create a new event EPG group.
@@ -444,8 +449,8 @@ def create_group(
             custom_regex_event_name, custom_regex_event_name_enabled,
             skip_builtin_filter,
             include_teams, exclude_teams, team_filter_mode,
-            channel_sort_order, overlap_handling, enabled
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",  # noqa: E501
+            channel_sort_order, overlap_handling, include_linear_discovery, enabled
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",  # noqa: E501
         (
             name,
             display_name,
@@ -491,6 +496,7 @@ def create_group(
             team_filter_mode,
             channel_sort_order,
             overlap_handling,
+            int(include_linear_discovery),
             int(enabled),
         ),
     )
@@ -555,6 +561,7 @@ def update_group(
     # Multi-sport enhancements (Phase 3)
     channel_sort_order: str | None = None,
     overlap_handling: str | None = None,
+    include_linear_discovery: bool | None = None,
     enabled: bool | None = None,
     # Clear flags
     clear_display_name: bool = False,
@@ -904,6 +911,10 @@ def update_group(
     if overlap_handling is not None:
         updates.append("overlap_handling = ?")
         values.append(overlap_handling)
+
+    if include_linear_discovery is not None:
+        updates.append("include_linear_discovery = ?")
+        values.append(int(include_linear_discovery))
 
     if enabled is not None:
         updates.append("enabled = ?")

@@ -208,6 +208,7 @@ class CronScheduler:
             "backup": {},
             "channel_reset": {},
             "cache_refresh": {},
+            "linear_epg_refresh": {},
             "epg_generation": {},
         }
 
@@ -231,6 +232,13 @@ class CronScheduler:
         except Exception as e:
             logger.warning("[CRON] Cache refresh task failed: %s", e)
             results["cache_refresh"] = {"error": str(e)}
+
+        # Daily linear EPG refresh
+        try:
+            results["linear_epg_refresh"] = self._task_refresh_linear_epg()
+        except Exception as e:
+            logger.warning("[CRON] Linear EPG refresh task failed: %s", e)
+            results["linear_epg_refresh"] = {"error": str(e)}
 
         try:
             # Single unified generation call - does everything
@@ -423,6 +431,25 @@ class CronScheduler:
         else:
             logger.debug("[CRON] Cache refresh skipped: not stale")
             return {"refreshed": False, "reason": "Cache not stale yet"}
+
+    def _task_refresh_linear_epg(self) -> dict:
+        """Daily refresh of monitored linear EPG schedules."""
+        from teamarr.services.linear_epg_service import LinearEpgService
+        
+        # Check if already refreshed today
+        # (similar to team cache, we don't want to spam XMLTV downloads)
+        # For now, we refresh if it's the first run of the day
+        now = datetime.now()
+        if self._last_run and self._last_run.date() == now.date():
+            # Already ran today, but we allow multiple runs if generation is triggered
+            # To strictly limit to once per day, we could check a timestamp in DB
+            pass
+
+        logger.info("[CRON] Refreshing linear EPG schedules...")
+        service = LinearEpgService()
+        service.refresh_cache()
+        
+        return {"executed": True}
 
     def _task_generate_epg(self) -> dict:
         """Generate EPG using the unified generation workflow.

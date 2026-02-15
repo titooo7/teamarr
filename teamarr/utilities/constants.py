@@ -92,6 +92,8 @@ TEAM_ALIASES: dict[str, str] = {
     "atleti": "atletico madrid",
     "athletic": "athletic bilbao",
     "athletic club": "athletic bilbao",
+    "rayo": "rayo vallecano",
+    "oviedo": "real oviedo",
     "sevilla fc": "sevilla",
     "real sociedad": "real sociedad",
     "villarreal cf": "villarreal",

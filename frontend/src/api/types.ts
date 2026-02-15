@@ -84,6 +84,7 @@ export interface EventGroup {
   // Multi-sport enhancements (Phase 3)
   channel_sort_order: string
   overlap_handling: string
+  include_linear_discovery: boolean
   enabled: boolean
   created_at: string | null
   updated_at: string | null
@@ -140,6 +141,7 @@ export interface EventGroupCreate {
   // Multi-sport enhancements (Phase 3)
   channel_sort_order?: string
   overlap_handling?: string
+  include_linear_discovery?: boolean
   enabled?: boolean
   // Template assignments for multi-league groups (created with the group)
   template_assignments?: Array<{

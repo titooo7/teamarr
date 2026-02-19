@@ -81,6 +81,66 @@ def trigger_refresh():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.put("/monitors/{monitor_id}", response_model=MonitorResponse)
+def update_monitor(monitor_id: int, request: MonitorUpdate):
+    """Update an existing linear EPG monitor."""
+    import json
+    with get_db() as conn:
+        # Get current monitor data
+        current = conn.execute("SELECT * FROM linear_epg_monitors WHERE id = ?", (monitor_id,)).fetchone()
+        if not current:
+            raise HTTPException(status_code=404, detail="Monitor not found")
+
+        # Build update query with only provided fields
+        updates = []
+        params = []
+        if request.display_name is not None:
+            updates.append("display_name = ?")
+            params.append(request.display_name)
+        if request.xmltv_url is not None:
+            updates.append("xmltv_url = ?")
+            params.append(request.xmltv_url)
+        if request.xmltv_channel_id is not None:
+            updates.append("xmltv_channel_id = ?")
+            params.append(request.xmltv_channel_id)
+        if request.include_sports is not None:
+            updates.append("include_sports = ?")
+            params.append(json.dumps(request.include_sports))
+        if request.enabled is not None:
+            updates.append("enabled = ?")
+            params.append(int(request.enabled))
+
+        if not updates:
+            # No fields to update, return current
+            return MonitorResponse(
+                id=current["id"],
+                tvg_id=current["tvg_id"],
+                display_name=current["display_name"],
+                xmltv_url=current["xmltv_url"],
+                xmltv_channel_id=current["xmltv_channel_id"],
+                include_sports=json.loads(current["include_sports"]) if current["include_sports"] else [],
+                enabled=bool(current["enabled"])
+            )
+
+        params.append(monitor_id)
+        conn.execute(
+            f"UPDATE linear_epg_monitors SET {', '.join(updates)} WHERE id = ?",
+            params
+        )
+        conn.commit()
+
+        # Fetch updated monitor
+        updated = conn.execute("SELECT * FROM linear_epg_monitors WHERE id = ?", (monitor_id,)).fetchone()
+        return MonitorResponse(
+            id=updated["id"],
+            tvg_id=updated["tvg_id"],
+            display_name=updated["display_name"],
+            xmltv_url=updated["xmltv_url"],
+            xmltv_channel_id=updated["xmltv_channel_id"],
+            include_sports=json.loads(updated["include_sports"]) if updated["include_sports"] else [],
+            enabled=bool(updated["enabled"])
+        )
+
 @router.delete("/monitors/{monitor_id}")
 def delete_monitor(monitor_id: int):
     """Delete a linear EPG monitor."""

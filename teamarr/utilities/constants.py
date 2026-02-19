@@ -85,6 +85,7 @@ TEAM_ALIASES: dict[str, str] = {
     "rb leipzig": "rb leipzig",
     "frankfurt": "eintracht frankfurt",
     "wolfsburg": "vfl wolfsburg",
+    "stuttgart": "vfb stuttgart",
     # Spanish La Liga
     "barca": "barcelona",
     "real": "real madrid",
@@ -97,6 +98,9 @@ TEAM_ALIASES: dict[str, str] = {
     "sevilla fc": "sevilla",
     "real sociedad": "real sociedad",
     "villarreal cf": "villarreal",
+    "celta": "celta vigo",
+    # Greek Superleague
+    "paok": "paok salonika",
     # Italian Serie A
     "inter": "inter milan",
     "inter milan": "internazionale",

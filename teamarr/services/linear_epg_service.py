@@ -13,6 +13,8 @@ from typing import Dict, List, Optional, Tuple
 import requests
 from dateutil import parser
 
+from teamarr.utilities.constants import TEAM_ALIASES
+
 logger = logging.getLogger(__name__)
 
 class LinearEpgService:
@@ -25,6 +27,34 @@ class LinearEpgService:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
+
+    def _apply_team_aliases(self, text: str) -> str:
+        """Apply TEAM_ALIASES to expand shortened team names before matching.
+
+        This improves fuzzy matching scores by expanding common abbreviations.
+        E.g., "PAOK - Celta" → "PAOK Salonika PAOK - Celta Vigo Celta"
+
+        Args:
+            text: The EPG title or subtitle to expand
+
+        Returns:
+            Text with team aliases appended for better fuzzy matching
+        """
+        if not text:
+            return text
+
+        words = text.lower().split()
+        expanded = []
+
+        for word in words:
+            # Always include the original word
+            expanded.append(word)
+            # Also add the canonical name if there's an alias match
+            canonical = TEAM_ALIASES.get(word)
+            if canonical:
+                expanded.append(canonical)
+
+        return ' '.join(expanded)
 
     def refresh_cache(self):
         """Perform daily refresh of all monitored linear channels."""
@@ -196,6 +226,9 @@ class LinearEpgService:
             # Match against subtitle first (usually contains teams on linear TV)
             # then fall back to title.
             match_string = sched["subtitle"] if sched["subtitle"] else sched["title"]
+
+            # Apply team aliases to improve fuzzy matching (e.g., "PAOK" → "PAOK Salonika")
+            match_string = self._apply_team_aliases(match_string)
             
             best_match = None
             best_score = 0

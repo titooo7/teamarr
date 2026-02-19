@@ -1311,29 +1311,34 @@ class EventGroupProcessor:
                     
                     if linear_matches:
                         logger.info(f"[LINEAR_DISCOVERY] Found {len(linear_matches)} potential linear matches for group '{group.name}'")
-                        
+
                         # Build tvg_id -> [streams] map from the current group
+                        # Normalize tvg_id to string for consistent matching (handles int vs str mismatch)
                         tvg_id_map = {}
                         for s in streams:
                             tid = getattr(s, "tvg_id", None) or s.get("tvg_id")
                             if tid:
-                                if tid not in tvg_id_map:
-                                    tvg_id_map[tid] = []
-                                tvg_id_map[tid].append(s)
+                                tid_str = str(tid)  # Normalize to string
+                                if tid_str not in tvg_id_map:
+                                    tvg_id_map[tid_str] = []
+                                tvg_id_map[tid_str].append(s)
+
+                        logger.debug(f"[LINEAR_DISCOVERY] Built tvg_id map with {len(tvg_id_map)} unique IDs: {list(tvg_id_map.keys())[:10]}{'...' if len(tvg_id_map) > 10 else ''}")
 
                         for lm in linear_matches:
-                            tid = lm["tvg_id"]
+                            tid = str(lm["tvg_id"])  # Normalize to string for lookup
+                            logger.debug(f"[LINEAR_DISCOVERY] Looking for tvg_id='{tid}' (type={type(lm['tvg_id']).__name__})")
                             if tid in tvg_id_map:
                                 for actual_stream in tvg_id_map[tid]:
                                     logger.info(f"[LINEAR_DISCOVERY] Mapping {actual_stream.get('name')} -> {lm['matched_event'].name}")
-                                    
+
                                     # Check if already matched to this event to avoid duplicates
                                     already_matched = any(
-                                        m.get("event").id == lm["matched_event"].id and 
+                                        m.get("event").id == lm["matched_event"].id and
                                         m.get("stream", {}).get("id") == actual_stream.get("id")
                                         for m in matched_streams
                                     )
-                                    
+
                                     if not already_matched:
                                         matched_streams.append({
                                             "stream": actual_stream,
@@ -1341,6 +1346,8 @@ class EventGroupProcessor:
                                             "card_segment": None,
                                             "is_linear": True # Flag for later filtering if needed
                                         })
+                            else:
+                                logger.debug(f"[LINEAR_DISCOVERY] No streams found with tvg_id='{tid}'. Available IDs: {list(tvg_id_map.keys())[:5]}{'...' if len(tvg_id_map) > 5 else ''}")
                     else:
                         logger.info(f"[LINEAR_DISCOVERY] No linear matches found for group '{group.name}'")
                 except Exception as le:

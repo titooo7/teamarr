@@ -2,6 +2,40 @@
 
 Dynamic EPG Generator for Sports Channels
 
+> **This is a fork of [Pharaoh-Labs/teamarr](https://github.com/Pharaoh-Labs/teamarr) with additional features and enhancements.**
+
+## What's Different in This Fork
+
+### New Features
+
+#### Linear EPG Discovery
+Monitor linear TV channels from external XMLTV sources to automatically discover sports events and create channels. This feature:
+- Fetches EPG data from XMLTV sources (supports GZIP compression)
+- Performs fuzzy matching against official event listings
+- Creates virtual streams that map to actual IPTV channels via tvg_id
+- Enables event-based channels from 24/7 sports networks
+
+**Configuration:**
+- **TVG ID**: Use the tvg-id from your IPTV provider's M3U (NOT the Dispatcharr M3U)
+- **XMLTV URL**: External EPG source URL
+- **XMLTV Channel ID**: Optional, if different from TVG ID
+- **Display Name**: Friendly name for the channel
+
+Access via **Settings > Linear EPG Discovery** in the UI.
+
+#### Additional Leagues
+- **Euroleague Basketball** - European top-tier basketball competition
+- **ACB (Liga Endesa)** - Spanish basketball league
+
+### UI Enhancements
+- **Edit & Clone buttons** for Linear EPG monitors
+- **PUT endpoint** for updating existing Linear EPG monitors
+
+### Bug Fixes & Improvements
+- Fixed tvg_id type mismatch (int vs string normalization) in Linear EPG discovery
+- Added TEAM_ALIASES support to Linear EPG fuzzy matcher
+- Added team aliases: PAOK (PAOK Salonika), Celta (Celta Vigo), Stuttgart (VfB Stuttgart)
+
 ## Quick Start
 
 ```yaml
@@ -47,6 +81,10 @@ If you're upgrading from 1.x, you have two options:
 ## Documentation
 
 **User Guide**: https://teamarr-v2.jesmann.com/
+
+**Upstream Repository**: https://github.com/Pharaoh-Labs/teamarr
+
+**Fork Repository**: https://github.com/titooo7/teamarr
 
 Formal documentation coming soon.
 

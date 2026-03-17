@@ -11,7 +11,7 @@ Layer Separation:
 """
 
 import logging
-from datetime import UTC, date, datetime
+from datetime import date, datetime, timezone
 
 from teamarr.core import (
     Event,
@@ -226,7 +226,7 @@ class CricbuzzProvider(SportsProvider):
             if isinstance(start_ts, str):
                 start_ts = int(start_ts)
 
-            start_time = datetime.fromtimestamp(start_ts / 1000, tz=UTC)
+            start_time = datetime.fromtimestamp(start_ts / 1000, tz=timezone.utc)
 
             # Parse end time if available
             end_ts = data.get("endDate")

@@ -14,6 +14,8 @@ export interface DispatcharrSettings {
   default_stream_profile_id: number | null
   // Clean up ALL unused logos in Dispatcharr after generation
   cleanup_unused_logos: boolean
+  // List of tvg_ids to include in Linear EPG discovery
+  discovery_channels: string[]
 }
 
 export interface LifecycleSettings {

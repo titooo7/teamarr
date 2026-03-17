@@ -31,6 +31,7 @@ def get_dispatcharr_settings():
         default_channel_profile_ids=settings.default_channel_profile_ids,
         default_stream_profile_id=settings.default_stream_profile_id,
         cleanup_unused_logos=settings.cleanup_unused_logos,
+        discovery_channels=settings.discovery_channels,
     )
 
 
@@ -54,6 +55,7 @@ def update_dispatcharr_settings(update: DispatcharrSettingsUpdate):
             default_channel_profile_ids=update.default_channel_profile_ids,
             default_stream_profile_id=update.default_stream_profile_id,
             cleanup_unused_logos=update.cleanup_unused_logos,
+            discovery_channels=update.discovery_channels,
         )
 
     # Trigger reconnect on next use
@@ -76,6 +78,7 @@ def update_dispatcharr_settings(update: DispatcharrSettingsUpdate):
         default_channel_profile_ids=settings.default_channel_profile_ids,
         default_stream_profile_id=settings.default_stream_profile_id,
         cleanup_unused_logos=settings.cleanup_unused_logos,
+        discovery_channels=settings.discovery_channels,
     )
 
 

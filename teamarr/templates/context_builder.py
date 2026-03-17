@@ -279,13 +279,13 @@ def find_next_and_last_from_schedule(
     Returns:
         Tuple of (next_event, last_event)
     """
-    from datetime import UTC, datetime
+    from datetime import datetime, timezone
 
     if not events:
         return None, None
 
     if reference_time is None:
-        reference_time = datetime.now(UTC)
+        reference_time = datetime.now(timezone.utc)
 
     # Sort by start time
     sorted_events = sorted(events, key=lambda e: e.start_time)

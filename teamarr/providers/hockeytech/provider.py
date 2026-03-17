@@ -6,7 +6,7 @@ Used for CHL leagues (OHL, WHL, QMJHL) plus AHL, PWHL, USHL.
 
 import logging
 import re
-from datetime import UTC, date, datetime
+from datetime import date, datetime, timezone
 
 from teamarr.core import (
     Event,
@@ -272,7 +272,7 @@ class HockeyTechProvider(SportsProvider):
                     dt = datetime.fromisoformat(date_str)
                 # Assume UTC if no timezone
                 if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=UTC)
+                    dt = dt.replace(tzinfo=timezone.utc)
                 return dt
             except ValueError:
                 pass

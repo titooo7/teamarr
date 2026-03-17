@@ -20,7 +20,10 @@ def _get_base_version() -> str:
     """Read version - prefer pyproject.toml (source of truth), fall back to installed metadata."""
     # Try pyproject.toml first (single source of truth, works in dev and Docker)
     try:
-        import tomllib
+        try:
+            import tomllib
+        except ImportError:
+            import tomli as tomllib
 
         pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
         if pyproject_path.exists():

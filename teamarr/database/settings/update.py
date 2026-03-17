@@ -23,6 +23,7 @@ def update_dispatcharr_settings(
     default_channel_profile_ids: list[int] | None | object = _NOT_PROVIDED,
     default_stream_profile_id: int | None | object = _NOT_PROVIDED,
     cleanup_unused_logos: bool | None = None,
+    discovery_channels: list[str] | None = None,
 ) -> bool:
     """Update Dispatcharr settings.
 
@@ -40,6 +41,7 @@ def update_dispatcharr_settings(
         default_stream_profile_id: Default stream profile for event channels.
             None = no profile (use Dispatcharr default).
         cleanup_unused_logos: Call Dispatcharr cleanup API after generation.
+        discovery_channels: List of tvg_ids to include in discovery.
 
     Returns:
         True if updated
@@ -77,6 +79,9 @@ def update_dispatcharr_settings(
     if cleanup_unused_logos is not None:
         updates.append("cleanup_unused_logos = ?")
         values.append(int(cleanup_unused_logos))
+    if discovery_channels is not None:
+        updates.append("linear_discovery_channels = ?")
+        values.append(json.dumps(discovery_channels))
 
     if not updates:
         return False

@@ -1213,23 +1213,29 @@ class EventGroupProcessor:
             result.filtered_exclude_regex = filter_result.filtered_exclude
 
             if not streams:
-                result.errors.append("All streams filtered out by regex patterns")
-                result.completed_at = datetime.now()
-                stats_run.complete(status="completed", error="All streams filtered")
-                save_run(conn, stats_run)
-                # Still update stats even if all filtered
-                update_group_stats(
-                    conn,
-                    group.id,
-                    stream_count=0,
-                    matched_count=0,
-                    filtered_stale=filter_result.filtered_stale,
-                    filtered_include_regex=filter_result.filtered_include,
-                    filtered_exclude_regex=filter_result.filtered_exclude,
-                    filtered_not_event=filter_result.filtered_not_event,
-                    total_stream_count=result.streams_fetched,  # V1 parity
-                )
-                return result
+                # NEW: Even if regular streams are all filtered, we might find linear matches
+                if bool(getattr(group, "include_linear_discovery", False)):
+                    logger.info(f"[LINEAR_DISCOVERY] No regular streams passed filter for '{group.name}', but discovery is enabled. Proceeding...")
+                    # We continue to Step 2/3/4 below but with an empty 'streams' list
+                    pass
+                else:
+                    result.errors.append("All streams filtered out by regex patterns")
+                    result.completed_at = datetime.now()
+                    stats_run.complete(status="completed", error="All streams filtered")
+                    save_run(conn, stats_run)
+                    # Still update stats even if all filtered
+                    update_group_stats(
+                        conn,
+                        group.id,
+                        stream_count=0,
+                        matched_count=0,
+                        filtered_stale=filter_result.filtered_stale,
+                        filtered_include_regex=filter_result.filtered_include,
+                        filtered_exclude_regex=filter_result.filtered_exclude,
+                        filtered_not_event=filter_result.filtered_not_event,
+                        total_stream_count=result.streams_fetched,  # V1 parity
+                    )
+                    return result
 
             # Step 2: Fetch events from data providers
             # Resolve effective leagues based on soccer_mode
@@ -1299,12 +1305,12 @@ class EventGroupProcessor:
             )
 
             # Step 4.5: Linear EPG Discovery (if enabled for group)
-            logger.debug(f"[LINEAR_DISCOVERY] Checking group '{group.name}' (enabled={getattr(group, 'include_linear_discovery', 'MISSING')})")
             if bool(getattr(group, "include_linear_discovery", False)):
                 try:
                     logger.info(f"[LINEAR_DISCOVERY] Starting discovery for group '{group.name}'")
                     from teamarr.services.linear_epg_service import LinearEpgService
-                    linear_service = LinearEpgService()
+                    linear_service = LinearEpgService(db_factory=self._db_factory)
+                    
                     # target_date is already provided as a date object
                     target_dt = datetime.combine(target_date, datetime.min.time())
                     linear_matches = linear_service.discover_linear_events(target_dt, events, leagues=effective_leagues)
@@ -1312,46 +1318,44 @@ class EventGroupProcessor:
                     if linear_matches:
                         logger.info(f"[LINEAR_DISCOVERY] Found {len(linear_matches)} potential linear matches for group '{group.name}'")
 
-                        # Build tvg_id -> [streams] map from the current group
-                        # Normalize tvg_id to string for consistent matching (handles int vs str mismatch)
-                        tvg_id_map = {}
-                        for s in streams:
-                            tid = getattr(s, "tvg_id", None) or s.get("tvg_id")
-                            if tid:
-                                tid_str = str(tid)  # Normalize to string
-                                if tid_str not in tvg_id_map:
-                                    tvg_id_map[tid_str] = []
-                                tvg_id_map[tid_str].append(s)
-
-                        logger.debug(f"[LINEAR_DISCOVERY] Built tvg_id map with {len(tvg_id_map)} unique IDs: {list(tvg_id_map.keys())[:10]}{'...' if len(tvg_id_map) > 10 else ''}")
-
                         for lm in linear_matches:
-                            tid = str(lm["tvg_id"])  # Normalize to string for lookup
-                            logger.debug(f"[LINEAR_DISCOVERY] Looking for tvg_id='{tid}' (type={type(lm['tvg_id']).__name__})")
-                            if tid in tvg_id_map:
-                                for actual_stream in tvg_id_map[tid]:
-                                    logger.info(f"[LINEAR_DISCOVERY] Mapping {actual_stream.get('name')} -> {lm['matched_event'].name}")
+                            # Create a virtual stream from the linear match
+                            # This stream contains real Dispatcharr stream IDs
+                            virtual_stream = {
+                                "id": lm["id"],
+                                "name": lm["name"],
+                                "url": lm.get("url"),
+                                "tvg_id": lm["tvg_id"],
+                                "stream_ids": lm.get("stream_ids", []),
+                                "is_linear": True
+                            }
 
-                                    # Check if already matched to this event to avoid duplicates
-                                    already_matched = any(
-                                        m.get("event").id == lm["matched_event"].id and
-                                        m.get("stream", {}).get("id") == actual_stream.get("id")
-                                        for m in matched_streams
-                                    )
+                            # Check if already matched to this event to avoid duplicates
+                            # (Matches both by event ID and the virtual stream ID)
+                            already_matched = False
+                            for m in matched_streams:
+                                m_event = m.get("event")
+                                m_stream = m.get("stream", {})
+                                
+                                # Handle both object and dict for event
+                                m_event_id = getattr(m_event, "id", None) or m_event.get("id") if isinstance(m_event, dict) else m_event.id
+                                
+                                if m_event_id == lm["matched_event"].id and m_stream.get("id") == virtual_stream["id"]:
+                                    already_matched = True
+                                    break
 
-                                    if not already_matched:
-                                        matched_streams.append({
-                                            "stream": actual_stream,
-                                            "event": lm["matched_event"],
-                                            "card_segment": None,
-                                            "is_linear": True # Flag for later filtering if needed
-                                        })
-                            else:
-                                logger.debug(f"[LINEAR_DISCOVERY] No streams found with tvg_id='{tid}'. Available IDs: {list(tvg_id_map.keys())[:5]}{'...' if len(tvg_id_map) > 5 else ''}")
+                            if not already_matched:
+                                logger.info(f"[LINEAR_DISCOVERY] Injecting linear match: {virtual_stream['name']} -> {lm['matched_event'].name}")
+                                matched_streams.append({
+                                    "stream": virtual_stream,
+                                    "event": lm["matched_event"],
+                                    "card_segment": None,
+                                    "is_linear": True
+                                })
                     else:
                         logger.info(f"[LINEAR_DISCOVERY] No linear matches found for group '{group.name}'")
-                except Exception as le:
-                    logger.error(f"[LINEAR_DISCOVERY] Error during discovery for group '{group.name}': {le}", exc_info=True)
+                except Exception as e:
+                    logger.error(f"[LINEAR_DISCOVERY] Failed for group '{group.name}': {e}", exc_info=True)
 
             # Sort channels based on global channel numbering sort_by setting
             from teamarr.database.settings import get_channel_numbering_settings
@@ -1400,6 +1404,14 @@ class EventGroupProcessor:
 
             # Build stream dict for cleanup (fingerprint-based content change detection)
             current_streams = {s.get("id"): s for s in streams if s.get("id")}
+            
+            # Add virtual streams from linear discovery to current_streams
+            # This prevents the lifecycle service from thinking the stream was removed
+            for ms in matched_streams:
+                if ms.get("is_linear"):
+                    v_stream = ms.get("stream", {})
+                    if v_stream.get("id"):
+                        current_streams[v_stream["id"]] = v_stream
 
             if matched_streams:
                 if status_callback:
@@ -1918,6 +1930,12 @@ class EventGroupProcessor:
         filter_leagues = {f.get("league") for f in filter_list if f.get("league")}
 
         for match in matched_streams:
+            # Bypass filter for Linear Discovery matches
+            # (If found on a curated linear channel, we always want it)
+            if match.get("is_linear"):
+                filtered.append(match)
+                continue
+
             event = match.get("event")
             if not event:
                 # No event - can't filter by team, keep it

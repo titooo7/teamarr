@@ -132,6 +132,9 @@ def init_db(db_path: Path | str | None = None) -> None:
             # (schema.sql INSERT OR IGNORE references label and match_terms columns)
             _migrate_exception_keywords_columns(conn)
 
+            # Fix linear_epg_cache schema if it exists with legacy columns (users at v57 already)
+            _fix_linear_epg_cache_if_legacy(conn)
+
             # Apply schema (creates tables if missing, INSERT OR REPLACE updates seed data)
             conn.executescript(schema_sql)
             # Run remaining migrations for existing databases
@@ -718,6 +721,55 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("[MIGRATE] Schema upgraded to version 56 (gold zone profiles)")
         current_version = 56
 
+    # v57: Linear EPG Discovery via Dispatcharr
+    # Replaces manual XMLTV monitors with Dispatcharr-based discovery
+    if current_version < 57:
+        _add_column_if_not_exists(
+            conn, "event_epg_groups", "include_linear_discovery", "BOOLEAN DEFAULT 0"
+        )
+
+        # Drop old linear_epg_cache if it exists with old schema
+        # (Legacy versions had a table with different columns)
+        cursor = conn.execute("PRAGMA table_info(linear_epg_cache)")
+        columns = {row["name"] for row in cursor.fetchall()}
+        if columns and "channel_ids_json" not in columns:
+            logger.info("[MIGRATE] Dropping legacy linear_epg_cache table")
+            conn.execute("DROP TABLE linear_epg_cache")
+
+        # Create new linear_epg_cache table (cleaner schema than legacy)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS linear_epg_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tvg_id TEXT NOT NULL,
+                title TEXT,
+                subtitle TEXT,
+                start_time TIMESTAMP,
+                end_time TIMESTAMP,
+                channel_ids_json TEXT  -- JSON list of Dispatcharr channel IDs
+            )
+        """)
+
+        # Indexes for fast lookup during EPG generation
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_linear_cache_time ON linear_epg_cache(start_time)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_linear_cache_tvg ON linear_epg_cache(tvg_id)")
+
+        # Drop legacy tables if they exist (cleanup)
+        conn.execute("DROP TABLE IF EXISTS linear_epg_cache_old")  # Safety if someone has partial state
+        conn.execute("DROP TABLE IF EXISTS linear_epg_monitors")
+
+        conn.execute("UPDATE settings SET schema_version = 57 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 57 (linear epg overhaul)")
+        current_version = 57
+
+    # v58: Linear EPG Discovery Filtering
+    if current_version < 58:
+        _add_column_if_not_exists(
+            conn, "settings", "linear_discovery_channels", "JSON DEFAULT '[]'"
+        )
+        conn.execute("UPDATE settings SET schema_version = 58 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 58 (linear discovery filtering)")
+        current_version = 58
+
 
 # =============================================================================
 # LEGACY MIGRATION HELPER FUNCTIONS
@@ -781,6 +833,15 @@ def _add_column_if_not_exists(
 
 
 
+
+
+def _fix_linear_epg_cache_if_legacy(conn: sqlite3.Connection) -> None:
+    """Drop linear_epg_cache if it exists with legacy columns (v1/v2 dev versions)."""
+    cursor = conn.execute("PRAGMA table_info(linear_epg_cache)")
+    columns = {row["name"] for row in cursor.fetchall()}
+    if columns and "channel_ids_json" not in columns:
+        logger.info("[MIGRATE] Dropping legacy linear_epg_cache table")
+        conn.execute("DROP TABLE linear_epg_cache")
 
 
 def reset_db(db_path: Path | str | None = None) -> None:

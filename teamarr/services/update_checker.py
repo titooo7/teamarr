@@ -7,7 +7,7 @@ Supports caching and configurable repositories for forks.
 import logging
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Literal
 from urllib.parse import quote
 
@@ -182,7 +182,7 @@ class UpdateChecker:
             current_version=self.current_version,
             latest_version=latest_version,
             update_available=update_available,
-            checked_at=datetime.now(UTC),
+            checked_at=datetime.now(timezone.utc),
             build_type=build_type,
             download_url=download_url,
             latest_stable=latest_stable,

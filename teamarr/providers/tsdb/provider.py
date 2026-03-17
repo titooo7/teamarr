@@ -6,7 +6,7 @@ Used as fallback for leagues not supported by ESPN.
 
 import logging
 from collections.abc import Callable
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from teamarr.core import (
     Event,
@@ -562,7 +562,7 @@ class TSDBProvider(SportsProvider):
                 dt = datetime.fromisoformat(timestamp_str)
                 # Assume UTC if no timezone
                 if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=UTC)
+                    dt = dt.replace(tzinfo=timezone.utc)
                 return dt
             except ValueError:
                 pass
@@ -578,7 +578,7 @@ class TSDBProvider(SportsProvider):
 
                 # Assume UTC if no timezone
                 if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=UTC)
+                    dt = dt.replace(tzinfo=timezone.utc)
                 return dt
             except ValueError:
                 pass

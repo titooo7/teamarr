@@ -5,7 +5,7 @@ Pure fetch + normalize - no caching (caching is in service layer).
 """
 
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from teamarr.core import (
     Event,
@@ -85,6 +85,11 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
         db_result = self._get_sport_league_from_db(league)
         if db_result:
             return db_result[0].title()
+
+        # Soccer leagues use dot notation - can be discovered dynamically
+        if "." in league:
+            return "Soccer"
+
         return "Unknown"
 
     def _get_sport(self, league: str) -> str:
@@ -209,7 +214,7 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
 
             # Only include past games (before current time)
             # This correctly handles late-night games where UTC date differs from local date
-            if event_datetime >= now_utc:
+            if event_datetime >= datetime.now(timezone.utc):
                 continue
 
             event = self._parse_schedule_event(event_data, league)

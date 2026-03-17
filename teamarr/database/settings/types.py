@@ -24,6 +24,9 @@ class DispatcharrSettings:
     # When True, call Dispatcharr's /api/channels/logos/cleanup/ after generation
     # This removes ALL unused logos in Dispatcharr, not just ones Teamarr uploaded
     cleanup_unused_logos: bool = False
+    # List of tvg_ids to include in Linear EPG discovery
+    # If empty, all channels with tvg_id are included
+    discovery_channels: list[str] = field(default_factory=list)
 
 
 @dataclass

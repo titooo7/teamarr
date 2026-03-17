@@ -213,7 +213,16 @@ def run_full_generation(
             display_settings = get_display_settings(conn)
             gold_zone_settings = get_gold_zone_settings(conn)
 
-        # Step 1: Refresh M3U accounts (0-5%)
+        # Step 0: Refresh Linear EPG cache (0-2%)
+        update_progress("init", 1, "Refreshing Linear EPG cache from Dispatcharr...")
+        try:
+            from teamarr.services.linear_epg_service import LinearEpgService
+            linear_service = LinearEpgService(db_factory=db_factory)
+            linear_service.refresh_cache()
+        except Exception as e:
+            logger.warning("[GENERATION] Linear EPG refresh failed: %s", e)
+
+        # Step 1: Refresh M3U accounts (2-5%)
         update_progress("init", 3, "Refreshing M3U accounts...")
         if dispatcharr_client:
             result.m3u_refresh = _refresh_m3u_accounts(db_factory, dispatcharr_client)
@@ -1029,11 +1038,11 @@ def _filter_gold_zone_epg(raw_xml: str, epg_settings: Any) -> str:
         Filtered XMLTV XML string
     """
     import xml.etree.ElementTree as ET
-    from datetime import UTC, datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     source = ET.fromstring(raw_xml)
 
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     window_start = now - timedelta(hours=epg_settings.epg_lookback_hours)
     window_end = now + timedelta(days=epg_settings.epg_output_days_ahead)
 

@@ -220,7 +220,8 @@ def get_dispatcharr_settings(conn: Connection) -> DispatcharrSettings:
     cursor = conn.execute(
         """SELECT dispatcharr_enabled, dispatcharr_url, dispatcharr_username,
                   dispatcharr_password, dispatcharr_epg_id, default_channel_profile_ids,
-                  default_stream_profile_id, cleanup_unused_logos
+                  default_stream_profile_id, cleanup_unused_logos,
+                  linear_discovery_channels
            FROM settings WHERE id = 1"""
     )
     row = cursor.fetchone()
@@ -238,6 +239,14 @@ def get_dispatcharr_settings(conn: Connection) -> DispatcharrSettings:
         except json.JSONDecodeError:
             default_profile_ids = None
 
+    # Parse discovery_channels JSON
+    discovery_channels: list[str] = []
+    if row["linear_discovery_channels"]:
+        try:
+            discovery_channels = json.loads(row["linear_discovery_channels"])
+        except json.JSONDecodeError:
+            discovery_channels = []
+
     return DispatcharrSettings(
         enabled=bool(row["dispatcharr_enabled"]),
         url=row["dispatcharr_url"],
@@ -249,6 +258,7 @@ def get_dispatcharr_settings(conn: Connection) -> DispatcharrSettings:
         cleanup_unused_logos=bool(row["cleanup_unused_logos"])
         if row["cleanup_unused_logos"] is not None
         else False,
+        discovery_channels=discovery_channels,
     )
 
 

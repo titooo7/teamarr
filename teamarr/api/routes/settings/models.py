@@ -57,6 +57,8 @@ class DispatcharrSettingsModel(BaseModel):
     default_stream_profile_id: int | None = None
     # Clean up ALL unused logos in Dispatcharr after generation
     cleanup_unused_logos: bool = False
+    # List of tvg_ids to include in Linear EPG discovery
+    discovery_channels: list[str] = []
 
     @field_validator("default_channel_profile_ids", mode="before")
     @classmethod
@@ -75,6 +77,7 @@ class DispatcharrSettingsUpdate(BaseModel):
     default_channel_profile_ids: list[str | int] | None = None
     default_stream_profile_id: int | None = None
     cleanup_unused_logos: bool | None = None
+    discovery_channels: list[str] | None = None
 
     @field_validator("default_channel_profile_ids", mode="before")
     @classmethod

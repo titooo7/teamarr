@@ -1,5 +1,5 @@
 import logging
-from datetime import date, datetime, timedelta, UTC
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 
 from teamarr.core import (
@@ -134,12 +134,12 @@ class EuroleagueProvider(SportsProvider):
             if not start_time and date_str:
                 if "T" in str(date_str):
                     try:
-                        start_time = datetime.fromisoformat(str(date_str)).replace(tzinfo=UTC)
+                        start_time = datetime.fromisoformat(str(date_str)).replace(tzinfo=timezone.utc)
                     except: pass
                 else:
                     try:
                         dt_str = f"{date_str} {time_str}"
-                        start_time = datetime.strptime(dt_str, "%b %d, %Y %H:%M").replace(tzinfo=UTC)
+                        start_time = datetime.strptime(dt_str, "%b %d, %Y %H:%M").replace(tzinfo=timezone.utc)
                     except: pass
             
             if not start_time:

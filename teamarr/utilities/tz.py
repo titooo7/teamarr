@@ -7,7 +7,7 @@ Display settings (time_format, show_timezone) are read from user configuration.
 """
 
 import platform
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from teamarr.config import (
     get_show_timezone,
@@ -61,7 +61,7 @@ def now_user() -> datetime:
 
 def now_utc() -> datetime:
     """Get current time in UTC."""
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
 def to_user_tz(dt: datetime) -> datetime:
@@ -89,7 +89,7 @@ def to_utc(dt: datetime) -> datetime:
     """
     if dt.tzinfo is None:
         raise ValueError("Cannot convert naive datetime - must be timezone-aware")
-    return dt.astimezone(UTC)
+    return dt.astimezone(timezone.utc)
 
 
 def format_time(dt: datetime, include_tz: bool | None = None) -> str:

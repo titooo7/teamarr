@@ -232,6 +232,7 @@ CREATE TABLE IF NOT EXISTS settings (
     default_channel_profile_ids JSON,         -- Default channel profiles for event channels
     default_stream_profile_id INTEGER,        -- Default stream profile for event channels
     cleanup_unused_logos BOOLEAN DEFAULT 0,   -- Call Dispatcharr's cleanup API after generation
+    linear_discovery_channels JSON DEFAULT '[]', -- List of tvg_ids to monitor for linear discovery
 
     -- Reconciliation Settings
     reconcile_on_epg_generation BOOLEAN DEFAULT 1,
@@ -444,6 +445,9 @@ CREATE TABLE IF NOT EXISTS event_epg_groups (
     overlap_handling TEXT DEFAULT 'add_stream'
         CHECK(overlap_handling IN ('add_stream', 'add_only', 'create_all', 'skip')),
 
+    -- Discovery
+    include_linear_discovery BOOLEAN DEFAULT 0, -- Search for events in linear channel XMLTV schedules
+
     -- Status
     enabled BOOLEAN DEFAULT 1,
 
@@ -593,11 +597,11 @@ CREATE TABLE IF NOT EXISTS sports (
 -- Seed sports with proper display names
 INSERT OR REPLACE INTO sports (sport_code, display_name) VALUES
     ('football', 'Football'),
-    ('basketball', 'BALONCESTO EN DIRECTO'),
+    ('basketball', '🏀 BALONCESTO NBA EN DIRECTO'),
     ('hockey', 'Hockey'),
     ('baseball', 'Baseball'),
     ('softball', 'Softball'),
-    ('soccer', 'FÚTBOL EN DIRECTO'),
+    ('soccer', '⚽️ FÚTBOL EN DIRECTO'),
     ('mma', 'MMA'),
     ('volleyball', 'Volleyball'),
     ('lacrosse', 'Lacrosse'),
@@ -1080,6 +1084,31 @@ CREATE TABLE IF NOT EXISTS service_cache (
 
 -- Index for cleanup of expired entries
 CREATE INDEX IF NOT EXISTS idx_sc_expires ON service_cache(expires_at);
+
+
+-- =============================================================================
+-- LINEAR_EPG_CACHE TABLE
+-- Discovered events on linear 24/7 channels from Dispatcharr XMLTV
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS linear_epg_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    -- XMLTV info
+    tvg_id TEXT NOT NULL,
+    title TEXT,
+    subtitle TEXT,
+
+    -- Event timing
+    start_time TIMESTAMP NOT NULL,
+    end_time TIMESTAMP NOT NULL,
+
+    -- Dispatcharr mapping (JSON array of channel IDs)
+    channel_ids_json TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_linear_cache_time ON linear_epg_cache(start_time);
+CREATE INDEX IF NOT EXISTS idx_linear_cache_tvg ON linear_epg_cache(tvg_id);
 
 
 -- =============================================================================

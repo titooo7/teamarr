@@ -269,11 +269,11 @@ INDEXES_V43: list[tuple[str, str, str]] = [
 # Sports table seed data
 SPORTS_SEED_V43: list[tuple[str, str]] = [
     ("football", "Football"),
-    ("basketball", "BALONCESTO EN DIRECTO"),
+    ("basketball", "🏀 BALONCESTO NBA EN DIRECTO"),
     ("hockey", "Hockey"),
     ("baseball", "Baseball"),
     ("softball", "Softball"),
-    ("soccer", "FÚTBOL EN DIRECTO"),
+    ("soccer", "⚽️ FÚTBOL EN DIRECTO"),
     ("mma", "MMA"),
     ("volleyball", "Volleyball"),
     ("lacrosse", "Lacrosse"),

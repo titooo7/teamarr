@@ -48,6 +48,63 @@ CITY_TRANSLATIONS: dict[str, str] = {
 
 
 # =============================================================================
+# COUNTRY NAME TRANSLATIONS
+# ESPN uses English country names, but Spanish/Portuguese streams use native
+# spellings. Many pairs score below the 60% fuzzy threshold (Marruecos↔Morocco
+# = 50%, Inglaterra↔England = 47%, Alemania↔Germany = 53%) and two-team
+# matchups require BOTH teams to pass, so even one low-scoring pair fails the
+# whole match.
+#
+# Keys are post-unidecode lowercase (applied after unidecode in the normalizer).
+# Includes Spanish and Portuguese variants where they differ from English.
+# =============================================================================
+
+COUNTRY_TRANSLATIONS: dict[str, str] = {
+    # Spanish variants
+    "alemania": "germany",
+    "belgica": "belgium",
+    "brasil": "brazil",
+    "camerun": "cameroon",
+    "catar": "qatar",
+    "corea del sur": "south korea",
+    "croacia": "croatia",
+    "dinamarca": "denmark",
+    "egipto": "egypt",
+    "escocia": "scotland",
+    "eslovaquia": "slovakia",
+    "eslovenia": "slovenia",
+    "espana": "spain",
+    "estados unidos": "united states",
+    "francia": "france",
+    "gales": "wales",
+    "grecia": "greece",
+    "holanda": "netherlands",
+    "inglaterra": "england",
+    "irlanda": "ireland",
+    "islandia": "iceland",
+    "italia": "italy",
+    "japon": "japan",
+    "marruecos": "morocco",
+    "noruega": "norway",
+    "nueva zelanda": "new zealand",
+    "paises bajos": "netherlands",
+    "polonia": "poland",
+    "republica checa": "czech republic",
+    "rumania": "romania",
+    "rusia": "russia",
+    "sudafrica": "south africa",
+    "suecia": "sweden",
+    "suiza": "switzerland",
+    "tunez": "tunisia",
+    "turquia": "turkey",
+    "ucrania": "ukraine",
+    # Portuguese-only variants (where they differ from Spanish)
+    "alemanha": "germany",
+    "marrocos": "morocco",
+}
+
+
+# =============================================================================
 # BUILT-IN TEAM NAME ALIASES
 # Common abbreviations/nicknames that fuzzy matching won't catch.
 # User-defined aliases in team_aliases table take precedence.
@@ -562,62 +619,62 @@ EVENT_TYPE_KEYWORDS: dict[str, list[str]] = {
     # These keywords indicate event card format with fighters, rounds, etc.
     # =========================================================================
     "EVENT_CARD": [
-    # -------------------------------------------------------------------------
-    # MMA Organizations
-    # -------------------------------------------------------------------------
-    "ufc",
-    "bellator",
-    "pfl",
-    "one fc",
-    "one championship",
-    "cage warriors",
-    "invicta fc",
-    "lfa",  # Legacy Fighting Alliance
-    "bkfc",  # Bare Knuckle FC
-    # UFC-specific terms
-    "fight night",
-    "ufc fn",
-    "dana white",
-    "contender series",
-    "dwcs",
-    "the ultimate fighter",
-    "tuf",
-    # -------------------------------------------------------------------------
-    # Boxing Organizations & Promoters
-    # -------------------------------------------------------------------------
-    "boxing",
-    "premier boxing",
-    "pbc",  # Premier Boxing Champions
-    "top rank",
-    "matchroom",
-    "golden boy",
-    "showtime boxing",
-    "dazn boxing",
-    "espn boxing",
-    "triller",
-    # -------------------------------------------------------------------------
-    # Card Segments (shared across combat sports)
-    # -------------------------------------------------------------------------
-    "main card",
-    "main event",
-    "prelims",
-    "early prelims",
-    "undercard",
-    "co-main",
-    # -------------------------------------------------------------------------
-    # Generic Combat Sports Terms
-    # -------------------------------------------------------------------------
-    "mma",
-    "mixed martial arts",
-    "kickboxing",
-    "muay thai",
-    "title fight",
-    "title bout",
-    "championship fight",
-    "undisputed",
-    # -------------------------------------------------------------------------
-    # Boxing Sanctioning Bodies (indicates boxing event)
-    # -------------------------------------------------------------------------
+        # -------------------------------------------------------------------------
+        # MMA Organizations
+        # -------------------------------------------------------------------------
+        "ufc",
+        "bellator",
+        "pfl",
+        "one fc",
+        "one championship",
+        "cage warriors",
+        "invicta fc",
+        "lfa",  # Legacy Fighting Alliance
+        "bkfc",  # Bare Knuckle FC
+        # UFC-specific terms
+        "fight night",
+        "ufc fn",
+        "dana white",
+        "contender series",
+        "dwcs",
+        "the ultimate fighter",
+        "tuf",
+        # -------------------------------------------------------------------------
+        # Boxing Organizations & Promoters
+        # -------------------------------------------------------------------------
+        "boxing",
+        "premier boxing",
+        "pbc",  # Premier Boxing Champions
+        "top rank",
+        "matchroom",
+        "golden boy",
+        "showtime boxing",
+        "dazn boxing",
+        "espn boxing",
+        "triller",
+        # -------------------------------------------------------------------------
+        # Card Segments (shared across combat sports)
+        # -------------------------------------------------------------------------
+        "main card",
+        "main event",
+        "prelims",
+        "early prelims",
+        "undercard",
+        "co-main",
+        # -------------------------------------------------------------------------
+        # Generic Combat Sports Terms
+        # -------------------------------------------------------------------------
+        "mma",
+        "mixed martial arts",
+        "kickboxing",
+        "muay thai",
+        "title fight",
+        "title bout",
+        "championship fight",
+        "undisputed",
+        # -------------------------------------------------------------------------
+        # Boxing Sanctioning Bodies (indicates boxing event)
+        # -------------------------------------------------------------------------
         "wbc",  # World Boxing Council
         "wba",  # World Boxing Association
         "ibf",  # International Boxing Federation

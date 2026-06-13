@@ -18,6 +18,7 @@ from unidecode import unidecode
 from teamarr.utilities.constants import (
     BROADCAST_NETWORKS,
     CITY_TRANSLATIONS,
+    COUNTRY_TRANSLATIONS,
     LIVE_STATUS_PREFIXES,
     PROVIDER_PREFIXES,
 )
@@ -161,22 +162,28 @@ def strip_live_status_prefix(text: str) -> tuple[str, str | None]:
 
 
 def apply_city_translations(text: str) -> str:
-    """Apply city name translations.
+    """Apply city and country name translations.
 
-    First normalizes with unidecode (München → Munchen),
-    then applies manual translations (munchen → munich).
+    First normalizes with unidecode (München → Munchen, España → Espana),
+    then applies manual translations (munchen → munich, espana → spain,
+    marruecos → morocco, etc.).
+
+    Country translations are essential because many Spanish/Portuguese country
+    names score below the 60% fuzzy threshold against their English equivalents
+    (e.g. Marruecos↔Morocco = 50%, Inglaterra↔England = 47%), and two-team
+    matchups require BOTH teams to pass.
 
     Args:
-        text: Text containing city names
+        text: Text containing city/country names
 
     Returns:
-        Text with city names translated to English
+        Text with names translated to English
     """
     if not text:
         return text
 
     # First pass: unidecode to normalize accents
-    # This converts München → Munchen
+    # This converts München → Munchen, España → Espana
     text = unidecode(text)
 
     # Second pass: apply manual translations
@@ -184,11 +191,13 @@ def apply_city_translations(text: str) -> str:
     result = text
     text_lower = text.lower()
 
-    for variant, english in CITY_TRANSLATIONS.items():
-        if variant in text_lower:
-            # Find the position and replace preserving some case
-            pattern = re.compile(re.escape(variant), re.IGNORECASE)
-            result = pattern.sub(english, result)
+    for translations in (CITY_TRANSLATIONS, COUNTRY_TRANSLATIONS):
+        for variant, english in translations.items():
+            if variant in text_lower:
+                # Find the position and replace preserving some case
+                pattern = re.compile(re.escape(variant), re.IGNORECASE)
+                result = pattern.sub(english, result)
+                text_lower = result.lower()
 
     return result
 

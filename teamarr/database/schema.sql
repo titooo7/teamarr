@@ -1470,16 +1470,16 @@ CREATE TABLE IF NOT EXISTS consolidation_exception_keywords (
     enabled BOOLEAN DEFAULT 1
 );
 
--- Seed default language keywords
+-- Seed default language keywords (labels in Spanish for display in channel names)
 INSERT OR IGNORE INTO consolidation_exception_keywords (label, match_terms, behavior) VALUES
-    ('Spanish', 'Spanish, En Español, En Espanol, (ESP), Español, Espanol', 'consolidate'),
-    ('French', 'French, En Français, En Francais, (FRA), Français, Francais', 'consolidate'),
-    ('German', 'German, (GER), Deutsch', 'consolidate'),
-    ('Portuguese', 'Portuguese, (POR), Português, Portugues', 'consolidate'),
-    ('Italian', 'Italian, (ITA), Italiano', 'consolidate'),
-    ('Japanese', 'Japanese, (JPN), 日本語', 'consolidate'),
-    ('Korean', 'Korean, (KOR), 한국어', 'consolidate'),
-    ('Chinese', 'Chinese, (CHN), (CHI), 中文', 'consolidate');
+    ('Español', 'Spanish, En Español, En Espanol, (ESP), Español, Espanol', 'consolidate'),
+    ('Francés', 'French, En Français, En Francais, (FRA), Français, Francais', 'consolidate'),
+    ('Alemán', 'German, (GER), Deutsch', 'consolidate'),
+    ('Portugués', 'Portuguese, (POR), Português, Portugues', 'consolidate'),
+    ('Italiano', 'Italian, (ITA), Italiano', 'consolidate'),
+    ('Japonés', 'Japanese, (JPN), 日本語', 'consolidate'),
+    ('Coreano', 'Korean, (KOR), 한국어', 'consolidate'),
+    ('Chino', 'Chinese, (CHN), (CHI), 中文', 'consolidate');
 
 CREATE INDEX IF NOT EXISTS idx_exception_keywords_enabled ON consolidation_exception_keywords(enabled);
 CREATE INDEX IF NOT EXISTS idx_exception_keywords_behavior ON consolidation_exception_keywords(behavior);

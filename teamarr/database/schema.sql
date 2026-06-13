@@ -1472,7 +1472,7 @@ CREATE TABLE IF NOT EXISTS consolidation_exception_keywords (
 
 -- Seed default language keywords (labels in Spanish for display in channel names)
 INSERT OR IGNORE INTO consolidation_exception_keywords (label, match_terms, behavior) VALUES
-    ('Español', 'Spanish, En Español, En Espanol, (ESP), Español, Espanol', 'consolidate'),
+    ('Español', 'Spanish, En Español, En Espanol, (ESP), Español, Espanol, ES:', 'consolidate'),
     ('Francés', 'French, En Français, En Francais, (FRA), Français, Francais', 'consolidate'),
     ('Alemán', 'German, (GER), Deutsch', 'consolidate'),
     ('Portugués', 'Portuguese, (POR), Português, Portugues', 'consolidate'),

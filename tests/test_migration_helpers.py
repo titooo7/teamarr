@@ -600,3 +600,99 @@ class TestV64DedupChannels:
         # Channel still alive
         row = db.execute("SELECT deleted_at FROM managed_channels WHERE id = 1").fetchone()
         assert row["deleted_at"] is None
+
+
+# =============================================================================
+# v77: exception keywords un-accented language variants
+# =============================================================================
+
+
+class TestV77ExceptionKeywordAccents:
+    """v77 back-fills un-accented Latin language variants (espanol/francais/
+    portugues) into the match_terms of existing exception keyword rows so a
+    stream named ``...en espanol`` is detected as Spanish without relying on
+    the accent-insensitive matcher alone."""
+
+    EXPECTED = {
+        "Spanish": "Spanish, En Español, En Espanol, (ESP), Español, Espanol",
+        "French": "French, En Français, En Francais, (FRA), Français, Francais",
+        "Portuguese": "Portuguese, (POR), Português, Portugues",
+    }
+
+    def _setup(self, db: sqlite3.Connection) -> None:
+        _settings_table(db)
+        db.execute("""
+            CREATE TABLE consolidation_exception_keywords (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                label TEXT NOT NULL UNIQUE,
+                match_terms TEXT NOT NULL,
+                behavior TEXT NOT NULL DEFAULT 'consolidate',
+                enabled BOOLEAN DEFAULT 1
+            )
+        """)
+        # Seed with the OLD (accented-only) terms — the pre-v77 state.
+        db.execute(
+            "INSERT INTO consolidation_exception_keywords (label, match_terms, behavior) "
+            "VALUES "
+            "('Spanish', 'Spanish, En Español, (ESP), Español', 'consolidate'), "
+            "('French', 'French, En Français, (FRA), Français', 'consolidate'), "
+            "('Portuguese', 'Portuguese, (POR), Português', 'consolidate'), "
+            "('German', 'German, (GER), Deutsch', 'consolidate')"
+        )
+
+    def _terms(self, db, label):
+        row = db.execute(
+            "SELECT match_terms FROM consolidation_exception_keywords WHERE label = ?",
+            (label,),
+        ).fetchone()
+        return row["match_terms"] if row else None
+
+    def test_updates_three_latin_languages(self, db):
+        from teamarr.database.connection import _migrate_v77_exception_keyword_accents
+
+        self._setup(db)
+        _migrate_v77_exception_keyword_accents(db)
+
+        for label, expected in self.EXPECTED.items():
+            assert self._terms(db, label) == expected, f"{label} not updated"
+
+    def test_leaves_german_untouched(self, db):
+        from teamarr.database.connection import _migrate_v77_exception_keyword_accents
+
+        self._setup(db)
+        _migrate_v77_exception_keyword_accents(db)
+        assert self._terms(db, "German") == "German, (GER), Deutsch"
+
+    def test_idempotent(self, db):
+        from teamarr.database.connection import _migrate_v77_exception_keyword_accents
+
+        self._setup(db)
+        _migrate_v77_exception_keyword_accents(db)
+        _migrate_v77_exception_keyword_accents(db)  # second run is a no-op
+
+        for label, expected in self.EXPECTED.items():
+            assert self._terms(db, label) == expected
+
+    def test_noop_when_table_missing(self, db):
+        """Fresh/partial schema without the table should not raise."""
+        from teamarr.database.connection import _migrate_v77_exception_keyword_accents
+
+        _settings_table(db)
+        # No consolidation_exception_keywords table created.
+        _migrate_v77_exception_keyword_accents(db)  # must not raise
+
+    def test_respects_user_custom_terms(self, db):
+        """If the user already edited a keyword to a custom value, the migration
+        only overwrites it when the value differs — and even then it sets the
+        canonical v77 value (so un-accented detection always works). A row that
+        already has the v77 value is left untouched."""
+        from teamarr.database.connection import _migrate_v77_exception_keyword_accents
+
+        self._setup(db)
+        # Simulate the user already having added Espanol themselves.
+        db.execute(
+            "UPDATE consolidation_exception_keywords SET match_terms = ? WHERE label = 'Spanish'",
+            (self.EXPECTED["Spanish"],),
+        )
+        _migrate_v77_exception_keyword_accents(db)
+        assert self._terms(db, "Spanish") == self.EXPECTED["Spanish"]

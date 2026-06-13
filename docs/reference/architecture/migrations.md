@@ -206,7 +206,7 @@ This means "add a new column" is no longer coupled to a schema version bump — 
 
 ## Version History
 
-**Current schema version: 74** (32 incremental migrations since checkpoint)
+**Current schema version: 77** (35 incremental migrations since checkpoint)
 
 | Version | Type | Description |
 |---------|------|-------------|
@@ -214,6 +214,10 @@ This means "add a new column" is no longer coupled to a schema version bump — 
 | 3-42 | Consolidated | Merged into checkpoint_v43 |
 | 43 | Checkpoint | Checkpoint baseline |
 | 44-71 | Incremental | Individual migrations in `connection.py` |
+| 74 | Data | Preserve EPG-match off-state after global switch removal |
+| 75 | Data | Extract common art base URL from templates (upstream, epic z02s) |
+| 76 | Data | Normalize relative template art paths to leading slash (upstream, z02s) |
+| 77 | Data | Exception keywords: un-accented language variants (espanol/francais/portugues) — fork |
 
 ## Troubleshooting
 

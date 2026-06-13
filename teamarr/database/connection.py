@@ -580,6 +580,14 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         )
         current_version = 76
 
+    if current_version < 77:
+        _apply_migration(
+            conn, 77, "exception keywords: unaccented language variants",
+            _migrate_v77_exception_keyword_accents,
+        )
+        current_version = 77
+
+
 
 # =============================================================================
 # Migration helpers
@@ -1745,6 +1753,42 @@ def _migrate_v76_leading_slash_art_paths(conn: sqlite3.Connection) -> None:
             "[MIGRATE] v76: added leading slash to relative art paths in %d template(s)",
             changed,
         )
+
+
+def _migrate_v77_exception_keyword_accents(conn: sqlite3.Connection) -> None:
+    """v77: add un-accented language variants to exception keyword match_terms.
+
+    Python's regex engine treats ``ñ`` and ``n`` (and similar) as distinct
+    characters, so a stream named ``...en espanol`` failed to match a keyword
+    configured with the accented term ``Español`` — leaving the language out of
+    the channel name (issue: Spanish FIFA WC stream got no "(Spanish)" suffix
+    while the Portuguese one did). Accent-insensitive matching landed in
+    ``keywords.py`` in the same change set; this migration back-fills the
+    existing DB rows so the un-accented forms are present even before a
+    generation run, and for users who edit terms later.
+
+    Uses a plain ``UPDATE`` (not a seed ``INSERT OR IGNORE``) because the rows
+    already exist and their ``label`` UNIQUE constraint would silently skip a
+    re-seed. Only the three Latin-variant languages that actually carry
+    diacritics are touched; German/Italian (already ASCII) and the CJK
+    languages (unaffected by Latin accent stripping) are left as-is.
+    """
+    if not _table_exists(conn, "consolidation_exception_keywords"):
+        return  # fresh/partial schema — seed will handle it
+
+    updates = {
+        "Spanish": "Spanish, En Español, En Espanol, (ESP), Español, Espanol",
+        "French": "French, En Français, En Francais, (FRA), Français, Francais",
+        "Portuguese": "Portuguese, (POR), Português, Portugues",
+    }
+    for label, match_terms in updates.items():
+        changed = conn.execute(
+            "UPDATE consolidation_exception_keywords SET match_terms = ? "
+            "WHERE label = ? AND match_terms != ?",
+            (match_terms, label, match_terms),
+        ).rowcount
+        if changed:
+            logger.info("[MIGRATE v77] Updated '%s' exception keyword match_terms", label)
 
 
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:

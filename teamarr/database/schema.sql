@@ -421,7 +421,7 @@ CREATE TABLE IF NOT EXISTS settings (
     channelsdvr_lineup_id TEXT,
 
     -- Schema Version
-    schema_version INTEGER DEFAULT 76
+    schema_version INTEGER DEFAULT 77
 );
 
 -- Insert default settings
@@ -1472,10 +1472,10 @@ CREATE TABLE IF NOT EXISTS consolidation_exception_keywords (
 
 -- Seed default language keywords
 INSERT OR IGNORE INTO consolidation_exception_keywords (label, match_terms, behavior) VALUES
-    ('Spanish', 'Spanish, En Español, (ESP), Español', 'consolidate'),
-    ('French', 'French, En Français, (FRA), Français', 'consolidate'),
+    ('Spanish', 'Spanish, En Español, En Espanol, (ESP), Español, Espanol', 'consolidate'),
+    ('French', 'French, En Français, En Francais, (FRA), Français, Francais', 'consolidate'),
     ('German', 'German, (GER), Deutsch', 'consolidate'),
-    ('Portuguese', 'Portuguese, (POR), Português', 'consolidate'),
+    ('Portuguese', 'Portuguese, (POR), Português, Portugues', 'consolidate'),
     ('Italian', 'Italian, (ITA), Italiano', 'consolidate'),
     ('Japanese', 'Japanese, (JPN), 日本語', 'consolidate'),
     ('Korean', 'Korean, (KOR), 한국어', 'consolidate'),

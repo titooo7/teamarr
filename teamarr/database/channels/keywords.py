@@ -5,9 +5,22 @@ Full CRUD is in database/exception_keywords.py.
 """
 
 import re
+import unicodedata
 from sqlite3 import Connection
 
 from teamarr.database.exception_keywords import ExceptionKeyword, get_all_keywords
+
+
+def _strip_accents(text: str) -> str:
+    """Return *text* with Latin combining marks removed (accent-insensitive).
+
+    Decomposes via NFD and drops combining characters (category ``Mn``) so that
+    ``español`` and ``espanol``, ``français`` and ``francais`` match each other.
+    The same transform is applied to BOTH the stream text and each match term,
+    so CJK / Hangul terms (e.g. 日本語, 한국어, 中文) still self-match even though
+    NFD decomposes Hangul syllables — both sides are converted identically.
+    """
+    return "".join(c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn")
 
 
 def get_exception_keywords(conn: Connection, enabled_only: bool = True) -> list[ExceptionKeyword]:
@@ -39,16 +52,18 @@ def _make_keyword_pattern(term: str) -> str:
     Returns:
         Regex pattern string
     """
-    escaped = re.escape(term.lower())
+    # Normalise (lowercase + accent-stripped) once for pattern + boundaries
+    norm = _strip_accents(term.lower())
+    escaped = re.escape(norm)
 
     # Start boundary: \b if term starts with word char, else (?<!\w)
-    if term and re.match(r"\w", term[0]):
+    if norm and re.match(r"\w", norm[0]):
         start = r"\b"
     else:
         start = r"(?<!\w)"
 
     # End boundary: \b if term ends with word char, else (?!\w)
-    if term and re.match(r"\w", term[-1]):
+    if norm and re.match(r"\w", norm[-1]):
         end = r"\b"
     else:
         end = r"(?!\w)"
@@ -66,6 +81,10 @@ def check_exception_keyword(
     "Pelicans", while still supporting terms with special characters like "(ESP)"
     and multi-word phrases like "Peyton and Eli".
 
+    Accent-insensitive: both the stream name and each match term are normalised
+    (lowercase + Latin diacritics stripped) before comparison, so ``espanol``
+    matches a configured ``Español`` term and ``francais`` matches ``Français``.
+
     Args:
         stream_name: Stream name to check
         keywords: List of ExceptionKeyword objects
@@ -75,7 +94,7 @@ def check_exception_keyword(
         The label is the configured display name for the keyword, used for
         channel naming and the {exception_keyword} template variable.
     """
-    stream_lower = stream_name.lower()
+    stream_lower = _strip_accents(stream_name.lower())
 
     for kw in keywords:
         for term in kw.match_term_list:

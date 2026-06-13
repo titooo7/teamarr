@@ -293,10 +293,10 @@ SPORTS_SEED_V43: list[tuple[str, str]] = [
 
 # Exception keywords seed data
 EXCEPTION_KEYWORDS_SEED_V43: list[tuple[str, str, str]] = [
-    ("Spanish", "Spanish, En Español, (ESP), Español", "consolidate"),
-    ("French", "French, En Français, (FRA), Français", "consolidate"),
+    ("Spanish", "Spanish, En Español, En Espanol, (ESP), Español, Espanol", "consolidate"),
+    ("French", "French, En Français, En Francais, (FRA), Français, Francais", "consolidate"),
     ("German", "German, (GER), Deutsch", "consolidate"),
-    ("Portuguese", "Portuguese, (POR), Português", "consolidate"),
+    ("Portuguese", "Portuguese, (POR), Português, Portugues", "consolidate"),
     ("Italian", "Italian, (ITA), Italiano", "consolidate"),
     ("Japanese", "Japanese, (JPN), 日本語", "consolidate"),
     ("Korean", "Korean, (KOR), 한국어", "consolidate"),

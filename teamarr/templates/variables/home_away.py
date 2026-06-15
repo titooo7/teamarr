@@ -11,6 +11,17 @@ from teamarr.templates.variables.registry import (
     TemplateScope,
     register_variable,
 )
+from teamarr.utilities.constants import ENGLISH_TO_SPANISH_COUNTRIES
+
+
+def _translate_country_for_display(name: str) -> str:
+    """Translate English country names to Spanish for channel name display.
+
+    Only translates when the entire team name matches a known country, so club
+    names ('Real Madrid', 'Detroit Lions') are left untouched. Matching, IDs,
+    and logs keep the canonical English name — this is display-only.
+    """
+    return ENGLISH_TO_SPANISH_COUNTRIES.get(name, name)
 
 
 def _to_pascal_case(name: str) -> str:
@@ -119,7 +130,7 @@ def extract_vs_symbol(ctx: TemplateContext, game_ctx: GameContext | None) -> str
 def extract_home_team(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     if not game_ctx or not game_ctx.event:
         return ""
-    return game_ctx.event.home_team.name
+    return _translate_country_for_display(game_ctx.event.home_team.name)
 
 
 @register_variable(
@@ -131,7 +142,7 @@ def extract_home_team(ctx: TemplateContext, game_ctx: GameContext | None) -> str
 def extract_away_team(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     if not game_ctx or not game_ctx.event:
         return ""
-    return game_ctx.event.away_team.name
+    return _translate_country_for_display(game_ctx.event.away_team.name)
 
 
 @register_variable(
@@ -143,7 +154,7 @@ def extract_away_team(ctx: TemplateContext, game_ctx: GameContext | None) -> str
 def extract_home_team_short(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     if not game_ctx or not game_ctx.event:
         return ""
-    return game_ctx.event.home_team.short_name
+    return _translate_country_for_display(game_ctx.event.home_team.short_name)
 
 
 @register_variable(
@@ -155,7 +166,7 @@ def extract_home_team_short(ctx: TemplateContext, game_ctx: GameContext | None) 
 def extract_away_team_short(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     if not game_ctx or not game_ctx.event:
         return ""
-    return game_ctx.event.away_team.short_name
+    return _translate_country_for_display(game_ctx.event.away_team.short_name)
 
 
 @register_variable(
@@ -334,10 +345,7 @@ def extract_feed_team_logo(ctx: TemplateContext, game_ctx: GameContext | None) -
 def extract_is_home_feed(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     if not ctx.feed_team or not game_ctx or not game_ctx.event:
         return ""
-    is_home = (
-        game_ctx.event.home_team
-        and game_ctx.event.home_team.id == ctx.feed_team.id
-    )
+    is_home = game_ctx.event.home_team and game_ctx.event.home_team.id == ctx.feed_team.id
     return "true" if is_home else "false"
 
 
@@ -351,10 +359,7 @@ def extract_is_home_feed(ctx: TemplateContext, game_ctx: GameContext | None) -> 
 def extract_is_away_feed(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     if not ctx.feed_team or not game_ctx or not game_ctx.event:
         return ""
-    is_away = (
-        game_ctx.event.away_team
-        and game_ctx.event.away_team.id == ctx.feed_team.id
-    )
+    is_away = game_ctx.event.away_team and game_ctx.event.away_team.id == ctx.feed_team.id
     return "true" if is_away else "false"
 
 
@@ -368,10 +373,7 @@ def extract_is_away_feed(ctx: TemplateContext, game_ctx: GameContext | None) -> 
 def extract_feed_home_away(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     if not ctx.feed_team or not game_ctx or not game_ctx.event:
         return ""
-    is_home = (
-        game_ctx.event.home_team
-        and game_ctx.event.home_team.id == ctx.feed_team.id
-    )
+    is_home = game_ctx.event.home_team and game_ctx.event.home_team.id == ctx.feed_team.id
     return "Home" if is_home else "Away"
 
 
@@ -393,10 +395,7 @@ def extract_feed_home_away(ctx: TemplateContext, game_ctx: GameContext | None) -
 def extract_broadcast_feed(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     if not ctx.feed_team or not game_ctx or not game_ctx.event:
         return ""
-    is_home = (
-        game_ctx.event.home_team
-        and game_ctx.event.home_team.id == ctx.feed_team.id
-    )
+    is_home = game_ctx.event.home_team and game_ctx.event.home_team.id == ctx.feed_team.id
     return "Home Team Feed" if is_home else "Away Team Feed"
 
 
@@ -407,9 +406,7 @@ def extract_broadcast_feed(ctx: TemplateContext, game_ctx: GameContext | None) -
     description="'{Team Name} Feed' (e.g., 'Seattle Mariners Feed') or '' if no feed",
     scope=TemplateScope.EVENT_ONLY,
 )
-def extract_broadcast_feed_team(
-    ctx: TemplateContext, game_ctx: GameContext | None
-) -> str:
+def extract_broadcast_feed_team(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     if not ctx.feed_team:
         return ""
     return f"{ctx.feed_team.name} Feed"

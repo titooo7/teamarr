@@ -6,8 +6,6 @@ the accent stripping is applied symmetrically to both sides so CJK / Hangul
 terms still self-match.
 """
 
-import pytest
-
 from teamarr.database.channels.keywords import (
     _make_keyword_pattern,
     _strip_accents,

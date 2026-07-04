@@ -4,6 +4,8 @@ These variables provide home/away context, positional team references,
 and feed team data for streams broken out into home/away channels.
 """
 
+import re
+
 from teamarr.templates.context import GameContext, TemplateContext
 from teamarr.templates.variables.registry import (
     Category,
@@ -13,15 +15,30 @@ from teamarr.templates.variables.registry import (
 )
 from teamarr.utilities.constants import ENGLISH_TO_SPANISH_COUNTRIES
 
+# Youth/women national team suffixes ESPN appends to the country name:
+# "Spain U21", "Mexico U-20", "Japan U23", "Spain W". Case-sensitive on
+# purpose — a lowercase trailing "w" is not a team suffix.
+_NATIONAL_TEAM_SUFFIX_RE = re.compile(r"^(?P<base>.+?)\s+(?P<suffix>U-?\d{1,2}|W)$")
+
 
 def _translate_country_for_display(name: str) -> str:
     """Translate English country names to Spanish for channel name display.
 
-    Only translates when the entire team name matches a known country, so club
-    names ('Real Madrid', 'Detroit Lions') are left untouched. Matching, IDs,
-    and logs keep the canonical English name — this is display-only.
+    Only translates when the entire team name matches a known country —
+    optionally followed by a youth/women suffix ("Spain U21" → "España U21")
+    — so club names ('Real Madrid', 'Detroit Lions') are left untouched.
+    Matching, IDs, and logs keep the canonical English name — this is
+    display-only.
     """
-    return ENGLISH_TO_SPANISH_COUNTRIES.get(name, name)
+    translated = ENGLISH_TO_SPANISH_COUNTRIES.get(name)
+    if translated:
+        return translated
+    m = _NATIONAL_TEAM_SUFFIX_RE.match(name)
+    if m:
+        base = ENGLISH_TO_SPANISH_COUNTRIES.get(m.group("base"))
+        if base:
+            return f"{base} {m.group('suffix')}"
+    return name
 
 
 def _to_pascal_case(name: str) -> str:

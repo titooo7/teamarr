@@ -587,6 +587,13 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         )
         current_version = 77
 
+    if current_version < 78:
+        _apply_migration(
+            conn, 78, "exception keywords: Spanish language names as match terms",
+            _migrate_v78_spanish_language_names,
+        )
+        current_version = 78
+
 
 
 # =============================================================================
@@ -1789,6 +1796,48 @@ def _migrate_v77_exception_keyword_accents(conn: sqlite3.Connection) -> None:
         ).rowcount
         if changed:
             logger.info("[MIGRATE v77] Updated '%s' exception keyword match_terms", label)
+
+
+def _migrate_v78_spanish_language_names(conn: sqlite3.Connection) -> None:
+    """v78: make language keywords detectable by their Spanish names.
+
+    Streams tagged in Spanish — ``EN ALEMÁN``, ``en japones``, ``en coreano``
+    — matched nothing because the German/Japanese/Korean/Chinese keywords only
+    carried English + native terms (``German, (GER), Deutsch``), and the
+    French keyword had ``Français`` but not the Spanish word ``Francés``
+    (français→francais vs francés→frances differ even after accent
+    stripping). Adds the Spanish language name to each affected keyword's
+    match_terms. Un-accented duplicates (Aleman, Japones, Frances) are
+    included so the terms keep working if the DB is ever run under a stock
+    upstream image without the fork's accent-insensitive matching.
+
+    Rows are matched by BOTH the stock English label and the fork's Spanish
+    label, so the migration works on stock DBs and on this fork's DB alike.
+    Italiano/Español/Portugués already carry their Spanish names.
+    """
+    if not _table_exists(conn, "consolidation_exception_keywords"):
+        return  # fresh/partial schema — seed will handle it
+
+    updates = [
+        (("German", "Alemán"), "German, (GER), Deutsch, Alemán, Aleman"),
+        (
+            ("French", "Francés"),
+            "French, En Français, En Francais, (FRA), Français, Francais, Francés, Frances",
+        ),
+        (("Japanese", "Japonés"), "Japanese, (JPN), 日本語, Japonés, Japones"),
+        (("Korean", "Coreano"), "Korean, (KOR), 한국어, Coreano"),
+        (("Chinese", "Chino"), "Chinese, (CHN), (CHI), 中文, Chino"),
+    ]
+    for labels, match_terms in updates:
+        changed = conn.execute(
+            "UPDATE consolidation_exception_keywords SET match_terms = ? "
+            "WHERE label IN (?, ?) AND match_terms != ?",
+            (match_terms, *labels, match_terms),
+        ).rowcount
+        if changed:
+            logger.info(
+                "[MIGRATE v78] Added Spanish language name to '%s' match_terms", labels[1]
+            )
 
 
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:

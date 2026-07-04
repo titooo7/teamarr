@@ -696,3 +696,88 @@ class TestV77ExceptionKeywordAccents:
         )
         _migrate_v77_exception_keyword_accents(db)
         assert self._terms(db, "Spanish") == self.EXPECTED["Spanish"]
+
+
+# =============================================================================
+# v78: exception keywords Spanish language names as match terms
+# =============================================================================
+
+
+class TestV78SpanishLanguageNames:
+    """v78 adds the Spanish word for each language (Alemán, Francés, Japonés,
+    Coreano, Chino) to the keyword match_terms so streams tagged ``EN ALEMÁN``
+    or ``en japones`` are detected. Matches rows by both the stock English
+    label and the fork's Spanish label."""
+
+    EXPECTED_GERMAN = "German, (GER), Deutsch, Alemán, Aleman"
+    EXPECTED_KOREAN = "Korean, (KOR), 한국어, Coreano"
+
+    def _setup(self, db: sqlite3.Connection, spanish_labels: bool = False) -> None:
+        _settings_table(db)
+        db.execute("""
+            CREATE TABLE consolidation_exception_keywords (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                label TEXT NOT NULL UNIQUE,
+                match_terms TEXT NOT NULL,
+                behavior TEXT NOT NULL DEFAULT 'consolidate',
+                enabled BOOLEAN DEFAULT 1
+            )
+        """)
+        german = "Alemán" if spanish_labels else "German"
+        korean = "Coreano" if spanish_labels else "Korean"
+        spanish = "Español" if spanish_labels else "Spanish"
+        db.execute(
+            "INSERT INTO consolidation_exception_keywords (label, match_terms, behavior) "
+            "VALUES "
+            f"('{german}', 'German, (GER), Deutsch', 'consolidate'), "
+            f"('{korean}', 'Korean, (KOR), 한국어', 'consolidate'), "
+            f"('{spanish}', 'Spanish, En Español, En Espanol, (ESP), Español, Espanol', "
+            "'consolidate')"
+        )
+
+    def _terms(self, db, label):
+        row = db.execute(
+            "SELECT match_terms FROM consolidation_exception_keywords WHERE label = ?",
+            (label,),
+        ).fetchone()
+        return row["match_terms"] if row else None
+
+    def test_updates_english_labeled_rows(self, db):
+        from teamarr.database.connection import _migrate_v78_spanish_language_names
+
+        self._setup(db, spanish_labels=False)
+        _migrate_v78_spanish_language_names(db)
+        assert self._terms(db, "German") == self.EXPECTED_GERMAN
+        assert self._terms(db, "Korean") == self.EXPECTED_KOREAN
+
+    def test_updates_spanish_labeled_rows(self, db):
+        """The fork's live DB has Spanish labels — the migration must match those too."""
+        from teamarr.database.connection import _migrate_v78_spanish_language_names
+
+        self._setup(db, spanish_labels=True)
+        _migrate_v78_spanish_language_names(db)
+        assert self._terms(db, "Alemán") == self.EXPECTED_GERMAN
+        assert self._terms(db, "Coreano") == self.EXPECTED_KOREAN
+
+    def test_leaves_spanish_keyword_untouched(self, db):
+        """Español already carries its Spanish name — not in the update list."""
+        from teamarr.database.connection import _migrate_v78_spanish_language_names
+
+        self._setup(db, spanish_labels=False)
+        before = self._terms(db, "Spanish")
+        _migrate_v78_spanish_language_names(db)
+        assert self._terms(db, "Spanish") == before
+
+    def test_idempotent(self, db):
+        from teamarr.database.connection import _migrate_v78_spanish_language_names
+
+        self._setup(db)
+        _migrate_v78_spanish_language_names(db)
+        _migrate_v78_spanish_language_names(db)  # second run is a no-op
+        assert self._terms(db, "German") == self.EXPECTED_GERMAN
+
+    def test_noop_when_table_missing(self, db):
+        from teamarr.database.connection import _migrate_v78_spanish_language_names
+
+        _settings_table(db)
+        _migrate_v78_spanish_language_names(db)  # must not raise

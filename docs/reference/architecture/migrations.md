@@ -206,7 +206,7 @@ This means "add a new column" is no longer coupled to a schema version bump — 
 
 ## Version History
 
-**Current schema version: 77** (35 incremental migrations since checkpoint)
+**Current schema version: 78** (36 incremental migrations since checkpoint)
 
 | Version | Type | Description |
 |---------|------|-------------|
@@ -218,6 +218,7 @@ This means "add a new column" is no longer coupled to a schema version bump — 
 | 75 | Data | Extract common art base URL from templates (upstream, epic z02s) |
 | 76 | Data | Normalize relative template art paths to leading slash (upstream, z02s) |
 | 77 | Data | Exception keywords: un-accented language variants (espanol/francais/portugues) — fork |
+| 78 | Data | Exception keywords: Spanish language names as match terms (Alemán/Francés/Japonés/Coreano/Chino) — fork |
 
 ## Troubleshooting
 

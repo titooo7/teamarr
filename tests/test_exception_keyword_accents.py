@@ -107,6 +107,27 @@ class TestAccentInsensitiveMatching:
         stream = "FIFA WC 07: Brazil vs Morocco 6:00 pm EN espanol"
         assert check_exception_keyword(stream, keywords) == (None, None)
 
+    def test_spanish_language_names_detect(self):
+        """v78 terms: streams tagged with the SPANISH word for a language
+        (EN ALEMÁN, en japones, en coreano) are detected."""
+        keywords = [
+            _kw("Alemán", "German, (GER), Deutsch, Alemán, Aleman"),
+            _kw("Japonés", "Japanese, (JPN), 日本語, Japonés, Japones"),
+            _kw("Coreano", "Korean, (KOR), 한국어, Coreano"),
+        ]
+        assert check_exception_keyword("Bundesliga EN ALEMÁN", keywords) == (
+            "Alemán",
+            "consolidate",
+        )
+        assert check_exception_keyword("J-League en japones HD", keywords) == (
+            "Japonés",
+            "consolidate",
+        )
+        assert check_exception_keyword("K-League EN COREANO", keywords) == (
+            "Coreano",
+            "consolidate",
+        )
+
 
 # =============================================================================
 # Pattern construction

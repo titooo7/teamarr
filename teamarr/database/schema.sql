@@ -421,7 +421,7 @@ CREATE TABLE IF NOT EXISTS settings (
     channelsdvr_lineup_id TEXT,
 
     -- Schema Version
-    schema_version INTEGER DEFAULT 77
+    schema_version INTEGER DEFAULT 78
 );
 
 -- Insert default settings
@@ -1473,13 +1473,13 @@ CREATE TABLE IF NOT EXISTS consolidation_exception_keywords (
 -- Seed default language keywords (labels in Spanish for display in channel names)
 INSERT OR IGNORE INTO consolidation_exception_keywords (label, match_terms, behavior) VALUES
     ('Español', 'Spanish, En Español, En Espanol, (ESP), Español, Espanol, ES:', 'consolidate'),
-    ('Francés', 'French, En Français, En Francais, (FRA), Français, Francais', 'consolidate'),
-    ('Alemán', 'German, (GER), Deutsch', 'consolidate'),
+    ('Francés', 'French, En Français, En Francais, (FRA), Français, Francais, Francés, Frances', 'consolidate'),
+    ('Alemán', 'German, (GER), Deutsch, Alemán, Aleman', 'consolidate'),
     ('Portugués', 'Portuguese, (POR), Português, Portugues', 'consolidate'),
     ('Italiano', 'Italian, (ITA), Italiano', 'consolidate'),
-    ('Japonés', 'Japanese, (JPN), 日本語', 'consolidate'),
-    ('Coreano', 'Korean, (KOR), 한국어', 'consolidate'),
-    ('Chino', 'Chinese, (CHN), (CHI), 中文', 'consolidate');
+    ('Japonés', 'Japanese, (JPN), 日本語, Japonés, Japones', 'consolidate'),
+    ('Coreano', 'Korean, (KOR), 한국어, Coreano', 'consolidate'),
+    ('Chino', 'Chinese, (CHN), (CHI), 中文, Chino', 'consolidate');
 
 CREATE INDEX IF NOT EXISTS idx_exception_keywords_enabled ON consolidation_exception_keywords(enabled);
 CREATE INDEX IF NOT EXISTS idx_exception_keywords_behavior ON consolidation_exception_keywords(behavior);

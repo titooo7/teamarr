@@ -13,6 +13,10 @@ from teamarr.utilities.tz import format_datetime_xmltv, to_user_tz
 
 __all__ = ["apply_art_base_url", "programmes_to_xmltv"]
 
+# Fork: language stamped on <title>/<sub-title>/<desc>/<category> elements.
+# The EPG content this fork generates is Spanish; upstream hardcodes "en".
+XMLTV_LANG = "es"
+
 
 def programmes_to_xmltv(
     programmes: list[Programme],
@@ -80,17 +84,17 @@ def _add_programme(root: Element, programme: Programme, art_base_url: str = "") 
         prog_elem.append(Comment(f"teamarr:filler-{programme.filler_type}"))
 
     title_elem = SubElement(prog_elem, "title")
-    title_elem.set("lang", "en")
+    title_elem.set("lang", XMLTV_LANG)
     title_elem.text = programme.title
 
     if programme.subtitle:
         sub_elem = SubElement(prog_elem, "sub-title")
-        sub_elem.set("lang", "en")
+        sub_elem.set("lang", XMLTV_LANG)
         sub_elem.text = programme.subtitle
 
     if programme.description:
         desc_elem = SubElement(prog_elem, "desc")
-        desc_elem.set("lang", "en")
+        desc_elem.set("lang", XMLTV_LANG)
         desc_elem.text = programme.description
 
     # Add date tag if enabled (YYYYMMDD format in user's timezone)
@@ -103,7 +107,7 @@ def _add_programme(root: Element, programme: Programme, art_base_url: str = "") 
     # Add categories
     for cat in programme.categories:
         cat_elem = SubElement(prog_elem, "category")
-        cat_elem.set("lang", "en")
+        cat_elem.set("lang", XMLTV_LANG)
         cat_elem.text = cat
 
     icon = apply_art_base_url(programme.icon, art_base_url)

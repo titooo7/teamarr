@@ -5,6 +5,8 @@ through fuzzy matching alone. Keep this minimal - prefer user-defined aliases
 in the database when possible.
 """
 
+from unidecode import unidecode
+
 # =============================================================================
 # CITY NAME TRANSLATIONS
 # ESPN uses English city names, but stream names may use native spellings.
@@ -44,63 +46,6 @@ CITY_TRANSLATIONS: dict[str, str] = {
     "warszawa": "warsaw",
     "kobenhavn": "copenhagen",
     "goteborg": "gothenburg",
-}
-
-
-# =============================================================================
-# COUNTRY NAME TRANSLATIONS
-# ESPN uses English country names, but Spanish/Portuguese streams use native
-# spellings. Many pairs score below the 60% fuzzy threshold (Marruecos↔Morocco
-# = 50%, Inglaterra↔England = 47%, Alemania↔Germany = 53%) and two-team
-# matchups require BOTH teams to pass, so even one low-scoring pair fails the
-# whole match.
-#
-# Keys are post-unidecode lowercase (applied after unidecode in the normalizer).
-# Includes Spanish and Portuguese variants where they differ from English.
-# =============================================================================
-
-COUNTRY_TRANSLATIONS: dict[str, str] = {
-    # Spanish variants
-    "alemania": "germany",
-    "belgica": "belgium",
-    "brasil": "brazil",
-    "camerun": "cameroon",
-    "catar": "qatar",
-    "corea del sur": "south korea",
-    "croacia": "croatia",
-    "dinamarca": "denmark",
-    "egipto": "egypt",
-    "escocia": "scotland",
-    "eslovaquia": "slovakia",
-    "eslovenia": "slovenia",
-    "espana": "spain",
-    "estados unidos": "united states",
-    "francia": "france",
-    "gales": "wales",
-    "grecia": "greece",
-    "holanda": "netherlands",
-    "inglaterra": "england",
-    "irlanda": "ireland",
-    "islandia": "iceland",
-    "italia": "italy",
-    "japon": "japan",
-    "marruecos": "morocco",
-    "noruega": "norway",
-    "nueva zelanda": "new zealand",
-    "paises bajos": "netherlands",
-    "polonia": "poland",
-    "republica checa": "czech republic",
-    "rumania": "romania",
-    "rusia": "russia",
-    "sudafrica": "south africa",
-    "suecia": "sweden",
-    "suiza": "switzerland",
-    "tunez": "tunisia",
-    "turquia": "turkey",
-    "ucrania": "ukraine",
-    # Portuguese-only variants (where they differ from Spanish)
-    "alemanha": "germany",
-    "marrocos": "morocco",
 }
 
 
@@ -246,6 +191,56 @@ ENGLISH_TO_SPANISH_COUNTRIES: dict[str, str] = {
     "Kazakhstan": "Kazajistán",
     "Israel": "Israel",
 }
+
+
+# =============================================================================
+# COUNTRY NAME TRANSLATIONS (MATCHING, ES/PT → EN)
+# ESPN uses English country names, but Spanish/Portuguese streams use native
+# spellings. Many pairs score below the 60% fuzzy threshold (Marruecos↔Morocco
+# = 50%, Inglaterra↔England = 47%, Alemania↔Germany = 53%) and two-team
+# matchups require BOTH teams to pass, so even one low-scoring pair fails the
+# whole match.
+#
+# Derived by inverting ENGLISH_TO_SPANISH_COUNTRIES so the matching and
+# display directions can never drift apart, then merged with the extra
+# variants below (Spanish colloquial + Portuguese forms). Keys are
+# post-unidecode lowercase (the normalizer applies unidecode first); identity
+# mappings (argentina→argentina) are dropped. Sorted longest-key-first so
+# phrases are replaced before their substrings ("irlanda del norte" must win
+# over "irlanda", "corea del sur" over any shorter overlap).
+# =============================================================================
+
+_EXTRA_COUNTRY_VARIANTS: dict[str, str] = {
+    # Spanish colloquial / alternate forms
+    "holanda": "netherlands",
+    "arabia saudita": "saudi arabia",
+    # Portuguese forms (where they differ from the Spanish spelling)
+    "alemanha": "germany",
+    "marrocos": "morocco",
+    "espanha": "spain",
+    "franca": "france",
+    "japao": "japan",
+    "suica": "switzerland",
+    "coreia do sul": "south korea",
+    "paises baixos": "netherlands",
+    "pais de gales": "wales",
+    "irlanda do norte": "northern ireland",
+}
+
+COUNTRY_TRANSLATIONS: dict[str, str] = dict(
+    sorted(
+        (
+            {
+                unidecode(spanish).lower(): english.lower()
+                for english, spanish in ENGLISH_TO_SPANISH_COUNTRIES.items()
+                if unidecode(spanish).lower() != english.lower()
+            }
+            | _EXTRA_COUNTRY_VARIANTS
+        ).items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    )
+)
 
 
 # =============================================================================

@@ -173,6 +173,12 @@ def apply_city_translations(text: str) -> str:
     (e.g. Marruecos↔Morocco = 50%, Inglaterra↔England = 47%), and two-team
     matchups require BOTH teams to pass.
 
+    Replacements are word-bounded so short country names can't fire inside
+    longer words ("japon" must not rewrite "japones", "gales" must not rewrite
+    "legales"). Phrase entries still win over their substrings because
+    COUNTRY_TRANSLATIONS is ordered longest-key-first ("irlanda del norte"
+    before "irlanda").
+
     Args:
         text: Text containing city/country names
 
@@ -194,10 +200,10 @@ def apply_city_translations(text: str) -> str:
     for translations in (CITY_TRANSLATIONS, COUNTRY_TRANSLATIONS):
         for variant, english in translations.items():
             if variant in text_lower:
-                # Find the position and replace preserving some case
-                pattern = re.compile(re.escape(variant), re.IGNORECASE)
-                result = pattern.sub(english, result)
-                text_lower = result.lower()
+                pattern = re.compile(rf"\b{re.escape(variant)}\b", re.IGNORECASE)
+                result, count = pattern.subn(english, result)
+                if count:
+                    text_lower = result.lower()
 
     return result
 

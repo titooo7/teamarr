@@ -1,15 +1,15 @@
 services:
   teamarr:
-    image: ghcr.io/pharaoh-labs/teamarr:latest
+    image: teamarr:custom
     container_name: teamarr
     restart: unless-stopped
-    ports:
-      - 9195:9195
+    expose:
+      - "9195"
     volumes:
       - ./data:/app/data
     environment:
       # Timezone for all date/time display and XMLTV output
-      - TZ=America/Detroit
+      - TZ=Europe/Paris
 
       # Console log level: DEBUG, INFO, WARNING, ERROR (default: INFO)
       # Note: File logging (data/logs/) always captures DEBUG regardless of this setting
@@ -29,3 +29,7 @@ services:
       # - ESPN_MAX_CONNECTIONS=100   # HTTP connection pool size
       # - ESPN_TIMEOUT=10            # Request timeout in seconds
       # - ESPN_RETRY_COUNT=3         # Number of retry attempts
+
+# Reverse proxy / network labels (Traefik, external networks, etc.) are kept
+# in docker-compose.override.yml, which is gitignored and merged in
+# automatically by `docker compose up` — no command changes needed.

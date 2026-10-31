@@ -27,6 +27,7 @@ from teamarr.consumers.generation_pipeline.phases import (
     processing,
 )
 from teamarr.consumers.generation_pipeline.runner import GenerationStage, StageRunner
+from teamarr.consumers.lifecycle.separate_fallbacks import apply_separate_fallbacks
 from teamarr.dispatcharr.managers import ChannelManager
 from teamarr.services import create_default_service
 from teamarr.services.sports_data import flush_shared_cache
@@ -258,6 +259,29 @@ def _stage_stream_ordering(context: GenerationContext) -> None:
     )
 
 
+def _stage_separate_fallbacks(context: GenerationContext) -> None:
+    """(fork) Separate-mode failover backups — see lifecycle/separate_fallbacks.py.
+
+    Placed immediately AFTER stream ordering, deliberately:
+
+    - Ordering has settled every existing row's priority (backups included,
+      with ``BACKUP_PRIORITY_OFFSET``) and pushed Dispatcharr's order to match,
+      so the fallback diff starts from a converged state.
+    - This pass issues its own PATCH for each channel it mutates (rolling the DB
+      insert back if Dispatcharr refuses it), so backups reach Dispatcharr in the
+      same run. Running BEFORE ordering would leave the push to #712 drift
+      detection, which has no rollback: one rejected backup id would then
+      poison the channel's order push on every run.
+    - Steady state mutates nothing, so no PATCH goes out and ordering's phase
+      separation (#735) is untouched. A backup added here with a window flips
+      ``has_windowed`` for its channel, so later runs' ordering pass handles
+      its open/close like any other windowed stream.
+    """
+    context.result.separate_fallbacks = apply_separate_fallbacks(
+        context.db_factory, context.dispatcharr_client
+    )
+
+
 def _stage_xmltv_save(context: GenerationContext) -> None:
     """Facade seam for XMLTV publication."""
     channel_output.stage_xmltv_save(context)
@@ -330,6 +354,9 @@ _FULL_GENERATION_STAGES = (
     GenerationStage(_stage_team_channels, cancellation_before=True, timing_name="team_channels"),
     GenerationStage(
         _stage_stream_ordering, cancellation_before=True, timing_name="stream_ordering"
+    ),
+    GenerationStage(
+        _stage_separate_fallbacks, cancellation_before=True, timing_name="separate_fallbacks"
     ),
     GenerationStage(_stage_xmltv_save, cancellation_before=True, timing_name="xmltv_save"),
     GenerationStage(_stage_lifecycle_prepare),

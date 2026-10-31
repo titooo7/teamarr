@@ -376,6 +376,13 @@ class ChannelNumberingSettings:
     channel_daily_reset_time: str = "04:00"  # local HH:MM reset window
     force_channel_relayout_pending: bool = False  # one-shot re-grid armed for next run
 
+    # (fork) Separate-mode failover backups — see
+    # teamarr/consumers/lifecycle/separate_fallbacks.py. Applies to any channel
+    # created in separate mode: the global mode above, or a per-keyword
+    # 'separate' behavior.
+    separate_fallback_enabled: bool = False
+    separate_fallback_count: int = 3  # own stream + up to N backups; clamped 0-10
+
 
 @dataclass
 class FeedSeparationSettings:

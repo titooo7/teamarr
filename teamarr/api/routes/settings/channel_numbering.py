@@ -64,6 +64,14 @@ def update_channel_numbering_settings(update: ChannelNumberingSettingsUpdate):
             detail="channel_gap_size must be >= 1",
         )
 
+    if update.separate_fallback_count is not None and not (
+        0 <= update.separate_fallback_count <= 10
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="separate_fallback_count must be between 0 and 10",
+        )
+
     if update.channel_order_mode is not None and update.channel_order_mode not in (
         "sport_league",
         "start_time",
@@ -91,6 +99,8 @@ def update_channel_numbering_settings(update: ChannelNumberingSettingsUpdate):
             channel_daily_reset_enabled=update.channel_daily_reset_enabled,
             channel_daily_reset_time=update.channel_daily_reset_time,
             channel_order_mode=update.channel_order_mode,
+            separate_fallback_enabled=update.separate_fallback_enabled,
+            separate_fallback_count=update.separate_fallback_count,
         )
 
     with get_db() as conn:

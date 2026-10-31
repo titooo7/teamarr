@@ -87,7 +87,8 @@ class TestNormalizePipelineIntegration:
     def test_directo_removed_in_pipeline(self):
         result = normalize_stream("DIRECTO España - Inglaterra")
         assert not result.normalized.lower().startswith("directo")
-        assert "España" in result.normalized or "Espana" in result.normalized
+        # Country translations convert España→Spain, Inglaterra→England
+        assert "spain" in result.normalized.lower()
 
     def test_stacked_provider_and_live_either_order(self):
         # "DAZN DIRECTO ..." and "DIRECTO DAZN ..." both fully strip.

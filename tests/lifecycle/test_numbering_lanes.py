@@ -25,6 +25,15 @@ from teamarr.database import numbering_exceptions as ne
 # Fixture
 # ---------------------------------------------------------------------------
 
+
+@pytest.fixture(autouse=True)
+def _stock_keyword_order(monkeypatch):
+    """Fork #17 sorts keyword channels first; these goldens are upstream's and
+    assume the stock main-first tie-break. The fork direction is covered by
+    tests/lifecycle/test_keyword_first_ordering.py."""
+    monkeypatch.setattr(cn, "KEYWORD_CHANNELS_FIRST", False)
+
+
 SCHEMA = """
 CREATE TABLE settings (
   id INTEGER PRIMARY KEY, channel_range_start INTEGER DEFAULT 101, channel_range_end INTEGER,

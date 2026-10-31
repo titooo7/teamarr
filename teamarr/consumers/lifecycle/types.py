@@ -4,6 +4,7 @@ Contains timing types, result dataclasses, and helper functions.
 """
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
@@ -119,15 +120,19 @@ class StreamProcessResult:
 def slugify_keyword(keyword: str) -> str:
     """Sanitize an exception keyword into a tvg-id-safe slug.
 
-    Converts to lowercase, replaces spaces/special chars with hyphens,
-    strips leading/trailing hyphens.
+    Converts to lowercase, strips Latin diacritics, replaces spaces/special
+    chars with hyphens, strips leading/trailing hyphens.
 
     Examples:
         "Spanish" → "spanish"
+        "Español" → "espanol"
+        "Portugués" → "portugues"
         "4K HDR" → "4k-hdr"
         "Peyton and Eli" → "peyton-and-eli"
     """
     slug = keyword.lower().strip()
+    # Strip Latin combining marks so accented labels produce clean ASCII slugs
+    slug = "".join(c for c in unicodedata.normalize("NFD", slug) if unicodedata.category(c) != "Mn")
     slug = re.sub(r"[^a-z0-9]+", "-", slug)
     return slug.strip("-")
 

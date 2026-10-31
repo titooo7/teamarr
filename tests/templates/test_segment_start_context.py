@@ -143,7 +143,8 @@ def test_session_channel_name_reads_its_own_session_time(naming, code, expected)
 
 
 def test_logo_url_reads_the_session_date(naming):
-    assert naming._resolve_logo_url(_weekend(), TEMPLATE, segment="race") == ("art/Oct 25/race.png")
+    # fork #12: day-first game_date_short
+    assert naming._resolve_logo_url(_weekend(), TEMPLATE, segment="race") == ("art/25-Oct/race.png")
 
 
 def test_sync_rename_resolves_like_creation(naming):

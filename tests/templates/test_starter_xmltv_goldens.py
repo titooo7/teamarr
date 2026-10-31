@@ -635,8 +635,8 @@ def test_default_team_idle_with_no_previous_game_names_the_next_one(db_conn):
         team_name="Boston Celtics",
         team_abbrev="BOS",
     )
-    assert _idle_descs(xml) == {"Next game: vs the Chicago Bulls, Sunday, Jul 12 at 3:00 PM EDT."}
-    assert '<sub-title lang="en">Next: vs the Chicago Bulls, Sun Jul 12, 3:00 PM EDT<' in xml
+    assert _idle_descs(xml) == {"Next game: vs the Chicago Bulls, Sunday, 12-Jul at 3:00 PM EDT."}
+    assert '<sub-title lang="es">Next: vs the Chicago Bulls, Sun 12-Jul, 3:00 PM EDT<' in xml
 
 
 def test_soccer_team_idle_with_no_previous_match_names_the_next_one(db_conn):
@@ -661,7 +661,7 @@ def test_soccer_team_idle_with_no_previous_match_names_the_next_one(db_conn):
         team_name="Chelsea",
         team_abbrev="CHE",
     )
-    assert _idle_descs(xml) == {"Next match: vs Liverpool, Sunday, Jul 12 at 3:00 PM EDT."}
+    assert _idle_descs(xml) == {"Next match: vs Liverpool, Sunday, 12-Jul at 3:00 PM EDT."}
 
 
 def test_team_idle_after_a_final_reports_the_result_then_the_next_game(db_conn):
@@ -701,6 +701,6 @@ def test_team_idle_after_a_final_reports_the_result_then_the_next_game(db_conn):
         team_abbrev="BOS",
     )
     assert (
-        "The Boston Celtics lost to the New York Knicks, 112-104 on Jul 8. "
-        "Next game: vs the Chicago Bulls, Sunday, Jul 12 at 3:00 PM EDT."
+        "The Boston Celtics lost to the New York Knicks, 112-104 on 8-Jul. "
+        "Next game: vs the Chicago Bulls, Sunday, 12-Jul at 3:00 PM EDT."
     ) in xml

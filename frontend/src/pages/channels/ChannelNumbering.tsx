@@ -51,6 +51,8 @@ export function ChannelNumbering() {
     channel_daily_reset_enabled: true,
     channel_daily_reset_time: "04:00",
     force_channel_relayout_pending: false,
+    separate_fallback_enabled: false,
+    separate_fallback_count: 3,
   })
   const [channelRangeStart, setChannelRangeStart] = useState("")
   const [channelRangeEnd, setChannelRangeEnd] = useState("")

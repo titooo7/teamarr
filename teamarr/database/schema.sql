@@ -564,6 +564,13 @@ CREATE TABLE IF NOT EXISTS settings (
     global_consolidation_mode TEXT DEFAULT 'consolidate'
         CHECK(global_consolidation_mode IN ('consolidate', 'separate')),
 
+    -- (fork) Separate-mode failover backups: each separate-mode channel additionally carries
+    -- up to N same-exception-keyword-group sibling streams as Dispatcharr failover backups,
+    -- behind its own stream (which always stays at slot #0). See
+    -- teamarr/consumers/lifecycle/separate_fallbacks.py.
+    separate_fallback_enabled INTEGER DEFAULT 0,
+    separate_fallback_count   INTEGER DEFAULT 3,
+
     -- Channel Numbering Stability Mode (how existing channel numbers behave across runs)
     -- 'compact': Re-sort all channels into contiguous priority order every run (legacy default).
     --            Tidy guide, but a live channel's number can shift when events start/end.
@@ -638,7 +645,7 @@ CREATE TABLE IF NOT EXISTS settings (
     plex_servers JSON,
 
     -- Schema Version
-    schema_version INTEGER DEFAULT 103
+    schema_version INTEGER DEFAULT 105
 );
 
 -- Scoped stream-ordering rulesets. Runtime resolution intentionally remains
@@ -1852,6 +1859,10 @@ CREATE TABLE IF NOT EXISTS managed_channel_streams (
 
     -- Priority (0 = primary, higher = failover)
     priority INTEGER DEFAULT 0,
+
+    -- (fork) 1 = mirrored failover backup attached by separate_fallbacks.py; never affects
+    -- channel lifetime (see cleanup.py guards). 0 = a normally-matched stream row.
+    is_backup INTEGER DEFAULT 0,
 
     -- M3U account info (for display)
     m3u_account_id INTEGER,

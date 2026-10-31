@@ -393,6 +393,8 @@ class ChannelNumberingSettingsModel(BaseModel):
     channel_daily_reset_enabled: bool = True
     channel_daily_reset_time: str = "04:00"
     force_channel_relayout_pending: bool = False  # one-shot re-grid armed for next run
+    separate_fallback_enabled: bool = False  # (fork) separate-mode failover backups
+    separate_fallback_count: int = 3  # own stream + up to N backups (0-10)
 
 
 class ChannelNumberingSettingsUpdate(BaseModel):
@@ -406,6 +408,8 @@ class ChannelNumberingSettingsUpdate(BaseModel):
     channel_order_mode: str | None = None
     channel_daily_reset_enabled: bool | None = None
     channel_daily_reset_time: str | None = None
+    separate_fallback_enabled: bool | None = None
+    separate_fallback_count: int | None = None
 
 
 # =============================================================================

@@ -15,6 +15,7 @@ from datetime import date, time
 
 from teamarr.utilities.constants import (
     BROADCAST_NETWORKS,
+    COUNTRY_TRANSLATIONS,
     LIVE_STATUS_PREFIXES,
     PROVIDER_PREFIXES,
 )
@@ -263,24 +264,50 @@ def strip_live_status_prefix(text: str) -> tuple[str, str | None]:
 
 
 def apply_city_translations(text: str) -> str:
-    """Apply city name translations.
+    """Apply city and country name translations.
 
-    First normalizes with unidecode (München → Munchen),
-    then applies manual translations (munchen → munich).
+    First normalizes with unidecode (München → Munchen, España → Espana),
+    then applies manual translations (munchen → munich, espana → spain,
+    marruecos → morocco, etc.).
 
-    Delegates to fuzzy_match.translate_cities, which normalize_text also runs
-    on provider team names — a stream-only copy of this logic made native
+    Country translations are essential because many Spanish/Portuguese country
+    names score below the 60% fuzzy threshold against their English equivalents
+    (e.g. Marruecos↔Morocco = 50%, Inglaterra↔England = 47%), and two-team
+    matchups require BOTH teams to pass.
+
+    Replacements are word-bounded so short country names can't fire inside
+    longer words ("japon" must not rewrite "japones", "gales" must not rewrite
+    "legales"). Phrase entries still win over their substrings because
+    COUNTRY_TRANSLATIONS is ordered longest-key-first ("irlanda del norte"
+    before "irlanda").
+
+    The city pass delegates to fuzzy_match.translate_cities, which
+    normalize_text also runs on provider team names — a stream-only copy of this logic made native
     spellings the provider itself uses unmatchable (#797).
 
     Args:
-        text: Text containing city names
+        text: Text containing city/country names
 
     Returns:
-        Text with city names translated to English
+        Text with names translated to English
     """
     if not text:
         return text
-    return translate_cities(text)
+    # First pass: unidecode + CITY_TRANSLATIONS, shared with provider names (#797)
+    text = translate_cities(text)
+
+    # Second pass (fork): Spanish/Portuguese country names → English, stream
+    # side only. Word-bounded and longest-key-first (see docstring).
+    result = text
+    text_lower = text.lower()
+    for variant, english in COUNTRY_TRANSLATIONS.items():
+        if variant in text_lower:
+            pattern = re.compile(rf"\b{re.escape(variant)}\b", re.IGNORECASE)
+            result, count = pattern.subn(english, result)
+            if count:
+                text_lower = result.lower()
+
+    return result
 
 
 # =============================================================================

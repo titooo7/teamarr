@@ -29,14 +29,15 @@ def db(tmp_path, monkeypatch):
             "INSERT INTO event_epg_groups (id, name, leagues) "
             "VALUES (999991, 'test-ordering', '[\"nfl\"]')"
         )
-        # A main channel numbered ABOVE its keyword sibling — needs a swap.
+        # A keyword channel numbered ABOVE its main sibling — needs a swap
+        # (fork #17: keyword channels should sort before the main channel).
         conn.execute(
             """INSERT INTO managed_channels
                (id, event_id, event_provider, tvg_id, event_epg_group_id,
                 channel_name, channel_number, dispatcharr_channel_id,
                 exception_keyword)
                VALUES (1, 'evt-1', 'espn', 'tvg-main', 999991,
-                       'Main', 200, 1001, NULL)"""
+                       'Main', 100, 1001, NULL)"""
         )
         conn.execute(
             """INSERT INTO managed_channels
@@ -44,7 +45,7 @@ def db(tmp_path, monkeypatch):
                 channel_name, channel_number, dispatcharr_channel_id,
                 exception_keyword)
                VALUES (2, 'evt-1', 'espn', 'tvg-es', 999991,
-                       'Main (ES)', 100, 1002, 'spanish')"""
+                       'Main (ES)', 200, 1002, 'spanish')"""
         )
         conn.commit()
     yield
@@ -74,7 +75,7 @@ def test_swap_persists_when_dispatcharr_confirms_both(db):
 
     assert result.reordered_count == 1
     assert not result.errors
-    assert _numbers() == (100, 200), "main should take the lower number"
+    assert _numbers() == (200, 100), "keyword channel should take the lower number"
 
 
 def test_swap_not_persisted_when_first_update_fails(db):

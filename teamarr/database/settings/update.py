@@ -312,6 +312,8 @@ def update_channel_numbering_settings(
     channel_daily_reset_enabled: bool | None = None,
     channel_daily_reset_time: str | None = None,
     channel_order_mode: str | None = None,
+    separate_fallback_enabled: bool | None = None,
+    separate_fallback_count: int | None = None,
 ) -> bool:
     """Update channel numbering and consolidation settings.
 
@@ -350,6 +352,12 @@ def update_channel_numbering_settings(
         channel_daily_reset_enabled=channel_daily_reset_enabled,
         channel_daily_reset_time=channel_daily_reset_time,
         channel_order_mode=channel_order_mode,
+        separate_fallback_enabled=separate_fallback_enabled,
+        separate_fallback_count=(
+            max(0, min(10, int(separate_fallback_count)))
+            if separate_fallback_count is not None
+            else None
+        ),
     )
     if not provided:
         return False

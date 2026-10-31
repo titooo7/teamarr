@@ -66,7 +66,8 @@ class EventEPGOptions:
     untagged_keyword_label: str | None = None
 
 
-POSTPONED_LABEL = "Postponed: "
+# Fork: Spanish EPG output — upstream value is "Postponed: "
+POSTPONED_LABEL = "Aplazado: "
 
 
 def is_event_postponed(event: Event) -> bool:

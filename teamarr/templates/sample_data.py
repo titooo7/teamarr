@@ -286,13 +286,13 @@ SAMPLE_DATA: dict[str, dict[str, str]] = {
         "NBA": "Friday, December 20, 2024",
     },
     "game_date_short": {
-        "NBA": "Dec 22",
+        "NBA": "22-Dec",
     },
     "game_date_short.next": {
-        "NBA": "Dec 24",
+        "NBA": "24-Dec",
     },
     "game_date_short.last": {
-        "NBA": "Dec 20",
+        "NBA": "20-Dec",
     },
     "game_day": {
         "NBA": "Sunday",

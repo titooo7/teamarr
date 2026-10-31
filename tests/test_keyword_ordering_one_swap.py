@@ -4,6 +4,10 @@
 channel appears in two pairs, the second swap works from numbers the first swap
 already changed, and two channels end on one number. A channel must take part
 in at most one swap per pass; the next run finishes the rest.
+
+Fork #17: the enforcer puts keyword channels BEFORE the main channel, so every
+case below is upstream's case mirrored (main below its keywords is the
+mis-ordered shape).
 """
 
 from unittest.mock import MagicMock
@@ -73,28 +77,25 @@ def _run_passes(n: int) -> list[list[int]]:
 
 
 def test_one_main_two_keywords_never_share_a_number(make_db):
-    """Main 10, keywords 5 and 6: stock code ends with both keywords on 10."""
-    make_db([(1, 10, None), (2, 5, "spanish"), (3, 6, "french")])
+    """Main 5, keywords 10 and 11: a double swap would put the main on two numbers."""
+    make_db([(1, 5, None), (2, 10, "spanish"), (3, 11, "french")])
 
     _enforcer().enforce()
     after_one = _numbers()
 
     assert len(set(after_one)) == 3, f"two channels share a number: {after_one}"
-    assert after_one == [5, 10, 6]
+    assert after_one == [10, 5, 11]
 
 
 def test_four_mains_one_keyword_never_share_a_number(make_db):
-    """Live shape (2026-10-13): four mains 31003-31006, one Spanish keyword 31002.
-
-    Stock code put all four mains on 31002.
-    """
+    """Upstream's live shape mirrored: four mains 31002-31005, one keyword 31006."""
     make_db(
         [
-            (1, 31003, None),
-            (2, 31004, None),
-            (3, 31005, None),
-            (4, 31006, None),
-            (5, 31002, "spanish"),
+            (1, 31002, None),
+            (2, 31003, None),
+            (3, 31004, None),
+            (4, 31005, None),
+            (5, 31006, "spanish"),
         ]
     )
 
@@ -102,19 +103,19 @@ def test_four_mains_one_keyword_never_share_a_number(make_db):
 
     for numbers in passes:
         assert len(set(numbers)) == 5, f"two channels share a number: {numbers}"
-    assert passes[0] == [31002, 31004, 31005, 31006, 31003]
-    assert passes[-1] == [31002, 31003, 31004, 31005, 31006], "later passes finish the order"
+    assert passes[0] == [31006, 31003, 31004, 31005, 31002]
+    assert passes[-1][4] == min(passes[-1]), "keyword ends on the lowest number"
 
 
 def test_one_main_four_keywords_never_share_a_number(make_db):
-    """Main 31006 above keywords 31002-31005: stock code put four keywords on 31006."""
+    """Main 31002 below keywords 31003-31006."""
     make_db(
         [
-            (1, 31006, None),
-            (2, 31002, "a"),
-            (3, 31003, "b"),
-            (4, 31004, "c"),
-            (5, 31005, "d"),
+            (1, 31002, None),
+            (2, 31003, "a"),
+            (3, 31004, "b"),
+            (4, 31005, "c"),
+            (5, 31006, "d"),
         ]
     )
 
@@ -122,13 +123,13 @@ def test_one_main_four_keywords_never_share_a_number(make_db):
 
     for numbers in passes:
         assert len(set(numbers)) == 5, f"two channels share a number: {numbers}"
-    assert passes[-1][0] == 31002, "main ends on the lowest number"
+    assert passes[-1][0] == 31006, "main ends on the highest number"
 
 
 def test_settled_order_is_not_touched(make_db):
-    make_db([(1, 10, None), (2, 11, "spanish")])
+    make_db([(1, 11, None), (2, 10, "spanish")])
 
     result = _enforcer().enforce()
 
     assert result.reordered_count == 0
-    assert _numbers() == [10, 11]
+    assert _numbers() == [11, 10]

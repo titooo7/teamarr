@@ -163,6 +163,9 @@ class FakeStream:
     dispatcharr_stream_id: int
     source_group_id: int | None
     stream_name: str | None = None
+    # (fork) 1 = separate-fallback backup row — must never affect channel
+    # lifetime (teamarr/consumers/lifecycle/cleanup.py guards).
+    is_backup: bool = False
 
 
 @dataclass

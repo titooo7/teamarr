@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from teamarr.consumers.generation_status import is_in_progress
+from teamarr.consumers.lifecycle.separate_fallbacks import BACKUP_PRIORITY_OFFSET
 from teamarr.database import get_db
 from teamarr.database.channels import (
     get_all_managed_channels,
@@ -726,6 +727,9 @@ def get_managed_channel_streams(channel_id: int):
             expected_by_stream[s.dispatcharr_stream_id] = (
                 ordering_service.compute_priority(s, group_name) if has_rules else s.priority
             )
+            if has_rules and s.is_backup:
+                # (fork) separate-fallback backups sit behind the primary band
+                expected_by_stream[s.dispatcharr_stream_id] += BACKUP_PRIORITY_OFFSET
 
         # Explain how each stream matched its event (cache-derived; absent for
         # EPG / dedicated matches that bypass the fingerprint cache).

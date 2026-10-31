@@ -4,6 +4,8 @@ These variables provide home/away context, positional team references,
 and feed team data for streams broken out into home/away channels.
 """
 
+import re
+
 from teamarr.core.naming import matchup_connector, ranked_with_article, team_with_article
 from teamarr.templates.context import GameContext, TemplateContext
 from teamarr.templates.variables.registry import (
@@ -12,6 +14,32 @@ from teamarr.templates.variables.registry import (
     TemplateScope,
     register_variable,
 )
+from teamarr.utilities.constants import ENGLISH_TO_SPANISH_COUNTRIES
+
+# Youth/women national team suffixes ESPN appends to the country name:
+# "Spain U21", "Mexico U-20", "Japan U23", "Spain W". Case-sensitive on
+# purpose — a lowercase trailing "w" is not a team suffix.
+_NATIONAL_TEAM_SUFFIX_RE = re.compile(r"^(?P<base>.+?)\s+(?P<suffix>U-?\d{1,2}|W)$")
+
+
+def _translate_country_for_display(name: str) -> str:
+    """Translate English country names to Spanish for channel name display.
+
+    Only translates when the entire team name matches a known country —
+    optionally followed by a youth/women suffix ("Spain U21" → "España U21")
+    — so club names ('Real Madrid', 'Detroit Lions') are left untouched.
+    Matching, IDs, and logs keep the canonical English name — this is
+    display-only.
+    """
+    translated = ENGLISH_TO_SPANISH_COUNTRIES.get(name)
+    if translated:
+        return translated
+    m = _NATIONAL_TEAM_SUFFIX_RE.match(name)
+    if m:
+        base = ENGLISH_TO_SPANISH_COUNTRIES.get(m.group("base"))
+        if base:
+            return f"{base} {m.group('suffix')}"
+    return name
 
 
 def _is_home(ctx: TemplateContext, game_ctx: GameContext | None) -> bool | None:
@@ -105,7 +133,7 @@ def extract_vs_symbol(ctx: TemplateContext, game_ctx: GameContext | None) -> str
 def extract_home_team(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     if not game_ctx or not game_ctx.event:
         return ""
-    return game_ctx.event.home_team.name
+    return _translate_country_for_display(game_ctx.event.home_team.name)
 
 
 @register_variable(
@@ -115,6 +143,38 @@ def extract_home_team(ctx: TemplateContext, game_ctx: GameContext | None) -> str
     description="Away team name (positional)",
 )
 def extract_away_team(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    if not game_ctx or not game_ctx.event:
+        return ""
+    return _translate_country_for_display(game_ctx.event.away_team.name)
+
+
+@register_variable(
+    name="home_team_en",
+    category=Category.HOME_AWAY,
+    suffix_rules=SuffixRules.ALL,
+    description=(
+        "Home team name (positional), untranslated English — for art/logo URLs "
+        "and external-service keys built from the team name. {home_team} is "
+        "translated to Spanish for display (national teams); this is not."
+    ),
+)
+def extract_home_team_en(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    if not game_ctx or not game_ctx.event:
+        return ""
+    return game_ctx.event.home_team.name
+
+
+@register_variable(
+    name="away_team_en",
+    category=Category.HOME_AWAY,
+    suffix_rules=SuffixRules.ALL,
+    description=(
+        "Away team name (positional), untranslated English — for art/logo URLs "
+        "and external-service keys built from the team name. {away_team} is "
+        "translated to Spanish for display (national teams); this is not."
+    ),
+)
+def extract_away_team_en(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     if not game_ctx or not game_ctx.event:
         return ""
     return game_ctx.event.away_team.name
@@ -129,7 +189,7 @@ def extract_away_team(ctx: TemplateContext, game_ctx: GameContext | None) -> str
 def extract_home_team_short(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     if not game_ctx or not game_ctx.event:
         return ""
-    return game_ctx.event.home_team.short_name
+    return _translate_country_for_display(game_ctx.event.home_team.short_name)
 
 
 @register_variable(
@@ -141,7 +201,7 @@ def extract_home_team_short(ctx: TemplateContext, game_ctx: GameContext | None) 
 def extract_away_team_short(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     if not game_ctx or not game_ctx.event:
         return ""
-    return game_ctx.event.away_team.short_name
+    return _translate_country_for_display(game_ctx.event.away_team.short_name)
 
 
 def _abbrev_or_name(team) -> str:

@@ -61,5 +61,5 @@ def test_versioned_upgrade_lands_on_103(db_conn):
     _source(db_conn, "unbound", group_id=None, pattern_on=True)
     db_conn.execute("UPDATE settings SET schema_version = 102")
     _run_migrations(db_conn)
-    assert db_conn.execute("SELECT schema_version FROM settings").fetchone()[0] == 103
+    assert db_conn.execute("SELECT schema_version FROM settings").fetchone()[0] == 105
     assert _enabled(db_conn) == {"unbound": False}

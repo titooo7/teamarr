@@ -5,6 +5,7 @@ Full CRUD is in database/exception_keywords.py.
 """
 
 import re
+import unicodedata
 from sqlite3 import Connection
 from typing import Any
 
@@ -28,6 +29,18 @@ def get_keywords_for_league(
 
     base = global_keywords if global_keywords is not None else get_exception_keywords(conn)
     return race_feed_keywords(conn, league) + base
+
+
+def _strip_accents(text: str) -> str:
+    """Return *text* with Latin combining marks removed (accent-insensitive).
+
+    Decomposes via NFD and drops combining characters (category ``Mn``) so that
+    ``español`` and ``espanol``, ``français`` and ``francais`` match each other.
+    The same transform is applied to BOTH the stream text and each match term,
+    so CJK / Hangul terms (e.g. 日本語, 한국어, 中文) still self-match even though
+    NFD decomposes Hangul syllables — both sides are converted identically.
+    """
+    return "".join(c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn")
 
 
 def get_exception_keywords(conn: Connection, enabled_only: bool = True) -> list[ExceptionKeyword]:
@@ -67,16 +80,18 @@ def _make_keyword_pattern(term: str) -> str:
     Returns:
         Regex pattern string
     """
-    escaped = re.escape(term.lower())
+    # Normalise (lowercase + accent-stripped) once for pattern + boundaries
+    norm = _strip_accents(term.lower())
+    escaped = re.escape(norm)
 
     # Start boundary: \b if term starts with word char, else (?<!\w)
-    if term and re.match(r"\w", term[0]):
+    if norm and re.match(r"\w", norm[0]):
         start = r"\b"
     else:
         start = r"(?<!\w)"
 
     # End boundary: \b if term ends with word char, else (?!\w)
-    if term and re.match(r"\w", term[-1]):
+    if norm and re.match(r"\w", norm[-1]):
         end = r"\b"
     else:
         end = r"(?!\w)"
@@ -155,6 +170,10 @@ def check_exception_keyword(
     The #803 guard applies to match terms only; a user-written regex is
     taken as intended.
 
+    Accent-insensitive: both the stream name and each match term are normalised
+    (lowercase + Latin diacritics stripped) before comparison, so ``espanol``
+    matches a configured ``Español`` term and ``francais`` matches ``Français``.
+
     Args:
         stream_name: Stream name to check
         keywords: List of ExceptionKeyword objects
@@ -206,11 +225,11 @@ def _first_keyword_match(
     `check_exception_keyword`); within one kind, ``keywords`` is already in
     precedence order — race feeds, then the user's order (#931).
     """
-    event_lower = event_text.lower() if event_text else ""
+    event_lower = _strip_accents(event_text.lower()) if event_text else ""
     for text, use_regex in ((stream_name, True), (program_title, False)):
         if not text:
             continue
-        text_lower = text.lower()
+        text_lower = _strip_accents(text.lower())
         for kw in keywords:
             for term in kw.match_term_list:
                 pattern = _make_keyword_pattern(term)

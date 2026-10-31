@@ -279,8 +279,8 @@ def test_gap_sticky_keyword_variants_stay_contiguous(db):
     assert nums["A"] == 101 and nums["B"] == 104  # anchors untouched
     # Main channel + keyword variant slot into the 102/103 gap, adjacent.
     assert {nums["NEW"], nums["NEW (Spanish)"]} == {102, 103}
-    # Main channel sorts before the keyword variant.
-    assert nums["NEW"] < nums["NEW (Spanish)"]
+    # Fork #17: keyword variant sorts before the main channel.
+    assert nums["NEW (Spanish)"] < nums["NEW"]
 
 
 def test_gap_reset_keyword_variant_contiguous_with_gap_between_events(db):
@@ -294,7 +294,8 @@ def test_gap_reset_keyword_variant_contiguous_with_gap_between_events(db):
 
     cn.reassign_all_channels(db, force_reset=True)
     nums = _numbers(db)
-    assert nums["Main"] == 101 and nums["Main (Spanish)"] == 102  # adjacent block
+    # Fork #17: keyword variant leads the adjacent block.
+    assert nums["Main (Spanish)"] == 101 and nums["Main"] == 102
     assert nums["Solo"] == 105  # full gap after the block end (102 + gap)
 
 

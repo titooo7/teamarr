@@ -39,7 +39,7 @@ class TestSlugifyKeyword:
         assert slugify_keyword("  French  ") == "french"
 
     def test_special_chars(self):
-        assert slugify_keyword("En Español") == "en-espa-ol"
+        assert slugify_keyword("En Español") == "en-espanol"
 
     def test_unicode_cjk(self):
         # CJK characters are non-alphanumeric and get replaced with hyphens

@@ -28,7 +28,6 @@ import {
   useExceptionKeywords,
   useCreateExceptionKeyword,
   useDeleteExceptionKeyword,
-  useChannelNumberingSettings,
 } from "@/hooks/useSettings"
 import {
   updateExceptionKeyword,
@@ -41,8 +40,12 @@ import { EMPTY_SOURCES, countSources } from "@/lib/keyword-sources"
 /**
  * Exception Keywords management — streams matching these terms get special
  * handling during consolidation. Lifted out of Settings into the Matching home
- * (v2.7.0 IA); self-contained via its own hooks. Only relevant (and shown) when
- * global consolidation is enabled, mirroring the original Settings gate.
+ * (v2.7.0 IA); self-contained via its own hooks.
+ *
+ * (fork fix) Previously gated on `global_consolidation_mode === "consolidate"`,
+ * which hid this entire card whenever the global mode was "separate" — but
+ * per-keyword `behavior` is honored in BOTH modes (creator.py), so that gate
+ * was hiding a fully-functional table any time separate mode was the default.
  */
 export function ExceptionKeywordsCard() {
   // include_disabled=true (#522): a keyword disabled via the API used to
@@ -50,7 +53,6 @@ export function ExceptionKeywordsCard() {
   const keywordsQuery = useExceptionKeywords(true)
   const createKeyword = useCreateExceptionKeyword()
   const deleteKeyword = useDeleteExceptionKeyword()
-  const { data: channelNumbering } = useChannelNumberingSettings()
 
   const [newKeyword, setNewKeyword] = useState({ label: "", match_terms: "", behavior: "consolidate" })
   const [editingKeyword, setEditingKeyword] = useState<{ id: number; label: string; match_terms: string } | null>(null)
@@ -162,9 +164,6 @@ export function ExceptionKeywordsCard() {
       toast.error("Failed to update keyword")
     }
   }
-
-  // Only relevant when global consolidation is on (mirrors the original gate).
-  if (channelNumbering?.global_consolidation_mode !== "consolidate") return null
 
   return (
     <Card>

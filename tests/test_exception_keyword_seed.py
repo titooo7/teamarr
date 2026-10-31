@@ -55,7 +55,7 @@ class TestFreshInstall:
         init_db(db_path)
         conn = _open(db_path)
         rows = conn.execute(
-            "SELECT COUNT(*) FROM consolidation_exception_keywords WHERE label = 'Spanish'"
+            "SELECT COUNT(*) FROM consolidation_exception_keywords WHERE label = 'Español'"
         ).fetchone()[0]
         assert rows == 1
 
@@ -63,19 +63,19 @@ class TestFreshInstall:
 class TestDeletionSurvivesRestart:
     def test_deleted_default_stays_deleted(self, db_path):
         conn = _open(db_path)
-        spanish = next(kw for kw in get_all_keywords(conn) if kw.label == "Spanish")
+        spanish = next(kw for kw in get_all_keywords(conn) if kw.label == "Español")
         assert delete_keyword(conn, spanish.id)
         conn.close()
 
         init_db(db_path)  # the restart that used to resurrect it
 
         conn = _open(db_path)
-        assert "Spanish" not in _labels(conn)
-        assert "French" in _labels(conn)  # untouched defaults still there
+        assert "Español" not in _labels(conn)
+        assert "Francés" in _labels(conn)  # untouched defaults still there
 
     def test_renamed_default_is_not_reseeded(self, db_path):
         conn = _open(db_path)
-        spanish = next(kw for kw in get_all_keywords(conn) if kw.label == "Spanish")
+        spanish = next(kw for kw in get_all_keywords(conn) if kw.label == "Español")
         conn.execute(
             "UPDATE consolidation_exception_keywords SET label = 'Castellano' WHERE id = ?",
             (spanish.id,),
@@ -88,7 +88,7 @@ class TestDeletionSurvivesRestart:
         conn = _open(db_path)
         labels = _labels(conn)
         assert "Castellano" in labels
-        assert "Spanish" not in labels
+        assert "Español" not in labels
 
     def test_all_defaults_deleted_stay_deleted(self, db_path):
         conn = _open(db_path)
@@ -116,12 +116,12 @@ class TestNewDefaultsStillReachExistingInstalls:
     def test_label_absent_from_marker_is_seeded(self, db_path):
         """A default added in a later release is offered once to old installs."""
         conn = _open(db_path)
-        conn.execute("DELETE FROM seeded_default_exception_keywords WHERE label = 'Korean'")
-        conn.execute("DELETE FROM consolidation_exception_keywords WHERE label = 'Korean'")
+        conn.execute("DELETE FROM seeded_default_exception_keywords WHERE label = 'Coreano'")
+        conn.execute("DELETE FROM consolidation_exception_keywords WHERE label = 'Coreano'")
         conn.commit()
 
         assert seed_default_exception_keywords(conn) == 1
-        assert "Korean" in _labels(conn)
+        assert "Coreano" in _labels(conn)
 
         # ...and only once.
         assert seed_default_exception_keywords(conn) == 0
@@ -136,7 +136,7 @@ class TestV93Migration:
         conn = _open(path)
         # Simulate a pre-v93 install: no marker rows, user deleted Spanish.
         conn.execute("DELETE FROM seeded_default_exception_keywords")
-        conn.execute("DELETE FROM consolidation_exception_keywords WHERE label = 'Spanish'")
+        conn.execute("DELETE FROM consolidation_exception_keywords WHERE label = 'Español'")
         conn.execute("UPDATE settings SET schema_version = 92 WHERE id = 1")
         conn.commit()
 
@@ -145,4 +145,4 @@ class TestV93Migration:
         seeded = {r[0] for r in conn.execute("SELECT label FROM seeded_default_exception_keywords")}
         assert seeded == DEFAULT_LABELS
         assert seed_default_exception_keywords(conn) == 0
-        assert "Spanish" not in _labels(conn)
+        assert "Español" not in _labels(conn)

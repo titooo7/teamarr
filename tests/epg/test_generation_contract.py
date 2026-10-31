@@ -331,6 +331,7 @@ def test_phase_timing_keys_and_order(isolated_db):
         "channel_reassign",
         "team_channels",
         "stream_ordering",
+        "separate_fallbacks",
         "xmltv_save",
         "dispatcharr_epg_refresh",
         "deletions",
@@ -356,6 +357,7 @@ def test_fixed_stage_list_keeps_phase_order_and_checkpoints():
         ("_stage_channel_reassign", True, "channel_reassign"),
         ("_stage_team_channels", True, "team_channels"),
         ("_stage_stream_ordering", True, "stream_ordering"),
+        ("_stage_separate_fallbacks", True, "separate_fallbacks"),
         ("_stage_xmltv_save", True, "xmltv_save"),
         ("_stage_lifecycle_prepare", False, None),
         ("_stage_dispatcharr_epg", True, "dispatcharr_epg_refresh"),
@@ -475,7 +477,7 @@ def test_success_epilogue_order(isolated_db, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_full_run_has_twelve_cancellation_checkpoints(isolated_db, monkeypatch):
+def test_full_run_has_thirteen_cancellation_checkpoints(isolated_db, monkeypatch):
     """Count the checkpoints a complete run passes through.
 
     Packet 3 marks stages ``cancellation_before=True``; this is the number it
@@ -496,7 +498,7 @@ def test_full_run_has_twelve_cancellation_checkpoints(isolated_db, monkeypatch):
     result, _ = _run(isolated_db)
 
     assert result.success is True
-    assert calls["n"] == 12
+    assert calls["n"] == 13  # (fork) +1: separate_fallbacks stage
 
 
 @pytest.mark.parametrize(

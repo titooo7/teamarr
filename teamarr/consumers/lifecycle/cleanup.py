@@ -403,6 +403,16 @@ class ChannelCleanup(_LifecycleHost):
                         if not stream_id:
                             continue
 
+                        # (fork) Skip separate-fallback backup rows entirely —
+                        # they must never affect channel lifetime. Without this,
+                        # a separate-mode channel whose own (primary) stream
+                        # left the M3U would survive as a zombie pointing at a
+                        # dead primary, kept "alive" only by its healthy
+                        # backups (valid_streams non-empty). Backups have their
+                        # own lifecycle in separate_fallbacks.py.
+                        if getattr(s, "is_backup", False):
+                            continue
+
                         # Cross-group stream: not in this group's M3U pool
                         is_cross_group = (
                             s.source_group_id is not None and s.source_group_id != group_id
@@ -789,7 +799,19 @@ class ChannelCleanup(_LifecycleHost):
                                 result["detached"] += 1
 
                             # Delete the channel only if nothing else feeds it now.
-                            remaining = [s for s in active if s.source_group_id != group_id]
+                            # (fork) Backup rows (is_backup) never count toward
+                            # keeping a channel alive — a separate-fallback
+                            # backup sourced from another, still-enabled group
+                            # must not keep alive a channel whose own stream
+                            # came from the disabled group. Backups sourced
+                            # from THIS group were already detached above via
+                            # from_group, same as any other stream.
+                            remaining = [
+                                s
+                                for s in active
+                                if s.source_group_id != group_id
+                                and not getattr(s, "is_backup", False)
+                            ]
                             if not remaining:
                                 if self.delete_managed_channel(
                                     conn, channel.id, reason=f"Group '{group_name}' disabled"

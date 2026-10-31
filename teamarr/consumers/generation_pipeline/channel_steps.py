@@ -129,6 +129,7 @@ def apply_stream_ordering(
     enough to trigger a push.
     """
     from teamarr.consumers.lifecycle import is_channel_event_live
+    from teamarr.consumers.lifecycle.separate_fallbacks import BACKUP_PRIORITY_OFFSET
     from teamarr.database.channels import (
         get_all_channel_streams,
         get_all_managed_channels,
@@ -307,6 +308,13 @@ def apply_stream_ordering(
                 if ordering_service.rules:
                     for stream in streams:
                         new_priority = ordering_service.compute_priority(stream)
+                        if stream.is_backup:
+                            # (fork) Keep separate-fallback backups behind the
+                            # primary's rule-priority band instead of flattening
+                            # them back into it — and stable run to run, so the
+                            # #712 drift check never oscillates. Phase 1 only:
+                            # a DB write, nothing for phases 2/3 to know about.
+                            new_priority += BACKUP_PRIORITY_OFFSET
                         if stream.priority != new_priority:
                             update_stream_priority(conn, stream.id, new_priority)
                             reordered_count += 1

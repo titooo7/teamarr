@@ -18,6 +18,14 @@ from teamarr.database.settings import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _stock_keyword_order(monkeypatch):
+    """Fork #17 sorts keyword channels first; these expectations are upstream's
+    and assume the stock main-first tie-break. The fork direction is covered by
+    tests/lifecycle/test_keyword_first_ordering.py."""
+    monkeypatch.setattr(cn, "KEYWORD_CHANNELS_FIRST", False)
+
+
 @pytest.fixture
 def slate(db_conn):
     """Three games: NFL at 20:00, NBA at 18:00 and 20:00. Football is listed

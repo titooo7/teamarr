@@ -47,13 +47,13 @@ def extract_game_date(ctx: TemplateContext, game_ctx: GameContext | None) -> str
     name="game_date_short",
     category=Category.DATETIME,
     suffix_rules=SuffixRules.ALL,
-    description="Short game date (e.g., 'Dec 10')",
+    description="Short game date (e.g., '10-Dec')",
 )
 def extract_game_date_short(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     dt = _get_local_time(game_ctx)
     if not dt:
         return ""
-    return strftime_compat(dt, "%b %-d")
+    return strftime_compat(dt, "%-d-%b")
 
 
 @register_variable(

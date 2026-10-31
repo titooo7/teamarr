@@ -132,6 +132,57 @@ def test_build_input_no_split_when_subtitle_present():
     assert build_match_input(p) == "MLB Baseball: Special | Cubs at Cardinals"
 
 
+def test_build_input_strips_star_rating_suffix():
+    """Fork customization #18 (2026-08-30): a guide-source star rating in
+    sub_title ("2026 | TP | ★6.6/10") must not survive into the match input.
+
+    "N.N/10" collides with normalizer.py's bare MM/DD date pattern — a
+    fractional rating gets misread as a real date ("6/10" -> June 10),
+    which is then trusted and silently kills an otherwise-correct team match
+    on the real broadcast date. Root-caused via a live production incident
+    (Real Madrid - Málaga, 2026-08-30): the teams scored 100/100 but the
+    match was rejected as an 81-day date mismatch. Whole-number ratings
+    (★6.0/10 -> "0/10") happen to form an invalid date and dodge the bug,
+    which is why it went unnoticed until a fractional rating hit it.
+    """
+    p = _prog("DIRECTO Jornada 3: Real Madrid - Málaga T26/27 · LALIGA EA SPORTS",
+               "2026 | TP | ★6.6/10")
+    result = build_match_input(p)
+    assert "★" not in result
+    assert "/10" not in result
+    assert "2026" in result  # the year and rating-category text are untouched
+    assert "TP" in result
+
+
+def test_build_input_star_rating_suffix_no_false_date():
+    """End-to-end: the stripped rating must not survive to normalize_stream
+    as a false extracted_date (the actual production failure mode)."""
+    from teamarr.consumers.matching.normalizer import normalize_stream
+
+    p = _prog("DIRECTO Jornada 3: Real Madrid - Málaga T26/27 · LALIGA EA SPORTS",
+               "2026 | TP | ★6.6/10")
+    normalized = normalize_stream(build_match_input(p))
+    assert normalized.extracted_date is None
+
+    # A whole-number rating ("★6.0/10") happened to dodge the bug via an
+    # invalid "0/10" date — must keep behaving the same (no false positive
+    # either way) now that the rating is stripped outright.
+    p_whole = _prog("DIRECTO Jornada 3: Celta - Athletic T26/27 · LALIGA EA SPORTS",
+                     "2026 | TP | ★6.0/10")
+    normalized_whole = normalize_stream(build_match_input(p_whole))
+    assert normalized_whole.extracted_date is None
+
+
+def test_build_input_real_date_survives_rating_strip():
+    # A genuine embedded date elsewhere in the string must still extract —
+    # the rating strip must not over-match ordinary "N/N" text.
+    from teamarr.consumers.matching.normalizer import normalize_stream
+
+    p = _prog("MLB Baseball", "Chicago Cubs at St. Louis Cardinals 8/30 7:05 ET")
+    normalized = normalize_stream(build_match_input(p))
+    assert normalized.extracted_date is not None
+
+
 def test_category_title_does_not_pollute_team_extraction():
     """Regression: a show/category title must not fold into the first team.
 

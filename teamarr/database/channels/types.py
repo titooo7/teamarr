@@ -186,6 +186,9 @@ class ManagedChannelStream:
     # Stream stats cached from Dispatcharr (video codec, resolution, bitrate, fps, etc.)
     stream_stats: dict | None = None
     stream_stats_updated_at: datetime | None = None
+    # (fork) 1 = mirrored failover backup attached by separate_fallbacks.py; never
+    # affects channel lifetime. 0 = a normally-matched stream row.
+    is_backup: bool = False
 
     @property
     def measured_dead_or_blank(self) -> bool:
@@ -251,4 +254,5 @@ class ManagedChannelStream:
             detach_at=row.get("detach_at"),
             stream_stats=stream_stats,
             stream_stats_updated_at=row.get("stream_stats_updated_at"),
+            is_backup=bool(row.get("is_backup", 0)),
         )

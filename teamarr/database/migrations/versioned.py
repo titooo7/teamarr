@@ -449,6 +449,31 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         )
         current_version = 103
 
+    # ==========================================================================
+    # Fork migrations (Spanish localization). Always the last two numbers in the
+    # chain: renumber to upstream's latest + 1/+2 on every port where upstream
+    # claims these numbers (they were v85/v86 until the v2.25.1 port). Both are
+    # additive and idempotent, so a DB that already ran them under the old
+    # numbers only gains whatever terms are still missing.
+    # ==========================================================================
+    if current_version < 104:
+        _apply_migration(
+            conn,
+            104,
+            "(fork) add un-accented exception keyword match terms",
+            _migrate_v104_exception_keyword_accents,
+        )
+        current_version = 104
+
+    if current_version < 105:
+        _apply_migration(
+            conn,
+            105,
+            "(fork) add Spanish language names as exception keyword match terms",
+            _migrate_v105_spanish_language_names,
+        )
+        current_version = 105
+
 
 # =============================================================================
 # Migration helpers
@@ -2909,6 +2934,79 @@ def _migrate_v97_plugin_channel_identity(conn: sqlite3.Connection) -> None:
                             COALESCE(feed_team_id, ''), primary_stream_id)
         WHERE deleted_at IS NULL AND plugin_id IS NULL
     """)
+
+
+def _append_exception_keyword_terms(
+    conn: sqlite3.Connection, labels: tuple[str, ...], terms: list[str]
+) -> list[str]:
+    """(fork) Append each missing term to the keyword row(s) with one of ``labels``.
+
+    Additive only: a term already present (case-insensitive) is skipped and no
+    existing term is ever removed or reordered, so terms a user added by hand
+    (``MAX ES``, ``Fanatiz``, ...) survive. Returns the labels that changed.
+    """
+    placeholders = ", ".join("?" for _ in labels)
+    rows = conn.execute(
+        f"SELECT id, label, match_terms FROM consolidation_exception_keywords "
+        f"WHERE label IN ({placeholders})",
+        labels,
+    ).fetchall()
+    changed = []
+    for row in rows:
+        current = [t.strip() for t in (row["match_terms"] or "").split(",") if t.strip()]
+        present = {t.lower() for t in current}
+        missing = [t for t in terms if t.lower() not in present]
+        if not missing:
+            continue
+        conn.execute(
+            "UPDATE consolidation_exception_keywords SET match_terms = ? WHERE id = ?",
+            (", ".join(current + missing), row["id"]),
+        )
+        changed.append(row["label"])
+    return changed
+
+
+def _migrate_v104_exception_keyword_accents(conn: sqlite3.Connection) -> None:
+    """v104 (fork, was v85): un-accented variants in exception keyword match_terms.
+
+    ``keywords.py`` matches accent-insensitively, so ``espanol`` already finds
+    ``Español``; this back-fills the plain-ASCII spellings into the stored rows
+    so they also work under a stock upstream image. Matches the row by its stock
+    English label or the fork's Spanish one.
+    """
+    if not _table_exists(conn, "consolidation_exception_keywords"):
+        return  # fresh/partial schema — the default seed carries the terms
+
+    updates = [
+        (("Spanish", "Español"), ["En Espanol", "Espanol"]),
+        (("French", "Francés"), ["En Francais", "Francais"]),
+        (("Portuguese", "Portugués"), ["Portugues"]),
+    ]
+    for labels, terms in updates:
+        for label in _append_exception_keyword_terms(conn, labels, terms):
+            logger.info("[MIGRATE v104] Added un-accented terms to '%s'", label)
+
+
+def _migrate_v105_spanish_language_names(conn: sqlite3.Connection) -> None:
+    """v105 (fork, was v86): Spanish language names as exception keyword terms.
+
+    Streams tagged ``EN ALEMÁN`` / ``en japones`` / ``en coreano`` matched no
+    keyword because only the English and native names were terms. Adds the
+    Spanish name plus an un-accented duplicate. Additive (see v104).
+    """
+    if not _table_exists(conn, "consolidation_exception_keywords"):
+        return  # fresh/partial schema — the default seed carries the terms
+
+    updates = [
+        (("German", "Alemán"), ["Alemán", "Aleman"]),
+        (("French", "Francés"), ["Francés", "Frances"]),
+        (("Japanese", "Japonés"), ["Japonés", "Japones"]),
+        (("Korean", "Coreano"), ["Coreano"]),
+        (("Chinese", "Chino"), ["Chino"]),
+    ]
+    for labels, terms in updates:
+        for label in _append_exception_keyword_terms(conn, labels, terms):
+            logger.info("[MIGRATE v105] Added Spanish language name to '%s'", label)
 
 
 def _migrate_v103_disable_unbound_pattern_sources(conn: sqlite3.Connection) -> None:

@@ -6,7 +6,9 @@ for everything else. The stability mode (compact / gap / strict) is applied
 inside each lane by the placement cores at the bottom of this module.
 
 Sort order is always: priority team → sport_priority → league_priority →
-event_time → event_id. Priorities come from channel_sort_priorities (drag-drop UI).
+event_time → event_id → keyword (fork: exception-keyword channels, e.g.
+"(Español)", sort before the plain channel for the same event — see
+keyword_sort below). Priorities come from channel_sort_priorities (drag-drop UI).
 
 Manual mode (per-league starts) was retired in v88; its league starts were
 migrated to league-scoped pinned blocks. See
@@ -22,6 +24,12 @@ from teamarr.database.priority_teams import get_priority_team_match_keys
 from teamarr.database.sort_priorities import get_all_sort_priorities
 
 logger = logging.getLogger(__name__)
+
+# Fork customization #17: exception-keyword channels sort before the plain
+# channel for the same event (upstream: after). A module flag only so upstream's
+# lane-allocation goldens (tests/lifecycle/test_numbering_lanes.py) can pin the
+# stock direction and stay byte-identical across ports.
+KEYWORD_CHANNELS_FIRST = True
 
 MAX_CHANNEL = 999999  # Effectively no limit per Dispatcharr update
 
@@ -403,7 +411,8 @@ def get_all_channels_sorted(conn: Connection) -> list[dict]:
     2. League priority (from channel_sort_priorities, lower = earlier)
     3. Event start time (earlier = earlier)
     4. Event ID (deterministic for same time)
-    5. Main channel before keyword channels
+    5. (fork #17) Keyword channels (e.g. "(Español)") before the main channel,
+       for the same event
 
     With ``channel_order_mode = 'start_time'`` (#934, opt-in) start time moves
     ahead of the sport and league order: priority teams (everything) → start
@@ -505,6 +514,7 @@ def get_all_channels_sorted(conn: Connection) -> list[dict]:
 
     # 3. Sort by: priority team (all) → sport → priority team (sport) → league →
     #    priority team (league) → time → event_id → keyword
+    # (fork: keyword_sort below is inverted vs. upstream — see its docstring)
     def sort_key(ch):
         sport = ch.get("sport") or ""
         league = ch.get("league") or ""
@@ -541,8 +551,14 @@ def get_all_channels_sorted(conn: Connection) -> list[dict]:
         else:
             event_date = datetime.max
 
-        # Main channel (no keyword) sorts before keyword channels
-        keyword_sort = (0, "") if not keyword else (1, keyword)
+        # Fork customization #17: exception-keyword channels (e.g. "(Español)")
+        # sort before the plain channel for the same event. This is only the
+        # LAST element of the tuple below, so it's a same-event tie-break only —
+        # it never moves a channel relative to a different event's channels.
+        if KEYWORD_CHANNELS_FIRST:
+            keyword_sort = (0, keyword) if keyword else (1, "")
+        else:
+            keyword_sort = (0, "") if not keyword else (1, keyword)
 
         if time_first:
             # "Everything" priority teams still lead; the sport- and

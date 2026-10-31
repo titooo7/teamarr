@@ -162,7 +162,7 @@ This means "add a new column" is no longer coupled to a schema version bump — 
 
 ## Version History
 
-**Current schema version: 103** (not every version number has a migration block — column-only versions are handled by reconciliation)
+**Current schema version: 105** (fork: 104/105 are the fork's Spanish-localization migrations) (not every version number has a migration block — column-only versions are handled by reconciliation)
 
 | Version | Type | Description |
 |---------|------|-------------|
@@ -179,3 +179,5 @@ This means "add a new column" is no longer coupled to a schema version bump — 
 | 101 | Data | Migrates recognized franchise cricket team identities and selections from TSDB to ESPN, preserving channel configuration and clearing provider caches (#1069) |
 | 102 | Data | Removes the LFA league (#1083): ESPN's `mma/lfa` slug stopped listing cards after June 2026; drops the row, subscriptions to it and its cache rows |
 | 103 | Data | Disables sources that were bound by group-name pattern only and have no `m3u_group_id` (#1089): #1056 left them reading every stream in Dispatcharr |
+| 104 | Data | (fork) Adds un-accented variants (`Espanol`, `Francais`, `Portugues`) to the Spanish/French/Portuguese exception keywords — additive, was v85 before the v2.25.1 port |
+| 105 | Data | (fork) Adds Spanish language names (`Alemán`, `Japonés`, `Coreano`, `Chino`, `Francés` + un-accented forms) to exception keyword match terms — additive, was v86 before the v2.25.1 port |

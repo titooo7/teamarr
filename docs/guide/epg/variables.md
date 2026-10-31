@@ -193,7 +193,7 @@ Game scheduling information.
 | Variable | Description | Suffixes | Sample |
 |----------|-------------|----------|--------|
 | `{game_date}` | Full game date | base, .next, .last | `Sunday, December 22, 2024` |
-| `{game_date_short}` | Short game date | base, .next, .last | `Dec 22` |
+| `{game_date_short}` | Short game date | base, .next, .last | `22-Dec` |
 | `{game_day}` | Day of week | base, .next, .last | `Sunday` |
 | `{game_day_short}` | Short day of week | base, .next, .last | `Sun` |
 | `{game_time}` | Game time formatted per user settings. Reads `TBD` when the provider has not announced a start time; until it does, the game is shown as an all-day programme on its date, and moves to its real slot once the time is published | base, .next, .last | `1:00 PM EST` |

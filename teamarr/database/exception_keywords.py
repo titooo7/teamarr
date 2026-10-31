@@ -437,16 +437,24 @@ def delete_keyword(conn: Connection, keyword_id: int) -> bool:
 # there is never offered again, which makes a delete (or a rename away from
 # the default label) permanent. New defaults added in a later release still
 # reach existing installs, because only the labels already seeded are skipped.
+#
+# Fork: labels are Spanish (they appear in channel names) and the match terms
+# carry un-accented variants, `ES:` and the Spanish language names. Keep this
+# list in step with EXCEPTION_KEYWORDS_SEED_V43 in checkpoint_v43.py.
 
 DEFAULT_EXCEPTION_KEYWORDS: tuple[tuple[str, str, ExceptionBehavior], ...] = (
-    ("Spanish", "Spanish, En Español, (ESP), Español", "consolidate"),
-    ("French", "French, En Français, (FRA), Français", "consolidate"),
-    ("German", "German, (GER), Deutsch", "consolidate"),
-    ("Portuguese", "Portuguese, (POR), Português", "consolidate"),
-    ("Italian", "Italian, (ITA), Italiano", "consolidate"),
-    ("Japanese", "Japanese, (JPN), 日本語", "consolidate"),
-    ("Korean", "Korean, (KOR), 한국어", "consolidate"),
-    ("Chinese", "Chinese, (CHN), (CHI), 中文", "consolidate"),
+    ("Español", "Spanish, En Español, En Espanol, (ESP), Español, Espanol, ES:", "consolidate"),
+    (
+        "Francés",
+        "French, En Français, En Francais, (FRA), Français, Francais, Francés, Frances",
+        "consolidate",
+    ),
+    ("Alemán", "German, (GER), Deutsch, Alemán, Aleman", "consolidate"),
+    ("Portugués", "Portuguese, (POR), Português, Portugues", "consolidate"),
+    ("Italiano", "Italian, (ITA), Italiano", "consolidate"),
+    ("Japonés", "Japanese, (JPN), 日本語, Japonés, Japones", "consolidate"),
+    ("Coreano", "Korean, (KOR), 한국어, Coreano", "consolidate"),
+    ("Chino", "Chinese, (CHN), (CHI), 中文, Chino", "consolidate"),
 )
 
 

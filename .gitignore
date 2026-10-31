@@ -45,10 +45,14 @@ Thumbs.db
 # Local documentation (not distributed)
 CLAUDE.md
 DEVELOPMENT.md
+HANDOFF-*.md
 teamarr.xml
 teamarr.xml.bak
 data/
 !data/tsdb_seed.json
+
+# Local deployment overrides (domain, Traefik/reverse-proxy labels, etc.)
+docker-compose.override.yml
 
 # Local dev scripts
 dev.sh

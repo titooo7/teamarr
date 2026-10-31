@@ -241,7 +241,7 @@ class TestApi:
         api.post("/api/v1/keywords", json={"label": "ES", "stream_pattern": r"\(MX\)"})
         rows = {k["label"]: k for k in api.get("/api/v1/keywords").json()["keywords"]}
         assert rows["ES"]["stream_pattern"] == r"\(MX\)"
-        assert rows["Spanish"]["stream_pattern"] is None  # seeded default
+        assert rows["Español"]["stream_pattern"] is None  # seeded default (fork label)
 
 
 def _channel(conn, event_id, keyword):

@@ -38,6 +38,18 @@ _EPG_DECORATION = re.compile("[ʰ-˿ᴬ-ᵪᶠ-ᶿ⁰-₟]+")
 # leading league/category as a strippable hint, same as a real sub_title split.
 _INLINE_SEP = re.compile(r"\s+[-:–—]\s+")
 
+# Fork customization #18 (2026-08-30): star-rating suffix some guide sources
+# append to sub_title ("2026 | TP | ★6.6/10"). The "N.N/10" shape collides
+# with normalizer.py's bare MM/DD date pattern (`\b(\d{1,2})[/\-](\d{1,2})\b`)
+# — a fractional rating like ★6.6/10 gets misread as "6/10" (June 10) and,
+# since built-in date extraction is trusted, silently zeroes out an otherwise
+# perfect team-name match on the real broadcast date (#dash-separator
+# follow-up). Whole-number ratings (★6.0/10 -> "0/10") happen to form an
+# invalid date and dodge the bug, which is why it went unnoticed. Stripped
+# here rather than in the shared DATE_PATTERNS regex: this is purely an
+# EPG-guide artifact, never a real date in a stream/programme title.
+_RATING_SUFFIX = re.compile(r"[★☆]\s*\d(?:\.\d)?\s*/\s*10\b")
+
 # Category tokens (lowercased) that classify a program.
 _CLASSIC = "classic sport event"
 _NON_EVENT = "sports non-event"
@@ -129,6 +141,7 @@ def build_match_input(program: DispatcharrProgram) -> str:
 
 def _clean_epg_segment(text: str) -> str:
     """Strip feed decoration chars and collapse whitespace in one EPG segment."""
+    text = _RATING_SUFFIX.sub(" ", text)
     return re.sub(r"\s+", " ", _EPG_DECORATION.sub(" ", text)).strip()
 
 

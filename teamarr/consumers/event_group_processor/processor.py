@@ -544,7 +544,8 @@ class EventGroupProcessor(
 
             run_step("cross_group", cross_group_step)
 
-        # 3. Keyword ordering: ensure main channel has lower number than keyword channels
+        # 3. Keyword ordering (fork #17): ensure keyword channels have a lower
+        #    number than the main channel, for the same event
         def ordering_step() -> int:
             ordering_enforcer = KeywordOrderingEnforcer(self._db_factory, channel_manager)
             reordered = ordering_enforcer.enforce().reordered_count

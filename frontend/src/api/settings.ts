@@ -203,6 +203,10 @@ export interface ChannelNumberingSettings {
   channel_daily_reset_time: string
   // One-shot re-grid armed for the next generation (read-only; set via relayout endpoint)
   force_channel_relayout_pending: boolean
+  // (fork) Separate-mode failover backups — applies to any channel created in
+  // separate mode: the global mode above, or a per-keyword 'separate' behavior.
+  separate_fallback_enabled: boolean
+  separate_fallback_count: number // own stream + up to N backups (0-10)
 }
 
 export interface ChannelNumberingSettingsUpdate {
@@ -214,6 +218,8 @@ export interface ChannelNumberingSettingsUpdate {
   channel_order_mode?: "sport_league" | "start_time"
   channel_daily_reset_enabled?: boolean
   channel_daily_reset_time?: string
+  separate_fallback_enabled?: boolean
+  separate_fallback_count?: number
 }
 
 export interface StreamOrderingRule {

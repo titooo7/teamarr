@@ -5,6 +5,8 @@ through fuzzy matching alone. Keep this minimal - prefer user-defined aliases
 in the database when possible.
 """
 
+from unidecode import unidecode
+
 # =============================================================================
 # CITY NAME TRANSLATIONS
 # ESPN uses English city names, but stream names may use native spellings.
@@ -56,6 +58,200 @@ CITY_TRANSLATIONS: dict[str, str] = {
     "kobenhavn": "copenhagen",
     "goteborg": "gothenburg",
 }
+
+
+# =============================================================================
+# ENGLISH → SPANISH COUNTRY NAMES (DISPLAY)
+# For channel name display: translates ESPN's English country names to Spanish.
+# Applied ONLY at the template variable level (home_team/away_team) so matching,
+# IDs, and logs keep the canonical English name.
+#
+# Keys are exact ESPN displayName strings (title case).
+# =============================================================================
+
+ENGLISH_TO_SPANISH_COUNTRIES: dict[str, str] = {
+    # South America
+    "Argentina": "Argentina",
+    "Brazil": "Brasil",
+    "Chile": "Chile",
+    "Colombia": "Colombia",
+    "Ecuador": "Ecuador",
+    "Paraguay": "Paraguay",
+    "Peru": "Perú",
+    "Uruguay": "Uruguay",
+    "Venezuela": "Venezuela",
+    "Bolivia": "Bolivia",
+    # North/Central America & Caribbean
+    "Mexico": "México",
+    "United States": "Estados Unidos",
+    "Canada": "Canadá",
+    "Costa Rica": "Costa Rica",
+    "Panama": "Panamá",
+    "Honduras": "Honduras",
+    "Guatemala": "Guatemala",
+    "El Salvador": "El Salvador",
+    "Nicaragua": "Nicaragua",
+    "Cuba": "Cuba",
+    "Jamaica": "Jamaica",
+    "Haiti": "Haití",
+    "Dominican Republic": "República Dominicana",
+    "Trinidad and Tobago": "Trinidad y Tobago",
+    # Europe
+    "Spain": "España",
+    "Portugal": "Portugal",
+    "France": "Francia",
+    "Italy": "Italia",
+    "Germany": "Alemania",
+    "England": "Inglaterra",
+    "Scotland": "Escocia",
+    "Wales": "Gales",
+    "Northern Ireland": "Irlanda del Norte",
+    "Ireland": "Irlanda",
+    "Netherlands": "Países Bajos",
+    "Belgium": "Bélgica",
+    "Switzerland": "Suiza",
+    "Austria": "Austria",
+    "Croatia": "Croacia",
+    "Serbia": "Serbia",
+    "Slovenia": "Eslovenia",
+    "Slovakia": "Eslovaquia",
+    "Czech Republic": "República Checa",
+    "Poland": "Polonia",
+    "Denmark": "Dinamarca",
+    "Sweden": "Suecia",
+    "Norway": "Noruega",
+    "Finland": "Finlandia",
+    "Iceland": "Islandia",
+    "Greece": "Grecia",
+    "Turkey": "Turquía",
+    "Russia": "Rusia",
+    "Ukraine": "Ucrania",
+    "Romania": "Rumanía",
+    "Hungary": "Hungría",
+    "Bosnia and Herzegovina": "Bosnia y Herzegovina",
+    "Albania": "Albania",
+    "Bulgaria": "Bulgaria",
+    "North Macedonia": "Macedonia del Norte",
+    "Montenegro": "Montenegro",
+    "Kosovo": "Kosovo",
+    "Georgia": "Georgia",
+    "Armenia": "Armenia",
+    "Azerbaijan": "Azerbaiyán",
+    # Africa
+    "Morocco": "Marruecos",
+    "Egypt": "Egipto",
+    "Tunisia": "Túnez",
+    "Algeria": "Argelia",
+    "Nigeria": "Nigeria",
+    "Ghana": "Ghana",
+    "Senegal": "Senegal",
+    "Cameroon": "Camerún",
+    "Ivory Coast": "Costa de Marfil",
+    "South Africa": "Sudáfrica",
+    "Cape Verde": "Cabo Verde",
+    "Mali": "Mali",
+    "Burkina Faso": "Burkina Faso",
+    "Guinea": "Guinea",
+    "Gabon": "Gabón",
+    "Congo": "Congo",
+    "DR Congo": "R.D. del Congo",
+    "Angola": "Angola",
+    "Zambia": "Zambia",
+    "Ethiopia": "Etiopía",
+    "Kenya": "Kenia",
+    # Asia
+    "Japan": "Japón",
+    "South Korea": "Corea del Sur",
+    "China": "China",
+    "Iran": "Irán",
+    "Iraq": "Irak",
+    "Saudi Arabia": "Arabia Saudí",
+    "Australia": "Australia",
+    "New Zealand": "Nueva Zelanda",
+    "Qatar": "Catar",
+    "United Arab Emirates": "Emiratos Árabes Unidos",
+    "Uzbekistan": "Uzbekistán",
+    "Syria": "Siria",
+    "Jordan": "Jordania",
+    "Oman": "Omán",
+    "Bahrain": "Baréin",
+    "Kuwait": "Kuwait",
+    "Palestine": "Palestina",
+    "Lebanon": "Líbano",
+    "Vietnam": "Vietnam",
+    "Thailand": "Tailandia",
+    "Indonesia": "Indonesia",
+    "Malaysia": "Malasia",
+    "Philippines": "Filipinas",
+    "India": "India",
+    "North Korea": "Corea del Norte",
+    "Tajikistan": "Tayikistán",
+    "Kyrgyzstan": "Kirguistán",
+    "Turkmenistan": "Turkmenistán",
+    "Chinese Taipei": "Taipéi Chino",
+    "Hong Kong": "Hong Kong",
+    "Singapore": "Singapur",
+    "Myanmar": "Myanmar",
+    "Cambodia": "Camboya",
+    "Afghanistan": "Afganistán",
+    "Yemen": "Yemen",
+    "Bangladesh": "Bangladés",
+    "Sri Lanka": "Sri Lanka",
+    "Nepal": "Nepal",
+    "Mongolia": "Mongolia",
+    "Kazakhstan": "Kazajistán",
+    "Israel": "Israel",
+}
+
+
+# =============================================================================
+# COUNTRY NAME TRANSLATIONS (MATCHING, ES/PT → EN)
+# ESPN uses English country names, but Spanish/Portuguese streams use native
+# spellings. Many pairs score below the 60% fuzzy threshold (Marruecos↔Morocco
+# = 50%, Inglaterra↔England = 47%, Alemania↔Germany = 53%) and two-team
+# matchups require BOTH teams to pass, so even one low-scoring pair fails the
+# whole match.
+#
+# Derived by inverting ENGLISH_TO_SPANISH_COUNTRIES so the matching and
+# display directions can never drift apart, then merged with the extra
+# variants below (Spanish colloquial + Portuguese forms). Keys are
+# post-unidecode lowercase (the normalizer applies unidecode first); identity
+# mappings (argentina→argentina) are dropped. Sorted longest-key-first so
+# phrases are replaced before their substrings ("irlanda del norte" must win
+# over "irlanda", "corea del sur" over any shorter overlap).
+# =============================================================================
+
+_EXTRA_COUNTRY_VARIANTS: dict[str, str] = {
+    # Spanish colloquial / alternate forms
+    "holanda": "netherlands",
+    "arabia saudita": "saudi arabia",
+    # Portuguese forms (where they differ from the Spanish spelling)
+    "alemanha": "germany",
+    "marrocos": "morocco",
+    "espanha": "spain",
+    "franca": "france",
+    "japao": "japan",
+    "suica": "switzerland",
+    "coreia do sul": "south korea",
+    "paises baixos": "netherlands",
+    "pais de gales": "wales",
+    "irlanda do norte": "northern ireland",
+}
+
+COUNTRY_TRANSLATIONS: dict[str, str] = dict(
+    sorted(
+        (
+            {
+                unidecode(spanish).lower(): english.lower()
+                for english, spanish in ENGLISH_TO_SPANISH_COUNTRIES.items()
+                if unidecode(spanish).lower() != english.lower()
+            }
+            | _EXTRA_COUNTRY_VARIANTS
+        ).items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    )
+)
 
 
 # =============================================================================

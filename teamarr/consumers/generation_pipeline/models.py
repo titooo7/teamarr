@@ -59,6 +59,8 @@ class GenerationResult:
     # Sub-task results
     m3u_refresh: dict = field(default_factory=dict)
     stream_ordering: dict = field(default_factory=dict)
+    # (fork) Separate-mode failover backups — see lifecycle/separate_fallbacks.py
+    separate_fallbacks: dict = field(default_factory=dict)
     epg_refresh: dict = field(default_factory=dict)
     epg_association: dict = field(default_factory=dict)
     managed_team_channels: dict = field(default_factory=dict)

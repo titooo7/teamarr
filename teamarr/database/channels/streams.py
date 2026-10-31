@@ -70,6 +70,7 @@ def add_stream_to_channel(
         "m3u_group_name",
         "attach_at",  # time-windowed membership (183.5); None = full-life
         "detach_at",
+        "is_backup",  # (fork) 1 = mirrored failover backup; never affects channel lifetime
     ]
 
     for field_name in allowed_fields:
@@ -645,6 +646,7 @@ def reorder_channel_streams(
     Returns:
         Number of streams reordered
     """
+    from teamarr.consumers.lifecycle.separate_fallbacks import BACKUP_PRIORITY_OFFSET
     from teamarr.services.stream_ordering import GameContext, get_stream_ordering_service
 
     # Get current streams
@@ -669,6 +671,9 @@ def reorder_channel_streams(
     updated_count = 0
     for stream in streams:
         new_priority = ordering_service.compute_priority(stream)
+        if stream.is_backup:
+            # (fork) separate-fallback backups stay behind the primary band
+            new_priority += BACKUP_PRIORITY_OFFSET
         if stream.priority != new_priority:
             update_stream_priority(conn, stream.id, new_priority)
             updated_count += 1

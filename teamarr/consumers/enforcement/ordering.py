@@ -1,11 +1,13 @@
 """Keyword channel ordering enforcement.
 
-Ensures main channel (no exception_keyword) has lower channel number
-than keyword channels (Spanish, French, etc.) for the same event.
+Fork customization #17: ensures keyword channels (Español, Portugués, etc.)
+have a LOWER channel number than the main channel (no exception_keyword) for
+the same event — the inverse of upstream's "main first" rule.
 
 When to use:
 - After channel creation, numbers may be assigned in wrong order
-- Main channel should always come before its sub-channels in EPG guides
+- Keyword channels (e.g. "(Español)") should come before the plain channel
+  in EPG guides
 """
 
 import logging
@@ -42,14 +44,15 @@ class OrderingResult:
 
 
 class KeywordOrderingEnforcer:
-    """Enforces channel ordering: main before keyword channels.
+    """Enforces channel ordering: keyword channels before the main channel.
 
     For each event with multiple channels (main + keyword variants),
-    ensures the main channel (no exception_keyword) has a lower
-    channel number than keyword channels.
+    ensures keyword channels (Español, Portugués, etc.) have a lower
+    channel number than the main channel (no exception_keyword).
 
-    This is important for EPG guide ordering - users expect to see
-    the main English feed before Spanish/French variants.
+    Fork customization #17: tito wants the localized (Español, etc.)
+    feed to lead in EPG guide ordering, ahead of the plain channel, for
+    the same event.
     """
 
     def __init__(
@@ -70,8 +73,8 @@ class KeywordOrderingEnforcer:
     def enforce(self) -> OrderingResult:
         """Run keyword ordering enforcement.
 
-        Finds events where keyword channel has lower number than main,
-        and swaps their channel numbers.
+        Finds events where the main channel has a lower number than one of
+        its keyword channels, and swaps their channel numbers.
 
         Returns:
             OrderingResult with reorder details
@@ -175,7 +178,7 @@ class KeywordOrderingEnforcer:
                             field_name="channel_number",
                             old_value=str(main_number),
                             new_value=str(keyword_number),
-                            notes="Swapped with keyword channel for main-first ordering",
+                            notes="Swapped with keyword channel for keyword-first ordering",
                         )
                         log_channel_history(
                             conn=conn,
@@ -185,7 +188,7 @@ class KeywordOrderingEnforcer:
                             field_name="channel_number",
                             old_value=str(keyword_number),
                             new_value=str(main_number),
-                            notes="Swapped with main channel for main-first ordering",
+                            notes="Swapped with main channel for keyword-first ordering",
                         )
 
                         result.reordered.append(
@@ -200,10 +203,10 @@ class KeywordOrderingEnforcer:
                         )
 
                         logger.info(
-                            "[ORDERING] Swapped main #%d <-> keyword '%s' #%d (event=%s)",
-                            keyword_number,
+                            "[ORDERING] Swapped keyword '%s' #%d <-> main #%d (event=%s)",
                             keyword_channel["exception_keyword"],
                             main_number,
+                            keyword_number,
                             main_channel["event_id"],
                         )
 
@@ -228,11 +231,11 @@ class KeywordOrderingEnforcer:
         return result
 
     def _get_channels_needing_reorder(self, conn) -> list[dict]:
-        """Find events where keyword channel has lower number than main.
+        """Find events where the main channel has a lower number than keyword.
 
         Returns list of dicts with 'main_channel' and 'keyword_channel'.
         """
-        # Find pairs: main (no keyword) vs keyword, where keyword number < main number
+        # Find pairs: main (no keyword) vs keyword, where keyword number > main number
         cursor = conn.execute(
             """
             SELECT
@@ -256,7 +259,7 @@ class KeywordOrderingEnforcer:
               AND (m.exception_keyword IS NULL OR m.exception_keyword = '')
               AND k.exception_keyword IS NOT NULL
               AND k.exception_keyword != ''
-              AND CAST(k.channel_number AS INTEGER) < CAST(m.channel_number AS INTEGER)
+              AND CAST(k.channel_number AS INTEGER) > CAST(m.channel_number AS INTEGER)
             """
         )
 

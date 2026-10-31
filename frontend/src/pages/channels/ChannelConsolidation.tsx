@@ -3,6 +3,8 @@ import { toast } from "sonner"
 import { SaveButton } from "@/components/ui/save-button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import { RadioCards } from "@/components/ui/radio-cards"
 import { ExceptionKeywordsCard } from "@/components/ExceptionKeywordsCard"
 import { RaceFeedsCard } from "@/components/RaceFeedsCard"
@@ -37,6 +39,8 @@ export function ChannelConsolidation() {
     channel_daily_reset_enabled: true,
     channel_daily_reset_time: "04:00",
     force_channel_relayout_pending: false,
+    separate_fallback_enabled: false,
+    separate_fallback_count: 3,
   })
 
   // Sync local state from the server data during render (React's "adjusting
@@ -82,6 +86,51 @@ export function ChannelConsolidation() {
                 },
               ]}
             />
+          </div>
+
+          {/* (fork) Separate-mode failover backups — rendered unconditionally:
+              a per-keyword 'separate' behavior can make this active even
+              while the default mode above reads "Consolidate". */}
+          <div className="space-y-4 pl-2 border-l-2 border-muted ml-1">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>Separate Mode Failover Backups</Label>
+                <p className="text-xs text-muted-foreground">
+                  Applies to any channel created in separate mode — the global mode above, or a
+                  per-keyword Separate behavior. Each such channel additionally carries same-group
+                  sibling streams behind its own stream as Dispatcharr failover backups.
+                </p>
+              </div>
+              <Switch
+                checked={channelNumbering.separate_fallback_enabled}
+                onCheckedChange={(checked) =>
+                  setChannelNumbering({ ...channelNumbering, separate_fallback_enabled: checked })
+                }
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="separate-fallback-count">Backup Count</Label>
+              <Input
+                id="separate-fallback-count"
+                type="number"
+                min={0}
+                max={10}
+                disabled={!channelNumbering.separate_fallback_enabled}
+                value={channelNumbering.separate_fallback_count}
+                onChange={(e) =>
+                  setChannelNumbering({
+                    ...channelNumbering,
+                    separate_fallback_count: Math.max(0, Math.min(10, Number(e.target.value) || 0)),
+                  })
+                }
+                className="max-w-[8rem]"
+              />
+              <p className="text-xs text-muted-foreground">
+                Up to this many same-keyword sibling streams per channel, behind its own stream
+                (0-10, default 3)
+              </p>
+            </div>
           </div>
 
           <SaveButton

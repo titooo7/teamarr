@@ -1898,6 +1898,13 @@ def _classify_racing_event(ctx: _ClassifyContext) -> ClassifiedStream | None:
                 (sep_team1 and len(sep_team1.split()) > 1) or has_racing_text_evidence(left_raw)
             ):
                 has_team_pattern = False
+            elif sep.strip() == "-" and has_racing_text_evidence(left_raw):
+                # Fork: the " - " separator is the fork's own DB row (#18a,
+                # Movistar/DAZN football titles). DAZN writes F1 the same way
+                # — "Carrera T2026 · Mundial F1 - GP de México" — so a dash
+                # whose left side names a racing series is that series'
+                # race, never a "Mundial F1" vs "GP de México" matchup.
+                has_team_pattern = False
             else:
                 has_team_pattern = True
 

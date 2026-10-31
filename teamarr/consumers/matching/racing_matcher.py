@@ -483,12 +483,22 @@ class RacingMatcher:
         # Likewise a bare world feed ("F1 LIVE @ 13 Sep 09:00 AM") names the
         # series and a time that lands inside one of the covering event's
         # sessions — the same instant gate the EPG path uses (#245).
+        # Fork: on the EPG path the programme's broadcast instant (anchor_dt)
+        # is that timestamp — guide titles carry no time of their own, so
+        # "DIRECTO Grand Prix MotoGP T2026" airing in the race slot could
+        # never use this path ("Malaysia GP" scores 19 against it).
         timed_evidence = (
             len(events) == 1
             and not feed_evidence
             and best_score < SINGLE_EVENT_SANITY_THRESHOLD
             and _single_event_evidence(ctx.stream_name)
-            and self._stream_instant_covered(ctx, events[0])
+            and (
+                self._stream_instant_covered(ctx, events[0])
+                or (
+                    ctx.anchor_dt is not None
+                    and self._covers_instant(events[0], ctx.anchor_dt, ctx.sport_durations)
+                )
+            )
         )
         if len(events) == 1 and (
             feed_evidence

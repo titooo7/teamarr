@@ -126,6 +126,21 @@ def test_build_input_ascii_dash_separator_inline():
     assert classified.team2 == "Texas A&M"
 
 
+def test_build_input_dash_matchup_is_not_split_between_teams():
+    # Fork (v2.25.1 port): Movistar/DAZN write the matchup itself with a dash.
+    # Splitting at that dash (upstream #728) put the two teams on either side
+    # of the pipe and no pair was extracted (production, 2026-10-31).
+    p = _prog("DIRECTO Jornada 9: Chelsea - Manchester United T26/27", None)
+    assert build_match_input(p) == "DIRECTO Jornada 9: Chelsea - Manchester United T26/27"
+
+    p = _prog("Real Madrid - Málaga", None)
+    assert build_match_input(p) == "Real Madrid - Málaga"
+
+    # A leading category dash still splits when a matchup follows it.
+    p = _prog("Premier League - Chelsea - Man Utd", None)
+    assert build_match_input(p) == "Premier League | Chelsea - Man Utd"
+
+
 def test_build_input_no_split_when_subtitle_present():
     # A real title|sub_title split is authoritative; an in-title colon stays put.
     p = _prog("MLB Baseball: Special", "Cubs at Cardinals")

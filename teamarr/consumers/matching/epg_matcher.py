@@ -25,6 +25,7 @@ import re
 from enum import Enum
 
 from teamarr.dispatcharr.types import DispatcharrProgram
+from teamarr.utilities.constants import GAME_SEPARATORS
 
 # Decoration characters some EPG feeds append to titles ("Mets at Mariners" +
 # superscript "Live"/"New" markers, e.g. U+1D38 U+1DA6 U+1D5B U+1D49). These
@@ -134,9 +135,29 @@ def build_match_input(program: DispatcharrProgram) -> str:
     title = _clean_epg_segment(program.title or "")
     sub_title = _clean_epg_segment(program.sub_title or "")
     if title and not sub_title:
-        title = _INLINE_SEP.sub(" | ", title, count=1)
+        title = _split_inline_matchup(title)
     parts = [p for p in (title, sub_title) if p]
     return " | ".join(parts)
+
+
+def _split_inline_matchup(title: str) -> str:
+    """Turn the first inline separator that leads INTO a matchup into a pipe.
+
+    Fork (v2.25.1 port): upstream #728 added a plain ``-`` to _INLINE_SEP, so
+    a guide that writes the matchup itself with a dash — Movistar/DAZN
+    "DIRECTO Jornada 9: Chelsea - Manchester United T26/27", the shape fork
+    change #18a's ``' - '`` separator exists for — got split BETWEEN the two
+    teams and never extracted a pair (prod 2026-10-31: every such programme
+    failed). A separator only marks "category | matchup" when the text after
+    it still holds a matchup separator ("MLB Baseball - Mets at Mariners",
+    "Premier League - Chelsea - Man Utd"); otherwise the title is left whole.
+    """
+    for match in _INLINE_SEP.finditer(title):
+        rest = title[match.end() :]
+        rest_lower = f" {rest.lower()} "
+        if _INLINE_SEP.search(rest) or any(sep in rest_lower for sep in GAME_SEPARATORS):
+            return f"{title[: match.start()]} | {rest}"
+    return title
 
 
 def _clean_epg_segment(text: str) -> str:

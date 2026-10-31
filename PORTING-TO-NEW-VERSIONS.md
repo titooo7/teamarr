@@ -149,6 +149,7 @@ Check each one on the prod-DB copy after the migration test (Step 6):
 | #14 art-URL templates use `{home_team_en|pascal}` | `CUSTOMIZATIONS.md` §14 `SELECT` → 0 rows still using `_team|pascal` |
 | #18a `' - '` matchup separator row | `SELECT * FROM detection_keywords WHERE category='separators'` (needs a restart after any insert) |
 | #15 settings `separate_fallback_enabled=1`, `count=3` | `SELECT separate_fallback_enabled, separate_fallback_count FROM settings` |
+| No boxing "teams" in any team filter (found 2026-10-31) | `SELECT COUNT(*) FROM settings s, json_each(s.default_include_teams) j WHERE json_extract(j.value,'$.league')='boxing'` and the same over `event_epg_groups.include_teams` → both 0. TheSportsDB boxing "teams" are weight classes ("Boxing Heavyweight"), never a fight's sides, so any entry silently drops **every** boxing event from that filter's sources |
 
 ## Step 5 — Tests that encode fork behaviour (adapt, never weaken)
 

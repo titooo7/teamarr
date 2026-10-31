@@ -5,14 +5,17 @@
 **How it was ported:** NOT a commit-by-commit cherry-pick (816 upstream commits since v2.12.5 made that conflict on nearly every fork commit). The net fork diff (`git diff v2.12.5 dev-custom-2.12.5`) was 3-way-applied per file and four conflicts resolved by hand; #15 was re-implemented on upstream's new `generation_pipeline/`; the fork migrations were rewritten. See `PORTING-TO-NEW-VERSIONS.md` → "What was learned porting to v2.25.1".  
 **Fork migration numbers:** **v104** (accent variants) and **v105** (Spanish language names) — renumbered from v85/v86 because upstream v2.25.1 uses 85–103 (v85/v86/v87 = CFL→Bell Media). Both are now **additive** (append missing terms only, never overwrite). Schema version: **105**. **Production DB needs `schema_version` reset to 84 before first boot** (it says 86 from the fork's old numbering, which would skip upstream's real v85/v86).
 
-This document describes all customizations made to this Teamarr fork: changes 1–14 are Spanish-language localization; change 15 (2026-08-22) is an opt-in behavioral feature unrelated to localization; change 16 (2026-08-23) is an upstream bug fix, carried until upstream ships the same fix; change 17 (2026-08-24) is a same-event channel-ordering tweak; change 18 (2026-08-30) is a matching-pipeline bug fix (one code change plus one DB-only data row).
+This document describes all customizations made to this Teamarr fork: changes 1–14 are Spanish-language localization; change 15 is an opt-in failover feature (separate-mode backups); change 16 was an upstream bug fix, **dropped on the v2.25.1 port** because upstream fixed it; change 17 is a channel-ordering tweak; changes 18, 19 and 20 are matching/provider bug fixes (18a is DB-only). Each change's own section explains the why; the per-section history notes are kept as written at the time.
 
-> **Porting to a version NEWER than v2.12.5?** Use
-> **`PORTING-TO-NEW-VERSIONS.md`** — the re-apply instructions below assume
-> this same v2.12.5 code base. **Don't assume a migration-number
-> renumbering is needed** — check first via `git log <old-tag>..<new-tag> --
-> teamarr/database/migrations/versioned.py` on the target; only renumber
-> v85/v86 if upstream actually claimed those numbers for itself.
+> **Porting to a newer version?** Use **`PORTING-TO-NEW-VERSIONS.md`** (Steps
+> 0–9 plus a touch-point map that says where every change lives *today*).
+> The "Files Modified" table and the "How to Re-apply After a Teamarr Update"
+> runbook further down were written for v2.12.5 and keep older paths; where
+> they disagree with the touch-point map, the map wins. The main moves on
+> v2.25.1:
+> - the keyword seeds left `schema.sql` for `exception_keywords.py`;
+> - the fork migrations are v104/v105;
+> - #15 is wired through `generation_pipeline/`.
 
 ---
 
@@ -757,6 +760,11 @@ and the next run refetches them: 0 × 403 once warm.
 
 ## Files Modified
 
+
+> **Path note (v2.25.1):** this table describes the v2.12.5 layout. For current
+> locations, including changes #19/#20, see the touch-point map in
+> `PORTING-TO-NEW-VERSIONS.md`.
+
 ### Core code (8 files)
 
 | File | Change |
@@ -952,6 +960,12 @@ Example channel names after this change:
 ---
 
 ## How to Re-apply After a Teamarr Update
+
+
+> **Path note (v2.25.1):** written for in-container patching on v2.12.5. The
+> DB-only SQL below (Step 2) is still correct and is the reference for #5/#6/#14/#18a.
+> The Python file list in Step 1 is not current: use git and the touch-point map
+> in `PORTING-TO-NEW-VERSIONS.md`.
 
 There are two approaches. **Approach A (local image)** is the recommended method — it bakes your modifications into a Docker image so they survive any container recreation. **Approach B (docker cp)** is the manual fallback.
 

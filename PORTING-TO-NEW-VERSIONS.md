@@ -1,70 +1,305 @@
 # Porting the fork's customizations to newer Teamarr versions
 
-(Changes 1–14, catalogued in `CUSTOMIZATIONS.md`, are Spanish-language
-localization. Change 15 — separate-mode failover backups — is this fork's
-first customization that isn't localization; see its own section below.
-Changes 16 and 18b are upstream bug fixes, carried until upstream ships
-equivalent fixes; change 17 is a fixed fork behaviour tweak; change 18a is
-DB-only, no code. All of 15–18 are covered by the Step 3/Step 6/Appendix
-entries below.)
+**Current state (2026-10-31):** fork based on upstream **v2.25.1**, branch
+`dev-custom-2.25.1` (pushed to `titooo7/teamarr`), **schema 105**, fork
+migrations **v104/v105**, LIVE in production. The fork's changes are catalogued in
+`CUSTOMIZATIONS.md` (#1–#20; #13 is history, #16 was dropped because upstream
+fixed it). This file is the **how-to for the next port**: Steps 1–9 below, then
+a touch-point map of every change, then lessons from past ports.
 
-**Written:** 2026-07-04 · **Updated:** 2026-08-22/23 (change #15 added) ·
-**Source fork:** v2.12.5
-(`dev-custom-2.12.5` @ tag `v2.12.5`; run `git rev-list --count v2.12.5..HEAD`
-for the exact current commit count) · **Validated
-against:** upstream v2.12.5 (port from v2.12.4 completed 2026-08-18)
+**Port history:**
 
-> ✅ **Port history:** v2.6.1 → v2.8.0 (2026-07-04, migrations renumbered to
-> v77/v78) → v2.12.2 (2026-07-18, renumbered to **v84/v85**, moved into
-> upstream's new `migrations/versioned.py` package) → v2.12.3 (2026-07-31,
-> renumbered to **v85/v86** — upstream took migration number 84 for itself)
-> → v2.12.4 (2026-08-07, **no renumbering needed** — upstream added zero new
-> versioned migrations; still v85/v86, schema 86) → v2.12.5 (2026-08-18,
-> **again no renumbering needed** — same reasoning, still v85/v86, schema 86).
->
-> **For the NEXT port (v2.12.5 → newer), cherry-pick the FULL commit range**
-> from this repo's current branch tip:
-> ```bash
-> git cherry-pick v2.12.5..dev-custom-2.12.5
-> ```
-> This is a change in approach from the v2.12.3 port guide (which said to
-> cherry-pick a curated 17-commit subset and redo golden regeneration +
-> renumber sweep fresh every time). **Cherry-pick everything instead** —
-> it's simpler and was proven clean on two consecutive ports now: 20/21 fork
-> commits applied with zero conflicts on the v2.12.4 port (one trivial
-> conflict), and all 26 fork commits applied with **zero conflicts** on the
-> v2.12.5 port, exactly matching the pre-flight recon's prediction. The
-> golden-regeneration and renumber-sweep-fixup commits from past ports are
-> now just inert history when they land on a target that doesn't need them
-> (as neither v2.12.4 nor v2.12.5 did) — they cost nothing to carry forward.
-> **Still redo Step 4's golden regeneration and Step 5's renumber-sweep grep
-> fresh on the new target regardless** — never trust old golden files or old
-> renumbering as final; only trust freshly-regenerated/freshly-grepped
-> output. If the new target's migrations conflict with v85/v86 (upstream
-> claims a number again), resolve renumbering with NEW commits on top of the
-> full cherry-picked range, the same way the v2.12.3 port did — don't try to
-> replay history that was numbered for a different target.
->
-> **One cherry-pick gotcha found on the v2.12.5 port:** if the working tree
-> has uncommitted local changes to a file a later commit in the range also
-> touches (here: `CLAUDE.md`, restored from the untracked personal overlay
-> before the cherry-pick started), `git cherry-pick` can abort mid-sequence
-> with "local changes would be overwritten." Discard the dirty file first
-> (it's safe if you already saved the overlay to `/tmp` per Step 1) —
-> `git checkout -- CLAUDE.md` — then **`git cherry-pick --abort` and restart
-> the whole range from scratch** rather than `--continue`; `--continue`
-> after that kind of failure can silently commit an earlier pick as empty
-> and skip its content (verify with `git log --oneline` against the
-> expected commit count either way).
+| Port | Date | Fork migrations | Notes |
+|---|---|---|---|
+| v2.6.1 → v2.8.0 | 2026-07-04 | v77/v78 | |
+| → v2.12.2 | 2026-07-18 | v84/v85 | moved into upstream's `migrations/versioned.py` |
+| → v2.12.3 | 2026-07-31 | v85/v86 | upstream took 84 |
+| → v2.12.4 | 2026-08-07 | v85/v86 | no renumbering needed |
+| → v2.12.5 | 2026-08-18 | v85/v86 | no renumbering needed |
+| → **v2.25.1** | **2026-10-31** | **v104/v105** | 21 releases, 816 upstream commits; upstream took 85–103; net-diff method; prod reset 86 → 84; fixes #19/#20 found on deploy |
 
-This guide re-applies the fork's customizations (catalogued in
-`CUSTOMIZATIONS.md`) onto a **new upstream source tree**. It complements —
-does not replace — `CUSTOMIZATIONS.md`, whose re-apply runbook assumes the
-*same* version inside a running container.
+**Git facts the next port relies on:**
+- Every fork branch (`dev-custom-2.8.0` … `dev-custom-2.12.5`, `dev-custom-2.25.1`)
+  lives in this repo. Older fork folders were deleted on 2026-10-31; their
+  history is here.
+- Remotes: `origin` = Pharaoh-Labs/teamarr (upstream), `titooo7` = the private fork.
+- Commit **only** with the noreply email
+  `5730518+titooo7@users.noreply.github.com`, or GitHub rejects the push (GH007).
+  Example: `git -c user.email=5730518+titooo7@users.noreply.github.com commit
+  --author="titooo7 <5730518+titooo7@users.noreply.github.com>" …`.
+  The old `dev-custom-2.12.x` branches carry the private email and must never
+  be pushed as they are.
+- Untracked on purpose: `CLAUDE.md` (personal overlay that replaces upstream's
+  agent file), `docker-compose.override.yml` (Traefik labels), `HANDOFF-*.md`,
+  `history/` (excluded via `.git/info/exclude`; holds the v2.12.5 overlay).
 
 ---
 
-## What was learned porting to v2.25.1 (2026-10-31) — READ THIS FIRST
+## Step 0 — Recon before touching anything (read-only)
+
+```bash
+cd /home/tito/MyApps/Teamarr_fork_v2.25.1
+git fetch origin --tags
+OLD=v2.25.1; NEW=vX.Y.Z; FORK=dev-custom-2.25.1
+git rev-list --count $OLD..$NEW                       # size of the jump
+# Which fork-touched files did upstream also change?
+for f in $(git diff --name-only $OLD..$FORK | grep -vE '\.md$|goldens'); do
+  git cat-file -e $NEW:$f 2>/dev/null && echo "$(git diff --shortstat $OLD $NEW -- $f) :: $f" || echo "GONE :: $f"
+done
+# Did upstream add migrations (fork numbers collide?) and what is the new DEFAULT?
+git show $NEW:teamarr/database/schema.sql | grep -n 'schema_version INTEGER DEFAULT'
+git diff $OLD $NEW -- teamarr/database/migrations/ teamarr/database/reconciliation.py | less
+gh release list -R Pharaoh-Labs/teamarr -L 30          # read notes for breaking changes / first-run migrations
+```
+
+Read every upstream migration between the old and new schema numbers. List any
+that touch the tables holding fork data: `consolidation_exception_keywords`,
+`detection_keywords`, `templates`, `settings`, `managed_channel_streams`. Also
+read `migrations/pre.py`: table rebuilds keyed on table state run regardless of
+version. **Stop and decide** if any of them rewrites keyword labels or terms,
+templates, or drops a table holding fork data.
+
+Also check whether upstream fixed something the fork carries. #16 disappeared
+that way (#716), and #17's double-swap guard became upstream's own (#1119).
+Changes that are upstream bug fixes (#18b, #19, #20) are the likeliest to go
+the same way.
+
+## Step 1 — Set up the target tree
+
+```bash
+cd /home/tito/MyApps
+git clone --branch vX.Y.Z --depth 1 https://github.com/Pharaoh-Labs/teamarr.git \
+    TEAMARR_vX.Y.Z_OFFICIAL_UNTOUCHED_SOURCE_CODE          # pristine, never modified
+cp -r Teamarr_fork_v2.25.1 Teamarr_fork_vX.Y.Z            # copy THIS repo: keeps every fork branch
+cd Teamarr_fork_vX.Y.Z
+rm -rf .pytest_cache .ruff_cache .venv frontend/node_modules frontend/dist
+cp CLAUDE.md /tmp/claude-fork-overlay.md                  # personal overlay, restored in Step 9
+git stash -u && git checkout -b dev-custom-X.Y.Z vX.Y.Z && git stash pop
+# CLAUDE.md conflicts on pop when upstream changed it: take upstream's tracked file
+git show vX.Y.Z:CLAUDE.md > CLAUDE.md && git reset -q CLAUDE.md && git stash drop
+```
+
+## Step 2 — Apply the fork, one area at a time (3-way merge of the net diff)
+
+**Default method since v2.25.1:** apply the fork's *net* diff, not its commit
+history. Cherry-picking `v2.12.5..dev-custom-2.12.5` conflicted on its first
+commit. The net diff produced four small conflicts in total. A cherry-pick of
+`v2.25.1..dev-custom-2.25.1` (5 clean commits) is reasonable only for a small
+hop where recon shows disjoint hunks.
+
+```bash
+OLD=v2.25.1; FORK=dev-custom-2.25.1
+# zsh: expand a list held in a variable with ${=F}
+F="teamarr/database/channels/keywords.py teamarr/consumers/lifecycle/types.py ..."   # one area
+git diff $OLD $FORK -- ${=F} | git apply -3
+git status --short | grep '^U'                            # resolve these by hand
+```
+
+Areas, in order:
+1. **localization** (#1–#14): `keywords.py`, `lifecycle/types.py`,
+   `normalizer.py`, `constants.py`, `home_away.py`, `event_epg.py`, `xmltv.py`,
+   `datetime.py`, `sample_data.py`, `exception_keywords.py`, `checkpoint_v43.py`
+   and their tests.
+2. **ordering** (#17).
+3. **EPG matching fixes** (#18b, #19): `epg_matcher.py` and its tests.
+4. **ESPN failed-fetch fix** (#20): `providers/espn/{client,provider,tournament}.py`,
+   `services/sports_data.py` and its test.
+5. **#15**: `separate_fallbacks.py` plus its hooks. Re-implement rather than
+   force-merge if upstream refactored the host code again (see the map below).
+6. **migrations** (Step 3).
+7. **docs**: `CUSTOMIZATIONS.md`, this file, `docs/reference/architecture/migrations.md`.
+
+**Conflict rule of thumb:** take upstream's structure and re-insert the fork's
+*intent*, as described in `CUSTOMIZATIONS.md`. Mark fork code in upstream files
+with `(fork)` / `Fork customization #N` comments, as the existing code does.
+Commit (noreply email) after each area so a bad merge is easy to back out, or
+stage only when commits aren't authorized yet.
+
+## Step 3 — Migrations: renumber and keep them additive
+
+- If upstream's chain now reaches or passes the fork's numbers, move the fork's
+  two blocks to **upstream's new last number +1 and +2**. Never leave a gap: the
+  `if current_version < N` chain is linear, so a jump would skip every future
+  upstream migration. Rename the functions (`_migrate_vNNN_…`), log lines and
+  docstrings, update `migrations/__init__.py` (imports + `__all__`), the
+  `schema.sql` DEFAULT, `docs/reference/architecture/migrations.md`, and every
+  test that asserts the final number. Find them with
+  `grep -rn 'schema_version.*== [0-9]' tests/` and
+  `grep -rn "== 105" tests/`.
+- The bodies must stay **additive** (`_append_exception_keyword_terms`: append
+  missing terms only, case-insensitive). Re-running them under a new number
+  must never remove a term someone added by hand in production.
+- **Production DB reset rule:** when the fork's numbers moved, prod's
+  `schema_version` still holds the OLD fork number, which can hide upstream
+  migrations that share those numbers. Before the first boot of the new image,
+  set it to the **last upstream migration number that prod really ran**, which
+  is the old fork's first number minus 1. For the next port from v2.25.1 that is
+  103, if upstream claims 104/105. Do it with the container stopped and after
+  the backup. Fork migrations are additive, so re-running them is harmless.
+
+## Step 4 — DB-only customizations (they live only in the production DB)
+
+None of these are in seeds or migrations, so a port can silently lose them.
+Check each one on the prod-DB copy after the migration test (Step 6):
+
+| What | Check |
+|---|---|
+| #6 every keyword `behavior='separate'` | `SELECT label, behavior FROM consolidation_exception_keywords` |
+| Español extra terms `ES:, MAX ES, Fanatiz, VIX` (#5 addenda) | `SELECT match_terms FROM consolidation_exception_keywords WHERE label='Español'` |
+| #14 art-URL templates use `{home_team_en|pascal}` | `CUSTOMIZATIONS.md` §14 `SELECT` → 0 rows still using `_team|pascal` |
+| #18a `' - '` matchup separator row | `SELECT * FROM detection_keywords WHERE category='separators'` (needs a restart after any insert) |
+| #15 settings `separate_fallback_enabled=1`, `count=3` | `SELECT separate_fallback_enabled, separate_fallback_count FROM settings` |
+
+## Step 5 — Tests that encode fork behaviour (adapt, never weaken)
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
+.venv/bin/pytest tests/ -q -p no:cacheprovider && .venv/bin/ruff check teamarr/ tests/
+```
+
+Expected fork-related failures and the right fix:
+- **schema-version asserts:** bump to the new fork number.
+- **XMLTV goldens:** `UPDATE_GOLDENS=1 .venv/bin/pytest tests/templates/test_starter_xmltv_goldens.py`.
+  Read the diff. After normalising `lang="es"`→`"en"`, `Belgica/Espana`→`Belgium/Spain`
+  and day-first dates, it must be empty.
+- **Day-first dates in literal expectations:** e.g.
+  `tests/templates/test_starter_xmltv_goldens.py` idle texts and
+  `test_segment_start_context.py`. Also check whether upstream added new
+  `%b %-d` sites in `templates/variables/datetime.py` that belong to
+  `{game_date_short}`.
+- **Default keyword labels in upstream tests:** use the Spanish ones
+  (`tests/test_exception_keyword_seed.py`, `test_exception_keyword_match_sources.py`).
+- **Keyword-first ordering (#17):** upstream lane and order-mode goldens pin the
+  stock direction with an autouse fixture (`KEYWORD_CHANNELS_FIRST=False`).
+  Any NEW upstream test module that numbers keyword channels needs the same
+  fixture. First confirm the only difference is the same-event swap: flip the
+  flag and run it.
+- **New generation stage (#15):** `tests/epg/test_generation_contract.py`
+  counts one extra stage and cancellation checkpoint.
+
+Before blaming the fork for any other failure, reproduce it on the pristine
+clone.
+
+## Step 6 — Verify against a copy of the production DB
+
+1. Copy prod's DB read-only: `scp hetzner:/opt/teamarr/data/teamarr.db <scratch>/prod.db`.
+   Keep it in the scratch dir and **delete it afterwards**: it contains the
+   Dispatcharr credentials.
+2. Snapshot the fork-carrying rows: keyword rows, separators, templates
+   1/3/5/13/14/16, settings, row counts. Apply the Step 3 reset if needed, run
+   `init_db(<copy>)`, then diff the snapshot. **Pass** means no change except
+   ones a named upstream migration explains.
+3. If upstream migrates settings (as v88 did for manual numbering), compare
+   channel numbers. Run `reassign_all_channels` with the OLD fork code and the
+   NEW code on separate copies; the results must agree.
+4. Run the feature spot checks:
+   - `apply_city_translations('Brasil vs Marruecos EN espanol')` → `brazil vs morocco …`
+   - `japones` stays unmangled
+   - `España U21`
+   - `slugify_keyword('Español')` → `espanol`
+   - `check_exception_keyword` on `ES: DW` / `ESPN:` / `EN ALEMÁN`; it returns a
+     TUPLE, so test `result[0]`
+   - `_clean_epg_segment('… ★6.6/10')`
+   - `build_match_input` on `DIRECTO Jornada 9: Chelsea - Manchester United T26/27`
+     (no pipe)
+5. Build the image and smoke-test two ways: a fresh empty data dir, and the
+   prod copy run with **`--network none`**. Blanking the Dispatcharr
+   credentials alone still let a login through in 2026-08.
+6. Run a fresh independent verifier pass before deploying.
+
+## Step 7 — Deploy (only when tito asks)
+
+```bash
+ssh hetzner 'cd /opt/teamarr && docker compose down && D=$(date +%Y%m%d) &&
+  cp -p data/teamarr.db data/teamarr.db.bak-pre-vXYZ-$D && sha256sum data/teamarr.db*$D data/teamarr.db &&
+  docker tag teamarr:custom teamarr:custom-<old>-rollback &&
+  tar --exclude=./data --exclude=./.git -czf /opt/teamarr-code-<old>-rollback-$D.tgz .'
+# schema reset if Step 3 says so:  sqlite3 data/teamarr.db "UPDATE settings SET schema_version=<N> WHERE id=1"
+rsync -az --delete --exclude=/data/ --exclude=.venv/ --exclude=.pytest_cache/ --exclude=.ruff_cache/ \
+  --exclude=__pycache__/ --exclude=/teamarr.db --exclude=.git/ --exclude=frontend/node_modules/ \
+  --exclude=frontend/dist/ --exclude=/.claude/ --exclude=/CLAUDE.md --exclude=/docker-compose.override.yml \
+  ./ hetzner:/opt/teamarr/                                # dry-run with -n first and read the deletions
+scp data/tsdb_seed.json hetzner:/opt/teamarr/data/        # ALWAYS (bind mount shadows the image copy); back up the old one first
+ssh hetzner 'cd /opt/teamarr && docker build -t teamarr:custom --build-arg GIT_BRANCH=dev-custom-X.Y.Z --build-arg GIT_SHA=<sha> . && docker compose up -d'
+```
+
+Then:
+1. Check the migrations in `docker logs teamarr`.
+2. **Wait for the startup cache refresh to finish** before generating: poll
+   `docker exec teamarr curl -s localhost:9195/api/v1/cache/status` until
+   `refresh_in_progress` is false. Startup refresh plus a generation together
+   got the server throttled by ESPN (HTTP 403).
+3. Generate: `docker exec teamarr curl -s -X POST -H "Content-Type: application/json" -d "{}" localhost:9195/api/v1/epg/generate`.
+4. **Judge the result against a baseline captured before `down`:**
+   - active channels, keyword channels, and attached primary/backup streams by
+     `match_method`;
+   - `lang="es"` count in `data/teamarr.xml`;
+   - distinct matched streams in `epg_matched_streams` for the run.
+
+   Don't use `streams_matched`, which changed meaning in v2.25.1. A big drop
+   means stop and investigate (v2.25.1: 1,049 → 102 programmes, which turned
+   out to be #19 and #20).
+5. Watch for empty event-cache rows written during 403 bursts:
+   `SELECT COUNT(*) FROM service_cache WHERE cache_key LIKE 'events_v2:%' AND data_json='[]' AND created_at > '<deploy time>'`.
+   #20 prevents new ones; delete rows already poisoned with the container stopped.
+
+**Rollback:** `down`; restore the DB backup (a newer-schema DB is not usable by
+the old code); restore the code tarball; retag the rollback image as
+`teamarr:custom`; `up -d`.
+
+## Step 8 — Things production can still surprise you with
+
+These come from real deploys. Anything a prod-DB copy can't show needs live
+data:
+- Guides change shape. #19 broke only with live Movistar/DAZN titles.
+- ESPN throttling and caching (#20).
+- Settings migrations that rearrange numbering (v88).
+- Re-check every "accepted for now" item in `CUSTOMIZATIONS.md` on each port;
+  #13 was accepted once and fixed a port later.
+
+## Step 9 — Housekeeping
+
+- Restore the personal `CLAUDE.md` overlay with a status block and deploy record.
+- Update `CUSTOMIZATIONS.md` (header, new or dropped changes) and THIS file
+  (history row, touch-point map, lessons section). Grep both for the old version
+  string.
+- Update `/home/tito/MyApps/CLAUDE.md` (the folder list) and memory.
+- Push the new branch to `titooo7` (noreply email).
+- The old fork folder and its untouched copy can be deleted once tito agrees.
+  Their history stays in this repo.
+
+---
+
+## Touch-point map (as of v2.25.1)
+
+Exact locations move between releases. Re-find them with the grep in the last
+column.
+
+| # | Change | Where | Re-find with |
+|---|---|---|---|
+| 1 | Accent-insensitive keyword matching | `database/channels/keywords.py`: `_strip_accents`, used in `_make_keyword_pattern` and `_first_keyword_match` (stream name, EPG programme title, event text) | `grep -n _strip_accents` |
+| 2/5/9 | Spanish default keywords (labels, `ES:`, un-accented and Spanish-name terms) | `database/exception_keywords.py` `DEFAULT_EXCEPTION_KEYWORDS` (the seed moved out of `schema.sql` in #726) + `database/checkpoint_v43.py` `EXCEPTION_KEYWORDS_SEED_V43`; keep both in step | `grep -n "Español" teamarr/database/*.py` |
+| 3 | Accent-strip in tvg-id slugs | `consumers/lifecycle/types.py` `slugify_keyword` | `grep -n "def slugify_keyword"` |
+| 4/8 | ES/PT→EN country translation, stream side only, after upstream's shared `translate_cities` (#797) | `consumers/matching/normalizer.py` `apply_city_translations`; dicts in `utilities/constants.py` | `grep -n COUNTRY_TRANSLATIONS` |
+| 6 | `behavior='separate'` | DB only | Step 4 |
+| 7/10 | EN→ES country display incl. U21/W | `templates/variables/home_away.py` `_translate_country_for_display` | `grep -n _translate_country_for_display` |
+| 11 | `Aplazado: ` and XMLTV `lang="es"` | `consumers/event_epg.py` `POSTPONED_LABEL`, `utilities/xmltv.py` `XMLTV_LANG` | `grep -n "POSTPONED_LABEL =\|XMLTV_LANG ="` |
+| 12 | `{game_date_short}` day-first | `templates/variables/datetime.py` (`%-d-%b`), `templates/sample_data.py` | `grep -n "%-d-%b\|%b %-d"` |
+| 14 | `{home_team_en}`/`{away_team_en}` | `templates/variables/home_away.py` + DB templates (Step 4) | `grep -n extract_home_team_en` |
+| 15 | Separate-mode failover backups | new `consumers/lifecycle/separate_fallbacks.py`; stage `_stage_separate_fallbacks` registered right after `_stage_stream_ordering` in `consumers/generation.py`; backup offset in phase 1 of `generation_pipeline/channel_steps.py` `apply_stream_ordering`, in `database/channels/streams.py` `reorder_channel_streams`, and in the stream-explainer `expected_priority` in `api/routes/channels.py`; two guards in `consumers/lifecycle/cleanup.py` (`cleanup_deleted_streams`, `cleanup_disabled_groups`); `is_backup` in `add_stream_to_channel` allowed fields; settings in `database/settings/types.py`/`update.py`, `api/routes/settings/`; UI in `frontend/src/pages/channels/ChannelConsolidation.tsx`, `ChannelNumbering.tsx`, `api/settings.ts`; `ExceptionKeywordsCard.tsx` gate removed; 3 plain columns in `schema.sql` (reconciliation, no migration) | `grep -rn "is_backup\|BACKUP_PRIORITY_OFFSET\|separate_fallback" teamarr frontend/src` |
+| 17 | Keyword channels before the plain channel (same event) | `database/channel_numbers.py` `KEYWORD_CHANNELS_FIRST` + `sort_key`; `consumers/enforcement/ordering.py` comparison `k > m` (the swap guard is upstream's #1119) | `grep -n "KEYWORD_CHANNELS_FIRST\|AS INTEGER) > CAST"` |
+| 18a | `' - '` matchup separator | DB only (`detection_keywords`) | Step 4 |
+| 18b | Strip EPG `★N.N/10` rating before date extraction | `consumers/matching/epg_matcher.py` `_RATING_SUFFIX` in `_clean_epg_segment` | `grep -n _RATING_SUFFIX` |
+| 19 | Don't split dash-written matchups between the teams | `consumers/matching/epg_matcher.py` `_split_inline_matchup` (upstream #728 added `-` to `_INLINE_SEP`) | `grep -n _split_inline_matchup` |
+| 20 | Never cache a failed ESPN fetch as an empty day | `providers/espn/client.py` `ESPNFetchError`; raised in `provider.py` (scoreboard + MMA) and `tournament.py`; `services/sports_data.py` `failed_buckets` skip-cache | `grep -rn "ESPNFetchError\|failed_buckets"` |
+| mig | Fork migrations v104/v105 (additive) | `database/migrations/versioned.py` (`_append_exception_keyword_terms`, `_migrate_v104_…`, `_migrate_v105_…`, blocks after upstream's last), `migrations/__init__.py`, `schema.sql` DEFAULT, `docs/reference/architecture/migrations.md` | `grep -rn "_migrate_v10[45]"` |
+| — | #16 EPG anchor on reverse-alias retry | **dropped**: upstream #716 | — |
+
+---
+
+# History — lessons from earlier ports (kept for context)
+
+## What was learned porting to v2.25.1 (2026-10-31)
 
 v2.12.5 → v2.25.1 was 21 releases / 816 upstream commits, and it changes how
 the next port should be done. Everything below the "Step" headings further
@@ -150,7 +385,11 @@ prod's (bind-mount gap — copy it explicitly); the image must be run once
 against a prod-DB copy with Dispatcharr creds blanked **and** `--network none`
 (blanking alone still let a login through in 2026-08).
 
-## New in the fork (2026-08-22): separate-mode failover backups — a fourth port-check surface
+
+---
+
+## #15 touch points as they were on v2.12.5 (historical; current map above)
+
 
 Change #15 in `CUSTOMIZATIONS.md` (`teamarr/consumers/lifecycle/
 separate_fallbacks.py`) is the fork's first feature that isn't Spanish
@@ -201,6 +440,7 @@ clause (two upstream tests hand-roll `managed_channel_streams` rows without
 the `is_backup` column and would break); if upstream itself changes that
 `ORDER BY`, re-verify the priority-offset design still keeps the primary
 first without needing to reference `is_backup` directly there.
+
 
 ---
 
@@ -364,335 +604,3 @@ first without needing to reference `is_backup` directly there.
 
 ---
 
-## Step 1 — Set up the target tree (per MyApps conventions)
-
-```bash
-cd /home/tito/MyApps
-
-# Pristine reference copy (never modified)
-git clone --branch vX.Y.Z --depth 1 https://github.com/Pharaoh-Labs/teamarr.git \
-    TEAMARR_vX.Y.Z_OFFICIAL_UNTOUCHED_SOURCE_CODE
-
-# Working fork: copy THIS repo so the custom commit objects come along
-cp -r Teamarr_fork_v2.12.5 Teamarr_fork_vX.Y.Z
-cd Teamarr_fork_vX.Y.Z
-rm -rf .pytest_cache .ruff_cache .venv
-cp CLAUDE.md /tmp/claude-fork-overlay.md   # save the personal overlay aside
-git stash -u
-git fetch origin --tags
-git checkout -b dev-custom-X.Y.Z vX.Y.Z
-git stash pop
-```
-
-> The custom commit hashes only exist in the local fork repo — that's why we
-> copy it rather than fresh-cloning. `git stash pop` may conflict on
-> `CLAUDE.md` (personal overlay vs upstream's file, if upstream changed it
-> since the last port — it didn't between v2.12.4 and v2.12.5, so the pop was
-> clean that time). If it conflicts, **take upstream's version**
-> (`git show vX.Y.Z:CLAUDE.md > CLAUDE.md && git add CLAUDE.md`) — `git
-> checkout --theirs` picks the STASH side in a stash-pop conflict, which is
-> the OPPOSITE of what you want here; use `git show <tag>:<path>` instead to
-> be sure. Either way, take upstream's tracked `CLAUDE.md` as the starting
-> point and re-apply the (updated) personal overlay from
-> `/tmp/claude-fork-overlay.md` at the end (Step 8).
-> `CUSTOMIZATIONS.md`, `PORTING-TO-NEW-VERSIONS.md` and `docker-compose.yml`
-> are **tracked** and arrive via cherry-pick; `HANDOFF-*.md` and
-> `docker-compose.override.yml` are untracked/ignored personal files.
-
-## Step 2 — Find the target's schema version and check whether renumbering is needed
-
-```bash
-grep -n 'schema_version INTEGER DEFAULT' teamarr/database/schema.sql
-grep -n 'current_version < ' teamarr/database/migrations/versioned.py | tail -3
-# Did upstream claim the fork's CURRENT migration numbers (v85/v86)?
-git log <old-tag>..<new-tag> --oneline -- teamarr/database/migrations/versioned.py
-```
-
-**If that log is empty and `schema_version DEFAULT` matches what the fork
-already expects (as of this writing: 84, fork uses 85/86) — no renumbering
-is needed.** Skip straight to Step 3. This was the case for both the
-v2.12.3→v2.12.4 port and the v2.12.4→v2.12.5 port; don't assume it will be
-again.
-
-**If upstream added migrations that consumed v85 and/or v86** — the fork's
-numbers must move to the target's latest `DEFAULT` + 1 (and +2), regardless
-of what the fork's numbers were on the previous version. **Do not** "leave a
-gap" (e.g. jump to 900): the `if current_version < N:` chain is strictly
-linear, and jumping `schema_version` ahead would make every future upstream
-migration get skipped forever.
-
-Also check whether the target added any new columns via plain `schema.sql`
-edits (no migration block) — those are handled by `reconcile_schema()`
-automatically and need **no** fork action at all beyond confirming they show
-up after Step 3's cherry-pick (see the v2.12.4 lesson above).
-
-## Step 3 — Sanity-check the touched code still exists
-
-```bash
-grep -rn 'def check_exception_keyword\|def _make_keyword_pattern' teamarr/database/channels/keywords.py
-grep -n  'def slugify_keyword' teamarr/consumers/lifecycle/types.py
-grep -n  'def apply_city_translations' teamarr/consumers/matching/normalizer.py
-grep -n  'def extract_home_team\|def extract_away_team\|def extract_home_team_en\|def extract_away_team_en' teamarr/templates/variables/home_away.py
-grep -n  'EXCEPTION_KEYWORDS_SEED_V43' teamarr/database/checkpoint_v43.py
-grep -n  'consolidation_exception_keywords' teamarr/database/schema.sql
-grep -n  'POSTPONED_LABEL' teamarr/consumers/event_epg.py
-grep -n  '_apply_migration' teamarr/database/migrations/versioned.py | head -2
-
-# Change #15 (separate-mode failover backups) — see the "New in the fork
-# (2026-08-22)" section above for the full four-touch-point writeup
-grep -n  'BACKUP_PRIORITY_OFFSET\|def apply_separate_fallbacks' teamarr/consumers/lifecycle/separate_fallbacks.py
-grep -n  'apply_separate_fallbacks\|is_backup' teamarr/consumers/generation.py
-grep -n  'is_backup' teamarr/consumers/lifecycle/cleanup.py
-grep -n  '"is_backup"' teamarr/database/channels/streams.py
-
-# Change #16 (EPG anchor guard on reverse-alias retry) — one-line fix, see CUSTOMIZATIONS.md §16
-grep -n  'anchor_dt=ctx.anchor_dt' teamarr/consumers/matching/team_matcher.py
-
-# Change #17 (keyword channels sort before plain, same event) — see CUSTOMIZATIONS.md §17
-grep -n  'keyword_sort' teamarr/database/channel_numbers.py
-grep -n  'def enforce\|keyword_number' teamarr/consumers/enforcement/ordering.py
-
-# Change #18b (EPG star-rating date-misparse fix) — see CUSTOMIZATIONS.md §18.
-# #18a is DB-only (Step 6 below) and touches no code, so nothing to grep for it.
-grep -n  '_RATING_SUFFIX' teamarr/consumers/matching/epg_matcher.py
-```
-
-If any anchor is missing (renamed/moved), fall back to manual re-application
-using `CUSTOMIZATIONS.md` §"Detailed Change Descriptions" — the *intent* of
-each change is version-independent. Also check whether upstream retired or
-re-aliased any template variable the fork's stored templates reference
-(customization #13's history is exactly this pattern) — a variable
-disappearing from the registry but still "working" via a legacy alias is
-easy to miss.
-
-## Step 4 — Cherry-pick the full commit range
-
-```bash
-git cherry-pick v2.12.5..dev-custom-2.12.5   # oldest first, resolve/continue as needed
-```
-
-(Substitute the actual previous fork tag/branch — `v2.12.5..dev-custom-2.12.5`
-is this repo's range as of this writing; the next port cherry-picks from
-whatever branch it copied in Step 1. If any commit in the range fails with a
-"local changes would be overwritten" error because of a dirty tracked file
-like `CLAUDE.md`, discard that file's local changes and **restart the whole
-cherry-pick from scratch** — see the gotcha in the callout near the top of
-this doc.)
-
-Conflict resolutions that recur:
-
-| File | Conflict | Resolution |
-|---|---|---|
-| `teamarr/database/schema.sql` | `DEFAULT` version, or a disjoint upstream column addition nearby | If renumbering (Step 2 said yes): take the **new fork number**. If not: usually auto-merges — the fork edits two small, stable regions (`schema_version` line, `consolidation_exception_keywords` seed block) that rarely overlap upstream's own edits. Keep the Spanish seed block either way. |
-| `teamarr/database/migrations/versioned.py` | fork blocks vs new upstream migrations | Fork guard blocks go **after upstream's last block**; if renumbering, rename both the guard block AND the migration function's own name/docstring/log lines. Register the (renamed) functions in `migrations/__init__.py` (imports + `__all__`). |
-| `CLAUDE.md` (tracked) | upstream rewrote it | Take upstream's, bump its "Schema version" table row to the fork number. |
-| `docker-compose.yml` | upstream reworded a comment near a fork-owned env var line | Keep the fork's values (image, TZ, expose), take upstream's comment wording — this is the one conflict that recurred on the v2.12.4 port. |
-| `docs/reference/architecture/migrations.md` | version history | Take upstream's; append the two fork rows; bump the "Current schema version" line if it changed. |
-| `tests/**` version assertions | final schema number | Only relevant if renumbering happened — take the fork number everywhere (Step 5 grep — do this with a script). |
-| `tests/templates/goldens/*.xml` | `lang` attribute, or nothing at all | Regenerate on the target regardless (`UPDATE_GOLDENS=1`), read the full diff (Step 4b) — don't assume "no conflict" means "no diff needed." |
-| `teamarr/consumers/generation.py` | upstream restructures `_apply_stream_ordering`'s reorder loop, or moves where/when it's called relative to `timer.mark("stream_ordering")` | Re-apply the `BACKUP_PRIORITY_OFFSET` add and the `apply_separate_fallbacks()` call **immediately after** the stream-ordering phase, never before (see change #15's writeup for why the ordering matters) |
-| `teamarr/consumers/lifecycle/cleanup.py` | upstream restructures `cleanup_deleted_streams`'s stream categorization or `cleanup_disabled_groups`'s `remaining` check | Re-apply both `is_backup`-skip guards at their new locations — these are the highest-risk edits in change #15; a regression here means a backup silently starts affecting channel lifetime |
-
-Then regenerate the goldens fresh (don't just take the cherry-picked files):
-
-```bash
-UPDATE_GOLDENS=1 .venv/bin/python -m pytest tests/templates/test_starter_xmltv_goldens.py
-git diff tests/templates/goldens/
-```
-
-**Read the whole diff.** By now (post-v2.12.3) every fork golden should
-already carry `lang="es"`, so the expected result on a port where nothing
-else changed is an **empty diff** (confirmed on the v2.12.4 port). Any diff
-at all — even a small one — needs investigating before committing, not just
-eyeballing that it's "small." That's exactly how the v2.12.3 port caught the
-`home_team_pascal` art-URL shift.
-
-⚠️ When staging conflict resolutions, use explicit `git add <files>` — a
-blanket `git add -A` will sweep the untracked personal files
-(`HANDOFF-*.md`, `docker-compose.override.yml`) into the commit.
-
-## Step 5 — Renumber sweep (only if Step 2 found a collision)
-
-If Step 2 found upstream had claimed v85 and/or v86, do a full grep sweep
-after cherry-picking — a single sed pass over `_migrate_vNN_*` function names
-is not sufficient, it misses test **class** names (`TestVNN...`) and prose
-references in docstrings/comments that don't share the function's exact
-token:
-
-```bash
-grep -rn 'migrate_vOLD\|TestVOLD' teamarr/ tests/
-grep -rn 'schema_version.*== [0-9][0-9]' tests/   # eyeball every result, not just fork-added files
-grep -n 'schema_version INTEGER DEFAULT' teamarr/database/schema.sql
-```
-
-Files that carry the final schema number: `schema.sql` (DEFAULT),
-`docs/reference/architecture/migrations.md`, `CLAUDE.md` (tracked),
-`tests/migrations/test_checkpoint_v43.py`,
-`tests/migrations/test_subscription_migration.py`,
-`tests/migrations/test_versioned_migrations.py` (×5),
-`tests/test_media_server_settings.py`,
-`tests/migrations/test_migration_helpers.py` (function names, class names,
-AND docstrings/comments — check all three independently).
-
-**If Step 2 found no collision (as on the v2.12.4 and v2.12.5 ports), skip
-this step entirely** — but still run the same grep once as a sanity check;
-it should come back empty (fork numbers unchanged, matching Step 2's
-finding).
-
-> **⚠️ Existing production DB warning — only applies when renumbering
-> happened.** If the fork's migration numbers moved, the prod DB carries the
-> PREVIOUS fork's numbering and has never run the upstream migrations that
-> share those numbers in the new release. Before first boot of the new
-> image: back up `data/teamarr.db`, then reset `schema_version` to the last
-> upstream migration that actually ran on it. **If Step 2 found no
-> collision, skip this entirely — no reset needed** (confirmed safe on the
-> v2.12.4 port: prod DB stayed at schema 86 across the whole deploy with no
-> manual reset, verified via `init_db` against a live prod-DB copy).
->
-> Fork migrations are idempotent — re-running them is a safe no-op.
-> When a reset IS needed: stop the OLD container before the reset and don't
-> let it boot again afterwards (it would re-apply its own migrations and
-> undo the reset). Sequence: `docker compose down` → backup → reset → deploy
-> new image → `up -d`.
->
-> (Historical resets: v2.8.0-fork DB (78) → 76 before v2.12.2's image;
-> v2.12.2-fork DB (85) → 83 before v2.12.3's image. **v2.12.3→v2.12.4 and
-> v2.12.4→v2.12.5: no reset, none needed.**)
-
-## Step 6 — Re-apply the DB-only customizations
-
-Seeds intentionally stay `consolidate`/stock-art-URLs; the live DB gets:
-
-```sql
-UPDATE consolidation_exception_keywords SET behavior='separate' WHERE behavior='consolidate';
-```
-
-Plus, as of the v2.12.4 port, customization #14's art-URL rewrite (see
-`CUSTOMIZATIONS.md` §14 for the full SQL and which columns to check — the
-column list can differ between DBs, always run the `SELECT` first).
-
-Plus, as of 2026-08-23, the Español keyword's `match_terms` also carries
-`MAX ES`, `Fanatiz`, and `VIX` terms (see `CUSTOMIZATIONS.md` §5's
-addenda) — this is live-DB user data discovered from real stream names, not
-something a fresh seed or a versioned migration carries, so it's easy to
-lose on a port that only re-checks `behavior`. Confirm they're present:
-`SELECT match_terms FROM consolidation_exception_keywords WHERE
-label='Español'` should contain all three.
-
-Plus, as of 2026-08-30 (change #18a — see `CUSTOMIZATIONS.md` §18), a
-`detection_keywords` row makes `" - "` a matchup separator:
-
-```sql
-INSERT INTO detection_keywords (category, keyword, is_regex, target_value, enabled, priority, description)
-VALUES ('separators', ' - ', 0, NULL, 1, 100,
-        'Dash matchup separator: Movistar/European EPG titles (Real Madrid - Málaga)');
-```
-
-Same class of gap as the Español match-terms above: this is a live-DB row,
-not a seed or a versioned migration, so **it will not survive a port that
-only re-checks `behavior` or the seed tables** — confirm with
-`SELECT * FROM detection_keywords WHERE category='separators'` (should
-return exactly this one row on a fork DB; upstream ships none). **Requires
-a container restart after insert** — `DetectionKeywordService._separators`
-is a process-lifetime cache, unlike the exception keywords above (which are
-re-read every generation run).
-
-(Full label/match-term SQL for DBs that somehow reverted the #1–#9 seed
-changes: `CUSTOMIZATIONS.md` §"Step 2: Apply DB-only changes".)
-
-## Step 7 — Verify
-
-```bash
-# Fresh venv (the copied .venv is stale/removed)
-python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
-
-.venv/bin/ruff check teamarr/ tests/
-.venv/bin/python -m pytest tests/ -q        # target: 0 fork-caused failures
-                                             # (2252 passed / 0 failed on
-                                             # v2.12.5 — the pre-existing
-                                             # test_date_format_learning.py
-                                             # flake from v2.12.4 and earlier
-                                             # is GONE, upstream fixed it in
-                                             # v2.12.5 (#553); confirm any
-                                             # NEW failure reproduces on the
-                                             # PRISTINE clone before blaming
-                                             # the fork)
-
-# Migration chain on a COPY of the REAL prod DB (safer than the local
-# data/teamarr.db, which tends to be stale — pull it read-only first):
-#   scp hetzner:/opt/teamarr/data/teamarr.db /tmp/prod-copy.db
-#   (only reset schema_version if Step 5 found a collision) → run init_db →
-#   expect final = fork number, reconcile_schema logs any new plain columns,
-#   Spanish labels + behavior='separate' + 'ES:' term intact.
-
-# Feature spot checks (venv, this tree):
-.venv/bin/python -c "
-from teamarr.consumers.matching.normalizer import normalize_stream
-print(normalize_stream('Brasil vs Marruecos EN espanol').normalized)   # brazil vs morocco …
-print(normalize_stream('partido en japones').normalized)               # japones NOT mangled
-from teamarr.templates.variables.home_away import _translate_country_for_display as t
-print(t('Spain'), '|', t('Spain U21'), '|', t('Real Madrid'))          # España | España U21 | Real Madrid
-from teamarr.consumers.lifecycle.types import slugify_keyword
-print(slugify_keyword('Español'))                                      # espanol
-from teamarr.database.channels.keywords import check_exception_keyword
-from teamarr.database.exception_keywords import ExceptionKeyword
-kw = ExceptionKeyword(id=1, label='Español', match_terms='ES:', behavior='separate', enabled=True)
-print(check_exception_keyword('ES: DW EN VIVO', [kw]))                 # ('Español', 'separate')
-print(check_exception_keyword('ESPN: game', [kw]))                     # (None, None)
-"
-# NOTE: check_exception_keyword returns a TUPLE (label, behavior) — test with
-# result[0] is not None, never 'result is not None'.
-
-# Build + smoke-test the custom image (Dockerfile builds from the local tree)
-docker build -t teamarr:custom \
-  --build-arg GIT_BRANCH=dev-custom-X.Y.Z \
-  --build-arg GIT_SHA=$(git rev-parse --short HEAD) .
-# Run it TWO ways against isolated data dirs (NOT the real data/teamarr.db):
-#  1. fresh empty dir — confirms clean-install behavior (schema inits at the
-#     fork's DEFAULT, seeds stay at their stock/untranslated defaults).
-#  2. a copy of the patched real prod DB — confirms the live-DB path: 0
-#     errors, no unexpected re-migration, DB-only customizations present.
-```
-
-Then the usual local Docker soak before any production deploy (production
-only when tito explicitly asks — see `/home/tito/MyApps/CLAUDE.md`).
-
-## Step 8 — Housekeeping
-
-- Restore and update the new folder's personal `CLAUDE.md` overlay (from
-  `/tmp/claude-fork-overlay.md`): version numbers, new cherry-pick range,
-  migration-number status (moved or not, and why), verification-status
-  paragraph, TODO section.
-- Update `CUSTOMIZATIONS.md` header (base version, commit count, schema
-  numbers) and THIS file (commit range, learned-lessons section, prod-DB
-  reset status) — grep the whole doc for the OLD version string after
-  editing, the same way Step 5 does for schema numbers.
-- Write a `HANDOFF-<date>.md` for the port session.
-- The superseded fork/pristine folder pair becomes scheduled-for-deletion per
-  MyApps convention (tito deletes them himself; update
-  `/home/tito/MyApps/CLAUDE.md` folder list).
-
----
-
-## Appendix — the changes at a glance (intent, not diff)
-
-| # | Change | Where (as of v2.12.5) | Verify by |
-|---|--------|-------|-----------|
-| 1 | Accent-insensitive keyword matching (`_strip_accents`, both sides) | `teamarr/database/channels/keywords.py` + migration v85 in `migrations/versioned.py` | `espanol` stream text matches `Español` term |
-| 2 | Spanish keyword labels in seeds | `schema.sql`, `checkpoint_v43.py` | fresh DB shows `Español`, `Francés`, … |
-| 3 | Accent-strip in `slugify_keyword()` | `teamarr/consumers/lifecycle/types.py` | `Español` → `espanol` |
-| 4 | ES/PT→EN `COUNTRY_TRANSLATIONS` for matching (derived, `\b`-bounded) | `constants.py` + `normalizer.py` | `Brasil vs Marruecos` → `brazil vs morocco`; `japones` intact |
-| 5 | `ES:` in Español match terms | seeds + migration terms | `ES: DW` tagged; `ESPN:` not |
-| 6 | `behavior='separate'` (DB-only) | live DB SQL | keywords table shows `separate` |
-| 7 | EN→ES `ENGLISH_TO_SPANISH_COUNTRIES` display translation | `constants.py` + `templates/variables/home_away.py` | `España - Cabo Verde`; tvg-id/logs English |
-| 8 | Youth/women suffixes in display | `home_away.py` | `Spain U21` → `España U21` |
-| 9 | Spanish language names as match terms | seeds + migration v86 | `EN ALEMAN` / `en coreano` detected |
-| 10 | Spanish EPG metadata | `event_epg.py` (`Aplazado: `), `utilities/xmltv.py` (`lang="es"`) + regenerated goldens | XMLTV output carries `lang="es"` |
-| 11 | `{game_date_short}` day-first (`22-Jul`) | `templates/variables/datetime.py` | channel names show day-first dates |
-| 13 | National-team art URLs via `{home_team_pascal}` — **fixed by #14** | interaction between #7 and upstream #484's `_LEGACY_ALIASES` | see `CUSTOMIZATIONS.md` §13 for history |
-| 14 | `{home_team_en}`/`{away_team_en}` untranslated variables (fixes #13) | `templates/variables/home_away.py` (code) + DB-only SQL (templates) | `{home_team_en}` stays `Spain` where `{home_team}` shows `España`; art URL SQL rewrite confirmed on prod-DB copy |
-| 15 | Separate-mode failover backups (opt-in, off by default — not Spanish localization) | `teamarr/consumers/lifecycle/separate_fallbacks.py` (new file); hooks in `generation.py` + `cleanup.py` | enable via settings, generate, confirm `[SEPARATE_FALLBACK] converged N channel(s)` in logs and every channel's slot #0 stream == its `primary_stream_id` |
-| 16 | EPG anchor guard bypassed on reverse-alias retry — **upstream bug fix**, not localization | `teamarr/consumers/matching/team_matcher.py`, `_try_reverse_alias_match()` | a highlights/encore/replay programme titled the same as a live event no longer binds to it; see `CUSTOMIZATIONS.md` §16 for the production incident |
-| 17 | Keyword channels sort before the plain channel, same event only — fixed fork behaviour, not localization | `teamarr/database/channel_numbers.py` (`keyword_sort`) + `teamarr/consumers/enforcement/ordering.py` (detection comparison, `seen`-guard) | `(Español)`/`(Portugués)` channel numbered lower than the plain channel for the same event; never crosses to a different event's channels |
-| 18a | `" - "` as a matchup separator (DB-only, no code) | `detection_keywords(category='separators')` — live-DB row, see Step 6 above | Movistar/European titles like `Real Madrid - Málaga` extract a team pair (`classify_stream` → `TEAM_VS_TEAM`, not `PLACEHOLDER`) |
-| 18b | EPG guide star-rating (`★N.N/10`) misread as a date — **upstream bug fix**, not localization | `teamarr/consumers/matching/epg_matcher.py`, `_RATING_SUFFIX` / `_clean_epg_segment()` | a programme whose sub_title carries a fractional star rating no longer gets a false `extracted_date`; see `CUSTOMIZATIONS.md` §18 for the production incident |

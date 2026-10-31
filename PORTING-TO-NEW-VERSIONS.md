@@ -128,7 +128,24 @@ asserts (`== 105`); XMLTV goldens (`UPDATE_GOLDENS=1` — diff must be only
 mirrored to keyword-first; lane/order-mode goldens pin
 `KEYWORD_CHANNELS_FIRST=False` via an autouse fixture.
 
-**8. Deploy reminders found this port:** `data/tsdb_seed.json` differs from
+**8. The deploy surfaced two more upstream issues → fork changes #19 and #20**
+(see `CUSTOMIZATIONS.md`). The prod-copy migration test could not catch them:
+both need live ESPN/Dispatcharr data. **Judge a deploy by distinct matched
+streams and programme counts, not `streams_matched`.** The old figure (409) was
+a sum over 46 per-source sub-runs. The new pipeline records one consolidated
+run (upstream v90 #645), and the channel-source group is split per Dispatcharr
+group (#542). Comparable numbers on 2026-10-31:
+- v2.12.5: 332 distinct streams, 1,049 `lang="es"` programmes, 116 channels;
+- v2.25.1 after the fixes: 312 distinct streams, 1,170 programmes, 128 channels.
+
+The ~20 streams it no longer matches are stale stream names that refer to
+last weekend's games. v2.25.1's date/fixture gates reject them correctly.
+**Don't trigger a generation while the startup cache refresh is still
+running** (poll `GET /api/v1/cache/status` until `refresh_in_progress` is
+false). Together they got the server throttled by ESPN. The generate endpoint
+now needs a JSON body: `-H "Content-Type: application/json" -d "{}"`.
+
+**9. Deploy reminders found this port:** `data/tsdb_seed.json` differs from
 prod's (bind-mount gap — copy it explicitly); the image must be run once
 against a prod-DB copy with Dispatcharr creds blanked **and** `--network none`
 (blanking alone still let a login through in 2026-08).

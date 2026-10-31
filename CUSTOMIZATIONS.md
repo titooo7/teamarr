@@ -38,6 +38,8 @@ This document describes all customizations made to this Teamarr fork: changes 1�
 | 16 | **DROPPED on the v2.25.1 port — upstream fixed it (#716).** EPG anchor guard bypassed on reverse-alias retry — upstream bug fix | A highlights/encore/replay programme could bind to a same-titled live event any distance away, producing a Dispatcharr channel with zero streams (production incident, 2026-08-23) |
 | 17 | Keyword channels sort before the plain channel, same event only | `(Español)`/`(Portugués)` channels now get lower numbers than the plain channel for the same game (fixed fork behaviour, not Spanish-localization) |
 | 18 | Dash matchup separator + EPG star-rating strip — **two bug fixes** | Movistar/European EPG titles ("Real Madrid - Málaga") never extracted a team pair; separately, a "★N.N/10" guide rating was misread as a date and silently killed an otherwise-correct match |
+| 19 | Dash-written EPG matchups not split between the teams (v2.25.1) | Upstream #728 split "DIRECTO Jornada 9: Chelsea - Manchester United" at the team dash, so no Movistar/DAZN programme matched |
+| 20 | A failed ESPN fetch is never cached as an empty day (v2.25.1) | An ESPN 403 burst got cached as "no games": LaLiga/Premier League vanished for the day, past days for 30 days |
 
 ---
 
@@ -696,6 +698,60 @@ def _clean_epg_segment(text: str) -> str:
   state) is misleading. Not fixed as part of this change — flagged in
   `CLAUDE.md`'s TODO for a future session to decide how to reconcile
   `/opt/teamarr`'s git state with reality.
+
+---
+
+## Changes 19–20: found on the v2.25.1 production deploy (2026-10-31)
+
+Both are fixes to upstream behaviour that only showed up against real
+production data. The first generation after the deploy matched far fewer
+streams (programmes 1,049 → 102), and both causes had to be fixed before the
+deploy counted as healthy.
+
+### 19. Dash-written EPG matchups must not be split between the teams (`29f85753`)
+
+Upstream #728 added a plain `-` to `_INLINE_SEP` (`teamarr/consumers/matching/epg_matcher.py`),
+the pattern that splits a sub_title-less programme title into
+"category | matchup". Movistar/DAZN write the matchup itself with a dash
+(`DIRECTO Jornada 9: Chelsea - Manchester United T26/27`). The split landed
+between the two teams (`… Chelsea | Manchester United T26/27`), so no pair was
+extracted and every such programme failed. This is the same shape #18a's
+`' - '` separator row exists for.
+
+**Fix:** `_split_inline_matchup()` splits at the first inline separator only
+when the text after it still holds a matchup separator (built-in
+`GAME_SEPARATORS` or another inline dash). Upstream's own cases still split:
+`MLB Baseball - Mets at Mariners`, `NBA : Game 1 : Knicks at Spurs`,
+`Premier League — Arsenal vs Chelsea`. Test:
+`test_build_input_dash_matchup_is_not_split_between_teams` in
+`tests/epg/test_epg_matcher_logic.py`.
+
+### 20. A failed ESPN fetch is never cached as an empty day (`32a91846`)
+
+At startup, v2.25.1's cache refresh and the first generation together sent
+ESPN enough requests to be throttled with HTTP 403. This was the first run
+after upgrading, and v2.25.1 renamed the event cache (`events_v2`), so
+everything was fetched cold. The ESPN client returns `None` on an HTTP error.
+The provider turned that into `[]`, and `SportsDataService.get_events` cached
+it like a real empty day:
+- 394 `events_v2` and 564 `events_raw` entries were empty;
+- LaLiga and Premier League showed no games today and tomorrow;
+- the past five days were cached empty for 30 days.
+
+**Fix:**
+- `ESPNProvider.get_events` (scoreboard, MMA and tournament paths) raises
+  `ESPNFetchError` (`teamarr/providers/espn/client.py`) when the request failed.
+  A genuine empty scoreboard is still `[]`.
+- `_fetch_provider_span` records failed buckets, and `get_events` returns
+  what it has without caching that user-day.
+- The raw bucket was already left uncached on an exception.
+
+The poisoned rows already in production were deleted (with the container
+stopped). Test: `tests/services/test_failed_fetch_not_cached.py`. After the
+fix, a cold run logs `[EVENTS] … bucket … failed` warnings instead of caching,
+and the next run refetches them: 0 × 403 once warm.
+
+**Worth reporting upstream:** both #19 and #20 are upstream issues.
 
 ---
 

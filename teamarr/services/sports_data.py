@@ -352,11 +352,19 @@ class SportsDataService:
                     # unioning the provider's own day buckets (#601) — a
                     # day-bucketed API can't honour "return ±1 day" on its own.
                     window = user_day_window(target_date)
+                    failed_buckets: list[date] = []
                     events = [
                         e
-                        for e in self._fetch_provider_span(provider, league, target_date)
+                        for e in self._fetch_provider_span(
+                            provider, league, target_date, failed_buckets
+                        )
                         if event_intersects(e, window)
                     ]
+                    if failed_buckets:
+                        # (fork) A bucket fetch failed: return what we have but
+                        # don't cache it, or a transient provider error is
+                        # remembered as "no events" for the whole TTL.
+                        return [_enrich_event_teams(e) for e in events]
                     # Check if all events are final (for past dates, enables 30-day
                     # cache). Empty list counts as "all final" (nothing to update).
                     all_final = len(events) == 0 or all(is_event_final(e) for e in events)
@@ -368,7 +376,11 @@ class SportsDataService:
         return []
 
     def _fetch_provider_span(
-        self, provider: SportsProvider, league: str, target_date: date
+        self,
+        provider: SportsProvider,
+        league: str,
+        target_date: date,
+        failed_buckets: list[date] | None = None,
     ) -> list[Event]:
         """Union a provider's day buckets around ``target_date``, deduplicated.
 
@@ -398,6 +410,8 @@ class SportsDataService:
                     league,
                     e,
                 )
+                if failed_buckets is not None:
+                    failed_buckets.append(day)
                 continue
             for event in bucket:
                 key = (event.provider, event.id)

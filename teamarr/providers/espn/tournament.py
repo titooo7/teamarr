@@ -12,6 +12,7 @@ from unidecode import unidecode
 
 from teamarr.core import Event, EventStatus, RacingResult, RacingSession, Team, Venue
 from teamarr.database.race_feeds import RosterEntry
+from teamarr.providers.espn.client import ESPNFetchError
 
 if TYPE_CHECKING:
     from teamarr.providers.espn.client import ESPNClient
@@ -113,6 +114,8 @@ class TournamentParserMixin:
         """
         date_str = target_date.strftime("%Y%m%d")
         data = self._client.get_scoreboard(league, date_str, sport_league)
+        if data is None:
+            raise ESPNFetchError(f"tournament scoreboard {league} {date_str}")  # (fork)
         if not data:
             return []
 

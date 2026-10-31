@@ -37,6 +37,15 @@ _CRICKET_PANEL_TTL_SECONDS = 300
 ESPN_CORE_URL = "http://sports.core.api.espn.com/v2/sports"
 ESPN_USER_AGENT = "curl/8.7.1"
 
+
+class ESPNFetchError(RuntimeError):
+    """(fork) An ESPN request failed — HTTP error, 403 throttling, timeout.
+
+    Raised instead of returning an empty list from the ``get_events`` paths so
+    the service never caches a failed fetch as "no events that day" (see
+    SportsDataService._fetch_provider_span).
+    """
+
 # UFC athlete endpoint (for fighter profiles)
 
 # ESPN's ungrouped NCAA scoreboards can omit entire divisions. Fetch the root

@@ -28,6 +28,7 @@ from teamarr.providers.espn.client import (
     COLLEGE_SCOREBOARD_DIVISIONS,
     ESPN_TEAM_ID_CORRECTIONS,
     ESPNClient,
+    ESPNFetchError,
     league_publishes_rankings,
     scoreboard_groups_for_divisions,
 )
@@ -373,6 +374,8 @@ class ESPNProvider(
             data = self._client.get_mma_scoreboard(
                 self._espn_mma_slug(league, sport_league), window
             )
+            if data is None:
+                raise ESPNFetchError(f"mma scoreboard {league} {window}")  # (fork)
             if not data:
                 return []
             # Mixin handles: pure parsing only. The ±1-day fetch window IS the
@@ -394,7 +397,18 @@ class ESPNProvider(
         sport_league: tuple[str, str] | None,
     ) -> list[Event]:
         """Standard per-date scoreboard fetch (non-MMA, non-tournament)."""
-        return self._scoreboard_events_for(league, target_date.strftime("%Y%m%d"), sport_league)
+        date_str = target_date.strftime("%Y%m%d")
+        data = self._client.get_scoreboard(
+            league, date_str, sport_league, self._scoreboard_groups(league)
+        )
+        if data is None:
+            # (fork) A failed request is not an empty day — raise so the
+            # service skips caching it (a 403 burst once cached "no LaLiga
+            # games today" for hours, and past days for 30).
+            raise ESPNFetchError(f"scoreboard {league} {date_str}")
+        if not data:
+            return []
+        return self._parse_scoreboard_payload(data, league)
 
     def _scoreboard_events_for(
         self, league: str, date_str: str, sport_league: tuple[str, str] | None

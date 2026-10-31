@@ -43,6 +43,8 @@ This document describes all customizations made to this Teamarr fork: changes 1�
 | 18 | Dash matchup separator + EPG star-rating strip — **two bug fixes** | Movistar/European EPG titles ("Real Madrid - Málaga") never extracted a team pair; separately, a "★N.N/10" guide rating was misread as a date and silently killed an otherwise-correct match |
 | 19 | Dash-written EPG matchups not split between the teams (v2.25.1) | Upstream #728 split "DIRECTO Jornada 9: Chelsea - Manchester United" at the team dash, so no Movistar/DAZN programme matched |
 | 20 | A failed ESPN fetch is never cached as an empty day (v2.25.1) | An ESPN 403 burst got cached as "no games": LaLiga/Premier League vanished for the day, past days for 30 days |
+| 21 | DAZN F1 dash titles are races, not matchups (2026-10-31) | `Mundial F1 - GP de México` was read as "Mundial F1" vs "GP de México" via #18a's separator, so no DAZN F1 programme matched |
+| 22 | Racing guide programmes use their broadcast time for the single-event match (2026-10-31) | `DIRECTO Grand Prix MotoGP` (no GP name; "Malaysia GP" scores 19) could never match the only MotoGP weekend |
 
 ---
 
@@ -755,6 +757,47 @@ fix, a cold run logs `[EVENTS] … bucket … failed` warnings instead of cachin
 and the next run refetches them: 0 × 403 once warm.
 
 **Worth reporting upstream:** both #19 and #20 are upstream issues.
+
+---
+
+## Changes 21–22: DAZN España F1 and MotoGP guide programmes (2026-10-31, `80ff07ce`)
+
+Found when tito asked why the 1-Nov F1 and MotoGP races weren't creating
+channels from the DAZN guide. Both are deployed and verified on production:
+the DAZN F1 streams now attach to the Mexico GP session channels, and
+`DIRECTO Grand Prix MotoGP T2026` binds to the Malaysia GP.
+
+### 21. A dash whose left side names a racing series is a race
+
+**Problem:** `DIRECTO Carrera T2026 · Mundial F1 - GP de México` (DAZN
+España). The fork's `' - '` separator (#18a) made `classify_stream` return
+TEAM_VS_TEAM even in racing mode, so `_try_racing_fallback` (which needs
+RACING_EVENT) gave up. Upstream already exempts `at`/`@` separators whose left
+side names a racing series ("F1 at Monaco"). The fork extends the same rule to
+`-` (`_classify_racing_event`, `teamarr/consumers/matching/classifier.py`).
+This only applies where the racing path is active: `Real Madrid - Málaga`
+stays TEAM_VS_TEAM even in racing mode.
+
+### 22. EPG racing programmes may use their broadcast instant as the timed evidence
+
+**Problem:** TheSportsDB names the weekend `Malaysia GP`, and DAZN's
+`DIRECTO Grand Prix MotoGP T2026` scores 19 against it, below the
+single-event sanity floor of 50. The single-event "timed evidence" path
+(series/session word plus a time inside a session window) only read a time
+written in the stream NAME. Guide titles carry none.
+
+**Fix:** in `RacingMatcher._match_to_event`, the programme's `anchor_dt` now
+counts as that time. It is checked with the same `_covers_instant` window the
+EPG anchor gate uses (session ±90 min). A title that names the series but airs
+hours from every session still does not match.
+
+Tests: `tests/matching/test_racing_dazn_epg.py`.
+
+**Note on the MotoGP streams in `ES| DAZN ESPAÑA VIP`:** the provider's M3U
+gives them an empty tvg-id, so that source has no guide for them. The guide
+comes from the Dispatcharr channel in the `🏍 DAZN ESPAÑA` channel group
+(channel-source source, guide id `90`). Teamarr reads that and attaches the
+channel's streams.
 
 ---
 

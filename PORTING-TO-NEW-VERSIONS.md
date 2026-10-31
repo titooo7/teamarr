@@ -3,7 +3,7 @@
 **Current state (2026-10-31):** fork based on upstream **v2.25.1**, branch
 `dev-custom-2.25.1` (pushed to `titooo7/teamarr`), **schema 105**, fork
 migrations **v104/v105**, LIVE in production. The fork's changes are catalogued in
-`CUSTOMIZATIONS.md` (#1–#20; #13 is history, #16 was dropped because upstream
+`CUSTOMIZATIONS.md` (#1–#22; #13 is history, #16 was dropped because upstream
 fixed it). This file is the **how-to for the next port**: Steps 1–9 below, then
 a touch-point map of every change, then lessons from past ports.
 
@@ -292,6 +292,8 @@ column.
 | 18b | Strip EPG `★N.N/10` rating before date extraction | `consumers/matching/epg_matcher.py` `_RATING_SUFFIX` in `_clean_epg_segment` | `grep -n _RATING_SUFFIX` |
 | 19 | Don't split dash-written matchups between the teams | `consumers/matching/epg_matcher.py` `_split_inline_matchup` (upstream #728 added `-` to `_INLINE_SEP`) | `grep -n _split_inline_matchup` |
 | 20 | Never cache a failed ESPN fetch as an empty day | `providers/espn/client.py` `ESPNFetchError`; raised in `provider.py` (scoreboard + MMA) and `tournament.py`; `services/sports_data.py` `failed_buckets` skip-cache | `grep -rn "ESPNFetchError\|failed_buckets"` |
+| 21 | Dash with a racing series on its left = race, not matchup | `consumers/matching/classifier.py` `_classify_racing_event` (`elif sep.strip() == "-"` branch) | `grep -n 'sep.strip() == "-"'` |
+| 22 | EPG racing programme's broadcast instant counts as timed evidence | `consumers/matching/racing_matcher.py` `_match_to_event` (`timed_evidence`, `ctx.anchor_dt`) | `grep -n "timed_evidence"` |
 | mig | Fork migrations v104/v105 (additive) | `database/migrations/versioned.py` (`_append_exception_keyword_terms`, `_migrate_v104_…`, `_migrate_v105_…`, blocks after upstream's last), `migrations/__init__.py`, `schema.sql` DEFAULT, `docs/reference/architecture/migrations.md` | `grep -rn "_migrate_v10[45]"` |
 | — | #16 EPG anchor on reverse-alias retry | **dropped**: upstream #716 | — |
 

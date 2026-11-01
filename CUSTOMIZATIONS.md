@@ -799,6 +799,25 @@ comes from the Dispatcharr channel in the `🏍 DAZN ESPAÑA` channel group
 (channel-source source, guide id `90`). Teamarr reads that and attaches the
 channel's streams.
 
+### 23. Racing names are also scored with Spanish country names translated
+
+**Problem (2026-11-01):** `MOTOGP EVENTO 01 | GP de Malasia 01/11 03:35`
+(group `ES| MOTOGP PPV`) failed with `no_racing_match`. TheSportsDB names the
+weekend `Malaysia GP`; "Malasia" scored 40, below the single-event floor of 50.
+The stream time cannot help: 03:35 Madrid is the start of the provider's
+all-day feed, hours before the only Sunday session TheSportsDB lists (the race).
+
+**Fix:** `RacingMatcher._match_to_event` also scores the stream name after
+`apply_city_translations` (change #4's country dictionary), for both the event
+name and the venue-country score, and keeps the maximum. Scores never go down.
+Tests: `tests/matching/test_racing_spanish_gp_names.py`.
+
+**Needs a group setting too:** these provider names write the date as DD/MM.
+With only `01/11`-style names in a group, Teamarr reads it month-first
+(11 January) and finds no event. Set the group's custom date regex to
+`(?P<day>\d{1,2})/(?P<month>\d{1,2})` (enabled) on `ES| MOTOGP PPV` and
+`ES| F1 PPV`.
+
 ---
 
 ## Files Modified
@@ -970,6 +989,13 @@ word-boundary-safe against `MATRIX`, `REVIX`, `PHOENIX`, `AVIX`,
 `Fanatical` (none false-positive). Same DB-only apply pattern as `MAX ES`,
 same live DBs, same re-apply scripts.
 
+**Addendum (2026-11-01):** added `EVENTO`. strong8k's Spanish PPV groups name
+feeds `MOTOGP EVENTO 01 | GP de Malasia 01/11 03:35`, `LIGA F EVENTO 01 | …`,
+`RFEF EVENTO …`, `MAX EVENTO …` with no `ES:` prefix, so they landed on the plain
+channel. Before adding it, every Dispatcharr stream containing the word was
+checked: all are in ES groups. Word-bounded, so `EVENTOS` does not match. Applied
+on production through the keywords API (PUT `/api/v1/keywords/1`).
+
 ### 6. Keyword behavior set to `separate`
 
 **Problem:** The keyword `behavior='consolidate'` overrode the global "Stream Consolidation: Separate" setting, forcing all streams with the same keyword into one channel.
@@ -1121,7 +1147,7 @@ for old, new in label_updates.items():
     conn.execute('UPDATE consolidation_exception_keywords SET label=? WHERE label=?', (new, old))
 
 # 2. Update match terms (Spanish label, with un-accented variants + ES:)
-conn.execute(\"UPDATE consolidation_exception_keywords SET match_terms='Spanish, En Español, En Espanol, (ESP), Español, Espanol, ES:, MAX ES, Fanatiz, VIX' WHERE label='Español'\")
+conn.execute(\"UPDATE consolidation_exception_keywords SET match_terms='Spanish, En Español, En Espanol, (ESP), Español, Espanol, ES:, MAX ES, Fanatiz, VIX, EVENTO' WHERE label='Español'\")
 conn.execute(\"UPDATE consolidation_exception_keywords SET match_terms='French, En Français, En Francais, (FRA), Français, Francais, Francés, Frances' WHERE label='Francés'\")
 conn.execute(\"UPDATE consolidation_exception_keywords SET match_terms='Portuguese, (POR), Português, Portugues' WHERE label='Portugués'\")
 conn.execute(\"UPDATE consolidation_exception_keywords SET match_terms='German, (GER), Deutsch, Alemán, Aleman' WHERE label='Alemán'\")
@@ -1255,7 +1281,7 @@ for old, new in {'Spanish':'Español','French':'Francés','German':'Alemán',
     conn.execute('UPDATE consolidation_exception_keywords SET label=? WHERE label=?', (new, old))
 
 # Update match terms
-conn.execute(\"UPDATE consolidation_exception_keywords SET match_terms='Spanish, En Español, En Espanol, (ESP), Español, Espanol, ES:, MAX ES, Fanatiz, VIX' WHERE label='Español'\")
+conn.execute(\"UPDATE consolidation_exception_keywords SET match_terms='Spanish, En Español, En Espanol, (ESP), Español, Espanol, ES:, MAX ES, Fanatiz, VIX, EVENTO' WHERE label='Español'\")
 conn.execute(\"UPDATE consolidation_exception_keywords SET match_terms='French, En Français, En Francais, (FRA), Français, Francais, Francés, Frances' WHERE label='Francés'\")
 conn.execute(\"UPDATE consolidation_exception_keywords SET match_terms='Portuguese, (POR), Português, Portugues' WHERE label='Portugués'\")
 conn.execute(\"UPDATE consolidation_exception_keywords SET match_terms='German, (GER), Deutsch, Alemán, Aleman' WHERE label='Alemán'\")

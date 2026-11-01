@@ -28,6 +28,7 @@ from teamarr.consumers.matching.classifier import (
     StreamCategory,
     detect_racing_series_leagues,
 )
+from teamarr.consumers.matching.normalizer import apply_city_translations
 from teamarr.consumers.matching.result import (
     FailedReason,
     FilteredReason,
@@ -429,6 +430,15 @@ class RacingMatcher:
         # unique-country fallback below (country-named streams, e.g.
         # "NASCAR Cup Series at Mexico City").
         stream_norm = normalize_text(ctx.stream_name)
+        # Fork (#23): Spanish/Portuguese stream names ("GP de Malasia", "GP de
+        # Japón") never shared the country token with TheSportsDB's English
+        # event names ("Malaysia GP"): "Malasia" scored 40 against it, below
+        # the 50 floor. Score the country-translated form too and keep the
+        # best — the translation only ever adds the English token, so a name
+        # that already matched scores the same.
+        stream_norm_en = normalize_text(apply_city_translations(ctx.stream_name))
+        if stream_norm_en == stream_norm:
+            stream_norm_en = None
         # Compound-spelling tolerance: score the plain normalized forms AND
         # bigram-augmented forms, taking the best. The augmented pass only
         # ever helps when adjacent tokens fuse into the other side's
@@ -448,14 +458,17 @@ class RacingMatcher:
                 score = max(
                     fuzz.token_set_ratio(stream_norm, cand_norm),
                     fuzz.token_set_ratio(stream_aug, _augment_compounds(cand_norm)),
+                    fuzz.token_set_ratio(stream_norm_en, cand_norm) if stream_norm_en else 0,
                 )
                 if score > best_score:
                     best_score = score
                     best_event = event
             country = event.venue.country if event.venue else None
             if country:
-                country_scores[event.id] = fuzz.token_set_ratio(
-                    stream_norm, normalize_text(country)
+                country_norm = normalize_text(country)
+                country_scores[event.id] = max(
+                    fuzz.token_set_ratio(stream_norm, country_norm),
+                    fuzz.token_set_ratio(stream_norm_en, country_norm) if stream_norm_en else 0,
                 )
 
         # Strategy 1: Single event covering the date - the common case
